@@ -1,0 +1,5 @@
+"""Library identity and version helpers for InQL consumers."""
+
+pub def inql_version() -> str:
+    """Semantic version of this InQL package (keep in sync with `incan.toml`)."""
+    return "0.1.0"
