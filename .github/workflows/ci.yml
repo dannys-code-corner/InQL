@@ -1,0 +1,74 @@
+# InQL CI — Incan library package
+#
+# The compiler is built from the Incan repository on each run so this package tracks the default branch of the toolchain
+# (no pre-published `incan` binary required).
+# FIXME: once incan has the ability, switch to a published `incan` binary.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  INCAN_NO_BANNER: 1
+  # Pin the compiler checkout; bump when you intentionally require a newer Incan.
+  INCAN_REPO: dannys-code-corner/incan-programming-language
+  INCAN_REF: main
+
+jobs:
+  inql:
+    name: InQL (build + test)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Check out InQL
+        uses: actions/checkout@v4
+
+      - name: Check out Incan (toolchain)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.INCAN_REPO }}
+          ref: ${{ env.INCAN_REF }}
+          path: incan
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Incan build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: incan
+
+      - name: Build Incan
+        working-directory: incan
+        run: cargo build --release
+
+      - name: Add Incan to PATH
+        run: echo "${{ github.workspace }}/incan/target/release" >> "$GITHUB_PATH"
+
+      - name: Show toolchain
+        run: |
+          incan --version
+          rustc --version
+
+      - name: Format check (Incan sources)
+        run: make fmt-check
+
+      - name: Build library
+        run: make build
+
+      - name: Run tests
+        run: make test

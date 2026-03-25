@@ -1,0 +1,64 @@
+name: "Bug report"
+description: Report a problem with the InQL package, tests, docs, or CI.
+title: "bug - "
+type: Bug
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting — a **minimal repro** (snippet, commands, or RFC section) helps a lot.
+        Toolchain problems **outside this repo** (generic Incan, not InQL\’s package or specs) belong in the [Incan compiler](https://github.com/dannys-code-corner/incan-programming-language/issues) tracker.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: What part of the project does this mainly concern?
+      multiple: true
+      options:
+        - Package & tests
+        - Specification (RFCs)
+        - Documentation
+        - Automation & repo config
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened, and what did you expect to happen?
+      placeholder: |
+        Expected: ...
+        Actual: ...
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      description: Commands, small code sample, or pointer to an RFC section if the spec is wrong.
+      placeholder: |
+        1) ...
+        2) ...
+        3) ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Output / logs
+      description: Test failures, `incan` output, or other relevant logs.
+      render: text
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: OS, InQL commit or version, and `incan` version/commit if you hit it while building or testing.
+      placeholder: |
+        OS:
+        InQL (commit or version):
+        incan (version or commit):
+        Command:
+    validations:
+      required: true

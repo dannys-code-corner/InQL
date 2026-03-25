@@ -1,0 +1,47 @@
+name: "Chore / maintenance"
+description: Refactors, cleanup, dependency bumps, CI improvements, and other non-feature work.
+title: "chore - "
+type: Chore
+labels: ["chore"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: What part of the project does this mainly concern?
+      multiple: true
+      options:
+        - Package & tests
+        - Specification (RFCs)
+        - Documentation
+        - Automation & repo config
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What maintenance work is needed and why?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      placeholder: |
+        - In scope:
+        - Out of scope:
+        - Risks:
+    validations:
+      required: true
+  - type: textarea
+    id: plan
+    attributes:
+      label: Plan
+      description: Steps you expect to take; include affected paths if known.
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: Concrete acceptance criteria / checks.

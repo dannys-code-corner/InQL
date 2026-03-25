@@ -1,0 +1,65 @@
+name: "Documentation"
+description: Report missing, confusing, or incorrect documentation; propose doc improvements.
+labels: ["documentation"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: What part of the project does this mainly concern?
+      multiple: true
+      options:
+        - Package & tests
+        - Specification (RFCs)
+        - Documentation
+        - Automation & repo config
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What is wrong or missing? What did you expect to find?
+    validations:
+      required: true
+  - type: textarea
+    id: location
+    attributes:
+      label: Location(s)
+      description: Where is the issue? Link to files, sections, or pages.
+      placeholder: |
+        - README.md: ...
+        - docs/...: ...
+        - docs/rfcs/...: ...
+    validations:
+      required: true
+  - type: dropdown
+    id: doc_type
+    attributes:
+      label: Doc type (Divio / Diátaxis)
+      description: What kind of doc should this be?
+      options:
+        - Tutorial
+        - How-to guide
+        - Reference
+        - Explanation
+        - Not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: audience
+    attributes:
+      label: Audience
+      options:
+        - InQL user (library, queries, datasets)
+        - Contributor (RFCs, package layout, CI)
+        - Incan / compiler integrator
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change (optional)
+      description: If you have suggested wording or structure, drop it here.

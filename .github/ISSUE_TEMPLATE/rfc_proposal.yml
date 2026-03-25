@@ -1,0 +1,76 @@
+name: "RFC proposal"
+description: Propose a significant InQL specification or surface change that should go through the RFC process.
+labels: ["RFC"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this issue to propose an RFC topic and get early alignment.
+        If accepted, we typically ask for a PR adding an RFC under [`docs/rfcs/`](https://github.com/dannys-code-corner/InQL/tree/main/docs/rfcs): copy [**TEMPLATE.md**](https://github.com/dannys-code-corner/InQL/blob/main/docs/rfcs/TEMPLATE.md), name it `NNN_short_slug.md`, and follow that structure. For workflow and conventions, see [**Writing InQL RFCs**](https://github.com/dannys-code-corner/InQL/blob/main/docs/contributing/writing_rfcs.md).
+
+        **InQL RFCs** cover the relational layer, dataset carriers, Substrait contract, `query {}` syntax, execution context, and related docs.
+        Pure Incan language/compiler changes without InQL impact usually belong in the **Incan** repository instead.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: What part of the project does this mainly concern?
+      multiple: true
+      options:
+        - Package & tests
+        - Specification (RFCs)
+        - Documentation
+        - Automation & repo config
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One-paragraph overview of the change and why it matters.
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: What problem does this solve? Who benefits? Why now?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal sketch
+      description: Syntax, examples, expected behavior, and key design constraints.
+      placeholder: |
+        Examples:
+        ```incan
+        # ...
+        ```
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other plausible designs and why they are worse.
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact / compatibility
+      description: Breaking changes, migration story, interaction with Incan compiler or backends.
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Implementation notes (optional)
+      description: Likely touch points (this repo vs Incan), testing strategy, and Substrait/session implications if any.
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I checked for an existing RFC or issue covering this.
+          required: true
+        - label: I can describe how this impacts existing code and how to migrate (if needed).
+          required: false
