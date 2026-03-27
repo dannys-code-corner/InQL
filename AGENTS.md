@@ -73,7 +73,7 @@ Normative behavior is defined in **`docs/rfcs/`**. If package code and an RFC di
 | `make fmt` | Format package `.incn` sources (`src/`, `tests/`, `examples/` only) |
 | `make fmt-check` | Check formatting without writing (same scope) |
 | `make build` | `incan build --lib` |
-| `make test` | `incan test` |
+| `make test` | `incan test tests` (package `tests/` only; avoids picking up a sibling `./incan/` checkout) |
 | `make build-locked` / `make test-locked` | Stricter lockfile mode |
 
 Requires `incan` on `PATH`, or `make build INCAN=/path/to/incan`. CI builds Incan from source then runs `make ci` (see [.github/workflows/ci.yml][ci-workflow]).

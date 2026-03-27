@@ -21,6 +21,13 @@ help: ## Show Make targets
 # =============================================================================
 # Build & test (primary — Incan-first)
 # =============================================================================
+#
+# Test discovery defaults to `.` and walks the whole tree. CI checks out the
+# Incan compiler under `./incan/`; running `incan test` without a path would
+# pick up compiler integration tests (e.g. `incan/tests/test_*.incn`), which
+# are not InQL package tests. Scope to `tests/` only (see INQL_FMT_DIRS).
+
+INQL_TEST_DIR := tests
 
 .PHONY: build
 build: ## Build the library (`incan build --lib`)
@@ -28,9 +35,9 @@ build: ## Build the library (`incan build --lib`)
 	@$(INCAN) build --lib
 
 .PHONY: test
-test: ## Run package tests (`incan test`)
+test: ## Run package tests (`incan test tests`)
 	@echo "\033[1mRunning InQL tests...\033[0m"
-	@$(INCAN) test
+	@$(INCAN) test $(INQL_TEST_DIR)
 
 .PHONY: build-locked
 build-locked: ## Build with `--locked` (stricter; requires current `incan.lock`)
@@ -40,7 +47,7 @@ build-locked: ## Build with `--locked` (stricter; requires current `incan.lock`)
 .PHONY: test-locked
 test-locked: ## Run tests with `--locked`
 	@echo "\033[1mRunning InQL tests (locked)...\033[0m"
-	@$(INCAN) test --locked
+	@$(INCAN) test $(INQL_TEST_DIR) --locked
 
 # =============================================================================
 # Formatting (Incan source — package only)
