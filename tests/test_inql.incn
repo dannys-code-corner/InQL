@@ -1,7 +1,0 @@
-from std.testing import assert_eq
-from metadata import inql_version
-
-
-# TODO: this acts as a placeholder - remove this once we get more implementation service
-def test_inql_version_is_published() -> None:
-    assert_eq(inql_version(), "0.1.0")

@@ -1,14 +1,16 @@
 # InQL RFC 001: Dataset types and carriers (`DataSet[T]`)
 
-- **Status:** Planned
+- **Status:** Implemented
 - **Created:** 2026-03-22
 - **Author(s):** Danny Meijer
 - **Related:**
   - InQL RFC 000 (language specification — naming, schema shapes, layer boundaries)
+  - Incan compiler — static capability gating enforcement: [incan#187](https://github.com/dannys-code-corner/incan/issues/187)
+  - InQL follow-up when enforcement lands: [InQL #10](https://github.com/dannys-code-corner/InQL/issues/10)
 - **Issue:** [InQL #2](https://github.com/dannys-code-corner/InQL/issues/2)
 - **RFC PR:** -
 - **Written against:** Incan v0.2
-- **Shipped in:** -
+- **Shipped in:** 0.1.0
 
 ## Summary
 
@@ -44,7 +46,7 @@ Typed pipelines need a first-class carrier for columnar data indexed by `T`. Wit
 - Apache Substrait `Rel`-level mapping and extension policy — InQL RFC 002.
 - Clause-based relational grammar, aggregate rules, Substrait lowering from that surface — InQL RFC 003.
 - Execution context, session, DataFusion — InQL RFC 004.
-- Pipe-forward (`|>`) grammar — InQL RFC 005 (not in v0.1 scope).
+- Pipe-forward (`|>`) grammar — InQL RFC 005 (deferred; outside the RFC 000–004 milestone).
 - Cluster-scale scheduling, shuffle, distributed fault tolerance — orchestration layer.
 - Drop-in API compatibility with Apache Beam, Flink, or Spark SDKs.
 
@@ -111,12 +113,12 @@ from models import Order, Summary, Event, Alert
 def inspect(data: DataFrame[Order]) -> None:
     ...
 
-# Deferred plan — compose before execution
-def build_pipeline(orders: LazyFrame[Order]) -> LazyFrame[Summary]:
+# Deferred plan — compose before execution (signatures use Self; logical Summary row shape via RFC 003)
+def build_pipeline(orders: LazyFrame[Order]) -> LazyFrame[Order]:
     ...
 
-# Streaming specifically
-def process_stream(events: DataStream[Event]) -> DataStream[Alert]:
+# Streaming specifically (signatures use Self; logical Alert row shape via RFC 003)
+def process_stream(events: DataStream[Event]) -> DataStream[Event]:
     ...
 ```
 
@@ -157,28 +159,34 @@ The three concrete types **must not** imply three unrelated relational languages
 
 When a function accepts `DataSet[T]` (the root trait), the compiler **must** enforce streaming constraints because the input **might** be unbounded. Authors who want the full operation set **must** accept `BoundedDataSet[T]` or a concrete bounded type.
 
-For `UnboundedDataSet[T]`, the governing rule is semantic rather than ad hoc: operations that require end-of-input semantics or unbounded retained state are not valid unless a later RFC gives them bounded-state semantics. In v0.1, the obvious disallowed examples include global `order_by`, global `limit`, unwindowed `group_by` / `agg`, eager materialization to a finite `DataFrame[T]`, and finite file writes.
+For `UnboundedDataSet[T]`, the governing rule is semantic rather than ad hoc: operations that require end-of-input semantics or unbounded retained state are not valid unless a later RFC gives them bounded-state semantics. Typical disallowed examples include global `order_by`, global `limit`, unwindowed `group_by` / `agg`, eager materialization to a finite `DataFrame[T]`, and finite file writes.
 
 ### Operation API (for lowering and direct use)
 
-The InQL library **must** expose the following instance methods on `DataSet[T]` (exact signatures may live in companion library docs; semantics **must** match this table and stay consistent with any normative lowering rules for the same logical operators elsewhere in InQL). Method names are illustrative; implementations **may** use equivalent spellings if the compiler maps them consistently.
+The InQL library **must** expose the following instance methods on `DataSet[T]`. Method names are illustrative; implementations **may** use equivalent spellings if the compiler maps them consistently. Semantics **must** match this table and stay consistent with any normative lowering rules for the same logical operators elsewhere in InQL.
 
-| Method         | Role                                                                                                        |
-| -------------- | ----------------------------------------------------------------------------------------------------------- |
-| **`filter`**   | Restrict rows by a boolean relational expression (relational argument positions per InQL RFC 000).          |
-| **`join`**     | Combine with another `DataSet[U]` on a join condition; named relations for `relation.column`                |
-| **`select`**   | Project columns and expressions; output row type becomes a new schema `U` the typechecker can track.        |
-| **`group_by`** | Define grouping keys for aggregation; keys are relational expressions.                                      |
-| **`agg`**      | Apply aggregate functions over groups (often chained after `group_by`); produces grouped/aggregated schema. |
-| **`order_by`** | Define sort keys and directions.                                                                            |
-| **`limit`**    | Cap the number of rows (after sort when both apply).                                                        |
-| **`explode`**  | Expand a nested list column into rows (or equivalent).                                                      |
+#### Shipped trait signatures (`Self`)
+
+Earlier drafts of this RFC described some methods with a second type parameter `U` (for example `join` with `other: DataSet[U]`, or `select` / `agg` returning `DataSet[U]`). The **InQL library package** (see **Shipped in** in the header) instead declares these methods using Incan’s **`Self`** on the `DataSet[T]` trait: the peer carrier in `join` is `other: Self`, and `select` / `agg` return `Self`. That is the **normative contract** for the library package until a follow-up specifies richer generic method typing in Incan.
+
+**Semantic intent is unchanged:** `join` still combines two relations (with `relation.column` naming per InQL RFC 000); `select` and `agg` still denote projection and aggregation that may change the logical row shape. Tracking output schema `U` at the **typechecker** level for those operations is expected to align with InQL RFC 003 (clause / method-chain lowering), not with extra type parameters on this **`Self`**-based trait surface. Authors should treat the table’s “Role” column as the logical behavior; the “Declared signature” column as what the Incan sources declare today.
+
+| Method         | Declared signature (InQL library)               | Role                                                                                                               |
+| -------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| **`filter`**   | `def filter(self, predicate: bool) -> Self`     | Restrict rows by a boolean relational expression (relational argument positions per InQL RFC 000).                 |
+| **`join`**     | `def join(self, other: Self, on: bool) -> Self` | Combine with another relation on a join condition; named relations for `relation.column`.                          |
+| **`select`**   | `def select(self) -> Self`                      | Project columns and expressions; logical output row type may differ and is tracked when lowering/typing (RFC 003). |
+| **`group_by`** | `def group_by(self) -> Self`                    | Define grouping keys for aggregation; keys are relational expressions.                                             |
+| **`agg`**      | `def agg(self) -> Self`                         | Apply aggregate functions over groups (often chained after `group_by`); logical schema per lowering (RFC 003).     |
+| **`order_by`** | `def order_by(self) -> Self`                    | Define sort keys and directions.                                                                                   |
+| **`limit`**    | `def limit(self, n: int) -> Self`               | Cap the number of rows (after sort when both apply).                                                               |
+| **`explode`**  | `def explode(self) -> Self`                     | Expand a nested list column into rows (or equivalent).                                                             |
 
 Additional requirements:
 
-- Operations **must** preserve or update `T` (or output model `U`) in a way the typechecker can verify.
-- Operations that are statically invalid on `UnboundedDataSet[T]` (e.g. unbounded-state operations) **must** produce compile-time errors, not runtime failures.
-- Aggregate helpers used with `.agg(...)` are imported library symbols (for example from `pub::inql.functions`), not ambient builtins.
+- Over time, operations **must** preserve or refine row schema information in a way the typechecker and lowering can verify; the shipped **`Self`**-based signatures intentionally do not encode every schema transition on the trait surface yet.
+- Operations that are statically invalid on `UnboundedDataSet[T]` (e.g. unbounded-state operations) **must** produce compile-time errors in the **Incan** typechecker once that enforcement exists (see **Static capability gating**). The InQL library package does not implement that analysis; scheduling and tracking belong on the **Incan** compiler side, not in the **Contract-complete checklist** below.
+- Aggregate helpers used with `.agg(...)` are imported library symbols from `pub::inql.functions` (for example `total` for summation; names avoid clashing with Incan/stdlib `sum` / `count`), not ambient builtins.
 - This RFC defines the minimum required aggregate-function import model for `.agg(...)`; it is not an exhaustive catalog of all present or future InQL functions. Additional functions **may** be added later through additive library evolution or follow-up RFCs, provided they do not change the semantics of the required set defined by the InQL RFC suite.
 
 ### Execution backend boundary
@@ -209,7 +217,7 @@ The design draws on Spark Structured Streaming's core insight: a stream is an un
 
 `UnboundedDataSet[T]` currently has one concrete implementor (`DataStream[T]`). The intermediate trait is justified by: clean symmetry with `BoundedDataSet[T]` in type signatures, and future extensibility (e.g. a `ChangeStream[T]` for CDC, a `WindowedStream[T]`, or other streaming specializations).
 
-Future RFCs **may** add methods on `BoundedDataSet[T]` or `UnboundedDataSet[T]`, but only where the semantics are inherently boundedness-specific and remain backend-neutral. v0.1 does not require any additional core relational methods beyond the shared `DataSet[T]` surface.
+Future RFCs **may** add methods on `BoundedDataSet[T]` or `UnboundedDataSet[T]`, but only where the semantics are inherently boundedness-specific and remain backend-neutral. This RFC does not require any additional core relational methods on those intermediate traits beyond the shared `DataSet[T]` surface.
 
 ### Compatibility
 
@@ -237,8 +245,20 @@ Future RFCs **may** add methods on `BoundedDataSet[T]` or `UnboundedDataSet[T]`,
 
 ### Resolved
 
-- **`UnboundedDataSet[T]` restrictions:** Operations requiring end-of-input semantics or unbounded retained state are not valid unless a later RFC gives them bounded-state semantics. In v0.1, disallowed examples include global `order_by`, global `limit`, unwindowed `group_by` / `agg`, eager materialization to a finite `DataFrame[T]`, and finite file writes.
+- **`UnboundedDataSet[T]` restrictions:** Operations requiring end-of-input semantics or unbounded retained state are not valid unless a later RFC gives them bounded-state semantics. Typical disallowed examples include global `order_by`, global `limit`, unwindowed `group_by` / `agg`, eager materialization to a finite `DataFrame[T]`, and finite file writes.
 
 - **`collect` / `display`:** Not part of the `DataSet[T]` trait surface. Helpers such as `collect(data)` or `display(data)` belong to the execution context and concrete implementation model defined in InQL RFC 004, not in this RFC.
 
-- **Intermediate traits:** `BoundedDataSet[T]` and `UnboundedDataSet[T]` do not add required core relational methods in v0.1. Future RFCs may add additional methods only where the semantics are inherently boundedness-specific and remain backend-neutral.
+- **Intermediate traits:** `BoundedDataSet[T]` and `UnboundedDataSet[T]` do not add required core relational methods beyond what this RFC specifies for the shared `DataSet[T]` surface. Future RFCs may add additional methods only where the semantics are inherently boundedness-specific and remain backend-neutral.
+
+- **Static capability gating — compiler enforcement:** The **must** in **Additional requirements** (compile-time errors for invalid `UnboundedDataSet[T]` uses) is normative language for the language; the **InQL** package issue in the header tracks the **library** contract. Typechecker implementation is tracked in **[incan#187](https://github.com/dannys-code-corner/incan/issues/187)**; **[InQL #10](https://github.com/dannys-code-corner/InQL/issues/10)** is a chore to revisit this package and docs when that work lands.
+
+## Contract-complete checklist (library package)
+
+RFC 001 is **contract-complete** for the InQL package when all of the following hold (**execution** / materialization: InQL RFC 004; **static streaming enforcement** in the typechecker: Incan compiler work—separate from this checklist):
+
+- **Hierarchy:** `DataSet`, `BoundedDataSet`, `UnboundedDataSet`, `DataFrame`, `LazyFrame`, `DataStream` are public exports and match the type tree in this RFC.
+- **Operation names:** The eight methods in **Operation API** exist on `DataSet[T]` with the **`Self`-based signatures** documented above and in companion library docs.
+- **Aggregates:** `pub::inql.functions` exports at least the minimum aggregate helpers required for the import model (`total`, `count_rows` in the shipped package); bodies may be stubs until RFC 004.
+- **Tests:** Package tests verify exports, trait assignability, and aggregate symbol importability without requiring runtime relational execution.
+- **Docs:** This RFC, `docs/language/reference/dataset_types.md`, `docs/language/explanation/dataset_types.md`, and examples do not contradict the shipped `Self` signatures or stub status.

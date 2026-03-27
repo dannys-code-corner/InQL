@@ -1,0 +1,90 @@
+"""
+Example: Trait hierarchy patterns (RFC 001).
+
+This example demonstrates compile-time trait hierarchy usage patterns.
+
+## Patterns shown
+
+- Trait inheritance: BoundedDataSet[T] extends DataSet[T]
+- Trait inheritance: UnboundedDataSet[T] extends DataSet[T]
+- Concrete type implementation: DataFrame[T] implements BoundedDataSet[T]
+- Concrete type implementation: LazyFrame[T] implements BoundedDataSet[T]
+- Concrete type implementation: DataStream[T] implements UnboundedDataSet[T]
+"""
+
+from dataset import DataSet, BoundedDataSet, UnboundedDataSet, DataFrame, LazyFrame, DataStream
+from models import Order, Event
+
+# ---- Trait hierarchy assignment patterns ----
+def assign_data_frame_to_bounded(data: DataFrame[Order]) -> BoundedDataSet[Order]:
+    """Concrete bounded carrier upcasts to its bounded trait."""
+    return data
+
+
+def assign_lazy_frame_to_bounded(data: LazyFrame[Order]) -> BoundedDataSet[Order]:
+    """Deferred bounded carrier upcasts to its bounded trait."""
+    return data
+
+
+def assign_data_stream_to_unbounded(data: DataStream[Event]) -> UnboundedDataSet[Event]:
+    """Streaming carrier upcasts to its unbounded trait."""
+    return data
+
+
+def assign_bounded_to_data_set(data: BoundedDataSet[Order]) -> DataSet[Order]:
+    """Bounded trait upcasts to the root DataSet trait."""
+    return data
+
+
+def assign_unbounded_to_data_set(data: UnboundedDataSet[Event]) -> DataSet[Event]:
+    """Unbounded trait upcasts to the root DataSet trait."""
+    return data
+
+
+def chain_data_frame_to_root(data: DataFrame[Order]) -> DataSet[Order]:
+    """Concrete-to-supertrait chain: DataFrame -> BoundedDataSet -> DataSet."""
+    return assign_bounded_to_data_set(assign_data_frame_to_bounded(data))
+
+
+def chain_data_stream_to_root(data: DataStream[Event]) -> DataSet[Event]:
+    """Concrete-to-supertrait chain: DataStream -> UnboundedDataSet -> DataSet."""
+    return assign_unbounded_to_data_set(assign_data_stream_to_unbounded(data))
+
+
+# ---- Function signature patterns ----
+def accept_any_data_set[T](data: DataSet[T]) -> None:
+    """Function accepts any dataset carrier (most restrictive)."""
+    # Only intersection of bounded + unbounded operations available
+    pass
+
+
+def accept_bounded_only(data: BoundedDataSet[Order]) -> None:
+    """Function accepts only bounded datasets."""
+    # All operations available
+    pass
+
+
+def accept_unbounded_only(data: UnboundedDataSet[Event]) -> None:
+    """Function accepts only unbounded datasets."""
+    # All operations except unbounded-state operations available
+    pass
+
+
+# ---- Generic function patterns ----
+def process_any[T](data: DataSet[T]) -> int:
+    """Generic function that works with any dataset carrier."""
+    # Can only use operations available on DataSet[T]
+    return 0
+
+
+def process_batch_only(data: BoundedDataSet[Order]) -> int:
+    """Function that works only with bounded datasets."""
+    # Can use all operations
+    return 0
+
+
+# ---- Main ----
+def main() -> None:
+    """Example main function."""
+    pass
+

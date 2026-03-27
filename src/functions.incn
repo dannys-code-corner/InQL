@@ -1,0 +1,18 @@
+"""
+Aggregate helpers for `.agg(...)` (RFC 001).
+
+These symbols **must** be imported by authors (for example `from pub::inql.functions import total`); they are not ambient
+builtins. Names avoid `sum` / `count` clashes with Incan/stdlib builtins. Bodies are neutral stubs until InQL RFC 004
+defines execution; lowering and relational typing for aggregates live in companion RFCs.
+
+FIXME: review this behavior once Incan's RFC 045 is implemented; we may want to migrate these to builtins preferably.
+"""
+
+pub def total(_x: int) -> int:
+    """Sum aggregate (stub; engine / lowering supplies semantics)."""
+    return 0
+
+
+pub def count_rows(_x: int) -> int:
+    """Count aggregate placeholder (stub)."""
+    return 0

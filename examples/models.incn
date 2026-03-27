@@ -1,0 +1,31 @@
+"""
+Placeholder models for InQL examples.
+
+These are simplified models for demonstration purposes. In real code, these would
+be defined in a separate module with proper field definitions.
+
+## Models
+
+- `Order`: Represents an order with id, customer_id, amount, status
+- `Customer`: Represents a customer with id, name, email
+- `Event`: Represents an event with id, type, severity
+"""
+
+# In real code, these would have proper field definitions:
+pub model Order:
+    pub id: int
+    pub customer_id: int
+    pub amount: float
+    pub status: str
+
+
+pub model Customer:
+    pub id: int
+    pub name: str
+    pub email: str
+
+
+pub model Event:
+    pub id: int
+    pub event_type: str
+    pub severity: str
