@@ -1,0 +1,81 @@
+"""
+Example: Bounded vs unbounded type signatures (RFC 001).
+
+This example focuses on compile-time type signatures and keeps runtime bodies as placeholders.
+
+## Patterns shown
+
+- BoundedDataSet[T]: All operations allowed
+- UnboundedDataSet[T]: Unbounded-state operations rejected at compile time
+- Static capability gating based on trait bounds
+"""
+
+from dataset import DataSet, BoundedDataSet, UnboundedDataSet
+from models import Order, Event
+
+# ---- Bounded-only functions ----
+def write_to_parquet(data: BoundedDataSet[Order]) -> None:
+    """Write to Parquet requires bounded data (finite extent)."""
+    pass
+
+
+def materialize_to_dataframe(_data: BoundedDataSet[Order]) -> None:
+    """Materialize to DataFrame requires bounded data."""
+    pass
+
+
+def batch_aggregate(_data: BoundedDataSet[Order]) -> None:
+    """Batch aggregation requires bounded data."""
+    pass
+
+
+# ---- Streaming-only functions ----
+def write_to_kafka(events: UnboundedDataSet[Event]) -> None:
+    """Write to Kafka requires streaming data."""
+    pass
+
+
+def process_stream(events: UnboundedDataSet[Event]) -> UnboundedDataSet[Event]:
+    """Process streaming data."""
+    return events
+
+
+# ---- Generic functions with boundedness constraints ----
+def process_any[T](data: DataSet[T]) -> int:
+    """Generic function that works with any carrier."""
+    return 0
+
+
+def process_batch[T](data: BoundedDataSet[T]) -> BoundedDataSet[T]:
+    """Function that works only with bounded data."""
+    return data
+
+
+# ---- Static capability gating examples ----
+def safe_filter[T](data: DataSet[T]) -> DataSet[T]:
+    """Filter is available on all carriers."""
+    # Intended shape: data.filter(...)
+    return data
+
+
+def safe_join[T](data: DataSet[T], other: DataSet[T]) -> DataSet[T]:
+    """Join uses `other: Self` (same carrier type at the trait level; logical row typing per RFC 003)."""
+    # Intended shape when stubs are executable: data.join(other, ...)
+    _ = other
+    return data
+
+
+def bounded_only_operation(data: BoundedDataSet[Order]) -> None:
+    """Function that requires bounded data."""
+    pass
+
+
+def streaming_safe_operation(data: UnboundedDataSet[Event]) -> None:
+    """Function that works with streaming data."""
+    pass
+
+
+# ---- Main ----
+def main() -> None:
+    """Example main function."""
+    pass

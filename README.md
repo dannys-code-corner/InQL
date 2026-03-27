@@ -53,7 +53,7 @@ Or invoke the toolchain directly:
 
 ```bash
 incan build --lib
-incan test
+incan test tests
 ```
 
 See `make help` for other targets (`fmt`, `fmt-check`, `build-locked`, …). Continuous integration builds **Incan from source** on each run, then runs the same `fmt-check`, `build`, and `test` steps (see [.github/workflows/ci.yml](.github/workflows/ci.yml)).

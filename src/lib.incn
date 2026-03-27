@@ -1,8 +1,10 @@
 """
 InQL — typed query surface (Incan library).
 
-Add modules (e.g. `dataframe`, `query`) and re-export them here with `pub from ... import ...`.
+Add modules (e.g. `dataset`, `functions`, `query`) and re-export them here with `pub from ... import ...`.
 Consumers depend on this package via `[dependencies]` and import with `from pub::inql import ...`.
 """
 
+pub from dataset import BoundedDataSet, DataFrame, DataSet, DataStream, LazyFrame, UnboundedDataSet
+pub from functions import count_rows, total
 pub from metadata import inql_version

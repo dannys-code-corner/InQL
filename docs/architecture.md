@@ -76,7 +76,7 @@ From the repo root, with `incan` on your `PATH`:
 ```text
 make ci
   │
-  └──►  incan fmt --check .  →  incan build --lib  →  incan test
+  └──►  incan fmt --check (package dirs)  →  incan build --lib  →  incan test tests
 ```
 
 Equivalent raw commands:
@@ -87,9 +87,9 @@ incan build --lib
   └──►  Incan frontend (parse, check, …) + backend emit a Rust crate for the library
         (same staged pipeline as application builds; see [Incan architecture docs][incan-architecture])
 
-incan test
+incan test tests
   │
-  └──►  Discover and run tests under tests/
+  └──►  Discover and run tests under `tests/` only (not the whole repo; CI may have `./incan/` checked out)
 ```
 
 **GitHub Actions** does not assume a preinstalled `incan` binary: the workflow checks out the [Incan compiler repository][incan-repo], runs `cargo build --release`, adds `target/release` to `PATH`, then runs `make ci` in this tree.

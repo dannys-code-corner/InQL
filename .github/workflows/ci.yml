@@ -22,7 +22,7 @@ env:
   RUST_BACKTRACE: 1
   INCAN_NO_BANNER: 1
   # Pin the compiler checkout; bump when you intentionally require a newer Incan.
-  INCAN_REPO: dannys-code-corner/incan-programming-language
+  INCAN_REPO: dannys-code-corner/incan
   INCAN_REF: main
 
 jobs:
@@ -64,7 +64,7 @@ jobs:
           incan --version
           rustc --version
 
-      - name: Format check (Incan sources)
+      - name: Format check (package .incn)
         run: make fmt-check
 
       - name: Build library

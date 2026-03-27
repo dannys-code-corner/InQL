@@ -3,8 +3,8 @@
 
 [incan]
 format = 1
-incan-version = "0.2.0-dev.3"
-generated = "2026-03-20T10:34:57.236108Z"
+incan-version = "0.2.0-dev.5"
+generated = "2026-03-27T13:23:49.961814Z"
 deps-fingerprint = "sha256:17f122844d2fa1c9756f9a1976d222f15255557e74d975b8d8ff46536ea82b87"
 cargo-features = []
 cargo-no-default-features = false
@@ -18,11 +18,11 @@ version = 4
 
 [[package]]
 name = "incan_core"
-version = "0.2.0-dev.3"
+version = "0.2.0-dev.5"
 
 [[package]]
 name = "incan_derive"
-version = "0.2.0-dev.3"
+version = "0.2.0-dev.5"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -31,7 +31,7 @@ dependencies = [
 
 [[package]]
 name = "incan_stdlib"
-version = "0.2.0-dev.3"
+version = "0.2.0-dev.5"
 dependencies = [
  "incan_core",
  "incan_derive",
@@ -39,7 +39,7 @@ dependencies = [
 
 [[package]]
 name = "inql"
-version = "0.2.0-dev.3"
+version = "0.2.0-dev.5"
 dependencies = [
  "incan_derive",
  "incan_stdlib",

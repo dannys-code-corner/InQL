@@ -45,7 +45,7 @@ Thank you for your interest in InQL — the typed relational layer for [Incan][i
    make test
    ```
 
-   With `incan` on your `PATH` you can call `incan build --lib` and `incan test` directly. Override the binary with `make build INCAN=/path/to/incan` if needed.
+   With `incan` on your `PATH` you can call `incan build --lib` and `incan test tests` directly (use the `tests/` path so a sibling Incan checkout under `./incan/` is not collected). Override the binary with `make build INCAN=/path/to/incan` if needed.
 
 ## Project structure
 
