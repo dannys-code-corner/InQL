@@ -43,18 +43,31 @@ test-locked: ## Run tests with `--locked`
 	@$(INCAN) test --locked
 
 # =============================================================================
-# Formatting (Incan source)
+# Formatting (Incan source — package only)
 # =============================================================================
+#
+# Scope to `src/`, `tests/`, and `examples/` only. CI checks out the Incan
+# compiler under `./incan/`; formatting `.` would walk that tree and fail on
+# stdlib snapshots and test fixtures that are not meant for `incan fmt`.
+
+INQL_FMT_DIRS := src tests examples
 
 .PHONY: fmt
-fmt: ## Format `.incn` sources (`incan fmt`)
-	@echo "\033[1mFormatting Incan sources...\033[0m"
-	@$(INCAN) fmt .
+fmt: ## Format package `.incn` sources (`incan fmt` per directory)
+	@echo "\033[1mFormatting Incan sources (package dirs)...\033[0m"
+	@for d in $(INQL_FMT_DIRS); do \
+	  if [ -d "$$d" ]; then $(INCAN) fmt "$$d"; fi; \
+	done
 
 .PHONY: fmt-check
-fmt-check: ## Check formatting without writing (`incan fmt --check`)
-	@echo "\033[1mChecking Incan source formatting...\033[0m"
-	@$(INCAN) fmt --check .
+fmt-check: ## Check formatting without writing (`incan fmt --check` per directory)
+	@echo "\033[1mChecking Incan source formatting (package dirs)...\033[0m"
+	@for d in $(INQL_FMT_DIRS); do \
+	  if [ -d "$$d" ]; then \
+	    echo "\033[1m  -> $$d/\033[0m"; \
+	    $(INCAN) fmt --check "$$d" || exit $$?; \
+	  fi; \
+	done
 
 # =============================================================================
 # Aggregates (local gates)

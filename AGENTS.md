@@ -70,8 +70,8 @@ Normative behavior is defined in **`docs/rfcs/`**. If package code and an RFC di
 | `make help` | List targets |
 | `make ci` | Same as CI: `fmt-check`, `build`, `test` |
 | `make check` / `make pre-commit` | Alias-style gate: format check + build + test |
-| `make fmt` | Format `.incn` sources (`incan fmt .`) |
-| `make fmt-check` | Check formatting without writing |
+| `make fmt` | Format package `.incn` sources (`src/`, `tests/`, `examples/` only) |
+| `make fmt-check` | Check formatting without writing (same scope) |
 | `make build` | `incan build --lib` |
 | `make test` | `incan test` |
 | `make build-locked` / `make test-locked` | Stricter lockfile mode |

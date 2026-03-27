@@ -87,4 +87,3 @@ def process_batch_only(data: BoundedDataSet[Order]) -> int:
 def main() -> None:
     """Example main function."""
     pass
-

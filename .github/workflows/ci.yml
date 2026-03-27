@@ -64,7 +64,7 @@ jobs:
           incan --version
           rustc --version
 
-      - name: Format check (Incan sources)
+      - name: Format check (package .incn)
         run: make fmt-check
 
       - name: Build library

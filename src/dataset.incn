@@ -68,12 +68,7 @@ def generic_any(data: DataSet[T]) -> None: ...
 from std.testing import fail_t as NotImplementedError
 
 # ---- DataSet trait ----
-
 pub trait DataSet[T]:
-    """
-    Root dataset trait (any tabular carrier with row schema `T`).
-    """
-
     def filter(self, predicate: bool) -> Self:
         return NotImplementedError("InQL DataSet.filter is not implemented yet")
 
@@ -100,26 +95,22 @@ pub trait DataSet[T]:
 
 
 # ---- BoundedDataSet trait and concrete types ----
-
 pub trait BoundedDataSet[T] with DataSet[T]:
-    """Finite/batch dataset carrier (all relational ops are allowed)."""
+    pass
 
 
 pub class DataFrame[T] with BoundedDataSet:
-    """Materialized/eager dataset (always bounded)."""
     pub _row_schema_marker: T
 
 
 pub class LazyFrame[T] with BoundedDataSet:
-    """Deferred plan over a bounded source (always bounded)."""
     pub _row_schema_marker: T
 
 
 # ---- UnboundedDataSet trait and concrete types ----
-
 pub trait UnboundedDataSet[T] with DataSet[T]:
-    """Streaming/unbounded dataset carrier (compile-time constraints enforced by compiler)."""
+    pass
+
 
 pub class DataStream[T] with UnboundedDataSet:
-    """Streaming dataset (unbounded)."""
     pub _row_schema_marker: T

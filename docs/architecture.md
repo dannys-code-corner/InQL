@@ -76,7 +76,7 @@ From the repo root, with `incan` on your `PATH`:
 ```text
 make ci
   │
-  └──►  incan fmt --check .  →  incan build --lib  →  incan test
+  └──►  incan fmt --check (package dirs)  →  incan build --lib  →  incan test
 ```
 
 Equivalent raw commands:
