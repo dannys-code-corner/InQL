@@ -20,7 +20,7 @@ Thank you for your interest in InQL — the typed relational layer for [Incan][i
 ## Getting started
 
 1. **Install a matching Incan toolchain**  
-   Build or install `incan` so it is on your `PATH` (start from the [Incan repository][incan-repo] and its contributor docs).
+   Build or install `incan` so it is on your `PATH` (start from the [Incan repository][incan-repo] and its contributor docs). The CI uses a **reusable composite action** that caches built binaries for faster subsequent runs.
 
 2. **Clone this repository**
 
@@ -110,8 +110,8 @@ Open an issue on this repository for InQL-specific design or package questions; 
 
 <!-- Link references (single place for targets) -->
 
-[incan-repo]: https://github.com/dannys-code-corner/incan-programming-language
-[incan-contributing]: https://github.com/dannys-code-corner/incan-programming-language/blob/main/CONTRIBUTING.md
+[incan-repo]: https://github.com/dannys-code-corner/incan
+[incan-contributing]: https://github.com/dannys-code-corner/incan/blob/main/CONTRIBUTING.md
 [readme]: README.md
 [agents]: AGENTS.md
 [architecture]: docs/architecture.md
@@ -122,5 +122,5 @@ Open an issue on this repository for InQL-specific design or package questions; 
 [issue-auto-label]: .github/workflows/issue_auto_label.yml
 [pr-template]: .github/pull_request_template.md
 [issue-templates]: .github/ISSUE_TEMPLATE/
-[incan-docsite-loop]: https://github.com/dannys-code-corner/incan-programming-language/blob/main/workspaces/docs-site/docs/contributing/tutorials/book/08_docsite_contributor_loop.md
-[incan-agents-docs-workflow]: https://github.com/dannys-code-corner/incan-programming-language/blob/main/AGENTS.md#docs-site-workflow-mkdocs-material
+[incan-docsite-loop]: https://github.com/dannys-code-corner/incan/blob/main/workspaces/docs-site/docs/contributing/tutorials/book/08_docsite_contributor_loop.md
+[incan-agents-docs-workflow]: https://github.com/dannys-code-corner/incan/blob/main/AGENTS.md#docs-site-workflow-mkdocs-material

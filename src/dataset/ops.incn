@@ -1,0 +1,35 @@
+"""Canonical DataSet relation operation functions for RFC 002."""
+
+from rust::substrait::proto import Rel
+from substrait.plan import aggregate_rel, explode_extension_uri, extension_single_rel, fetch_rel, filter_rel, join_rel, project_rel, sort_rel
+
+pub def filter_ds(rel: Rel, predicate: bool) -> Rel:
+    return filter_rel(rel, predicate)
+
+
+pub def join_ds(left_rel: Rel, right_rel: Rel, on: bool) -> Rel:
+    return join_rel(left_rel, right_rel, on)
+
+
+pub def select_ds(rel: Rel) -> Rel:
+    return project_rel(rel)
+
+
+pub def group_by_ds(rel: Rel) -> Rel:
+    return aggregate_rel(rel, false)
+
+
+pub def agg_ds(rel: Rel) -> Rel:
+    return aggregate_rel(rel, true)
+
+
+pub def order_by_ds(rel: Rel) -> Rel:
+    return sort_rel(rel)
+
+
+pub def limit_ds(rel: Rel, n: int) -> Rel:
+    return fetch_rel(rel, 0, n)
+
+
+pub def explode_ds(rel: Rel) -> Rel:
+    return extension_single_rel(rel, explode_extension_uri())

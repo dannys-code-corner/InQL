@@ -1,0 +1,199 @@
+"""
+Dataset carriers for InQL (RFC 001).
+
+This module defines the *author-facing* type hierarchy used to carry schema-parameterized tabular data through
+relational pipelines:
+
+```text
+DataSet[T]
+  ├─ BoundedDataSet[T]   (finite / batch)
+  │    ├─ DataFrame[T]   (eager / materialized)
+  │    └─ LazyFrame[T]   (deferred / planned)
+  └─ UnboundedDataSet[T] (streaming / unbounded)
+       └─ DataStream[T]  (streaming)
+```
+
+The implementation here is intentionally backend-neutral: these APIs are the public surface.
+
+## Type hierarchy
+
+The dataset type hierarchy is rooted in the `DataSet[T]` trait, split into `BoundedDataSet[T]` (finite extent) and
+`UnboundedDataSet[T]` (streaming/unbounded), with three concrete types: `DataFrame[T]` (materialized/eager),
+`LazyFrame[T]` (deferred plan), and `DataStream[T]` (streaming).
+
+## Operation API
+
+The following methods are defined on `DataSet[T]`.
+
+- `filter(self, predicate: bool) -> Self`
+- `join(self, other: Self, on: bool) -> Self`
+- `select(self) -> Self`
+- `group_by(self) -> Self`
+- `agg(self) -> Self`
+- `order_by(self) -> Self`
+- `limit(self, n: int) -> Self`
+- `explode(self) -> Self`
+
+## Documentation
+
+- **Explanation**: [docs/language/explanation/dataset_types.md](../docs/language/explanation/dataset_types.md)
+- **Reference**: [docs/language/reference/dataset_types.md](../docs/language/reference/dataset_types.md)
+- **Examples**: [examples/](../examples/)
+
+## Example patterns
+
+```incan
+from pub::inql import LazyFrame, DataFrame, DataStream
+from models import Order, Event
+
+# Filter and chain
+orders.filter(.amount > 100).filter(.status == "active")
+
+# Join
+orders.join(customers, .order.customer_id == .customer.id)
+
+# Group and aggregate
+orders.group_by(.customer_id).agg(total(.amount))
+
+# Order and limit
+orders.order_by(.amount.desc()).limit(10)
+
+# Bounded vs unbounded signatures
+def batch_only(data: BoundedDataSet[Order]) -> None: ...
+def streaming_only(data: UnboundedDataSet[Event]) -> None: ...
+def generic_any(data: DataSet[T]) -> None: ...
+```
+"""
+
+from rust::substrait::proto import Plan, Rel
+from substrait.plan import plan_from_root_relation
+from dataset.ops import filter_ds, join_ds, select_ds, group_by_ds, agg_ds, order_by_ds, limit_ds, explode_ds
+
+# ---- DataSet trait ----
+pub trait DataSet[T with Clone]:
+    def to_substrait_plan(self) -> Plan: ...
+
+    def filter(self, predicate: bool) -> Self: ...
+
+    def join(self, other: Self, on: bool) -> Self: ...
+
+    def select(self) -> Self: ...
+
+    def group_by(self) -> Self: ...
+
+    def agg(self) -> Self: ...
+
+    def order_by(self) -> Self: ...
+
+    def limit(self, n: int) -> Self: ...
+
+    def explode(self) -> Self: ...
+
+
+# ---- BoundedDataSet trait and concrete types ----
+pub trait BoundedDataSet[T with Clone] with DataSet[T]:
+    pass
+
+
+pub class DataFrame[T with Clone] with BoundedDataSet:
+    pub _row_schema_marker: T
+    pub _substrait_rel: Rel
+
+    def to_substrait_plan(self) -> Plan:
+        # TODO(#229): switch back to an empty root-name list once Incan preserves element type context for `[]`.
+        return plan_from_root_relation(self._substrait_rel, [str("id")])
+
+    def filter(self, predicate: bool) -> Self:
+        return DataFrame(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=filter_ds(self._substrait_rel, predicate))
+
+    def join(self, other: Self, on: bool) -> Self:
+        return DataFrame(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=join_ds(self._substrait_rel, other._substrait_rel, on))
+
+    def select(self) -> Self:
+        return DataFrame(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=select_ds(self._substrait_rel))
+
+    def group_by(self) -> Self:
+        return DataFrame(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=group_by_ds(self._substrait_rel))
+
+    def agg(self) -> Self:
+        return DataFrame(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=agg_ds(self._substrait_rel))
+
+    def order_by(self) -> Self:
+        return DataFrame(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=order_by_ds(self._substrait_rel))
+
+    def limit(self, n: int) -> Self:
+        return DataFrame(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=limit_ds(self._substrait_rel, n))
+
+    def explode(self) -> Self:
+        return DataFrame(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=explode_ds(self._substrait_rel))
+
+
+pub class LazyFrame[T with Clone] with BoundedDataSet:
+    pub _row_schema_marker: T
+    pub _substrait_rel: Rel
+
+    def to_substrait_plan(self) -> Plan:
+        # TODO(#229): switch back to an empty root-name list once Incan preserves element type context for `[]`.
+        return plan_from_root_relation(self._substrait_rel, [str("id")])
+
+    def filter(self, predicate: bool) -> Self:
+        return LazyFrame(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=filter_ds(self._substrait_rel, predicate))
+
+    def join(self, other: Self, on: bool) -> Self:
+        return LazyFrame(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=join_ds(self._substrait_rel, other._substrait_rel, on))
+
+    def select(self) -> Self:
+        return LazyFrame(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=select_ds(self._substrait_rel))
+
+    def group_by(self) -> Self:
+        return LazyFrame(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=group_by_ds(self._substrait_rel))
+
+    def agg(self) -> Self:
+        return LazyFrame(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=agg_ds(self._substrait_rel))
+
+    def order_by(self) -> Self:
+        return LazyFrame(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=order_by_ds(self._substrait_rel))
+
+    def limit(self, n: int) -> Self:
+        return LazyFrame(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=limit_ds(self._substrait_rel, n))
+
+    def explode(self) -> Self:
+        return LazyFrame(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=explode_ds(self._substrait_rel))
+
+
+# ---- UnboundedDataSet trait and concrete types ----
+pub trait UnboundedDataSet[T with Clone] with DataSet[T]:
+    pass
+
+
+pub class DataStream[T with Clone] with UnboundedDataSet:
+    pub _row_schema_marker: T
+    pub _substrait_rel: Rel
+
+    def to_substrait_plan(self) -> Plan:
+        # TODO(#229): switch back to an empty root-name list once Incan preserves element type context for `[]`.
+        return plan_from_root_relation(self._substrait_rel, [str("id")])
+
+    def filter(self, predicate: bool) -> Self:
+        return DataStream(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=filter_ds(self._substrait_rel, predicate))
+
+    def join(self, other: Self, on: bool) -> Self:
+        return DataStream(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=join_ds(self._substrait_rel, other._substrait_rel, on))
+
+    def select(self) -> Self:
+        return DataStream(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=select_ds(self._substrait_rel))
+
+    def group_by(self) -> Self:
+        return DataStream(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=group_by_ds(self._substrait_rel))
+
+    def agg(self) -> Self:
+        return DataStream(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=agg_ds(self._substrait_rel))
+
+    def order_by(self) -> Self:
+        return DataStream(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=order_by_ds(self._substrait_rel))
+
+    def limit(self, n: int) -> Self:
+        return DataStream(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=limit_ds(self._substrait_rel, n))
+
+    def explode(self) -> Self:
+        return DataStream(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=explode_ds(self._substrait_rel))

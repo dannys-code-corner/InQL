@@ -3,65 +3,68 @@
 from std.testing import assert_eq
 from metadata import inql_version
 from dataset import DataSet, BoundedDataSet, UnboundedDataSet, DataFrame, LazyFrame, DataStream
+from dataset.ops import filter_ds, join_ds
 from functions import count_rows, total
+from substrait.plan import explode_extension_uri, plan_encoded_len, plan_from_named_table, plan_from_root_relation, plan_has_extension_urn, read_named_table_rel, relation_kind_name, root_rel
 
 # ---- Helper functions and tooling ----
+@derive(Clone)
 model Order:
     id: int
 
 
+@derive(Clone)
 model Event:
     id: int
 
 
-def _accept_data_set_generic[T](data: DataSet[T]) -> DataSet[T]:
+def _accept_data_set_generic[T with Clone](data: DataSet[T]) -> DataSet[T]:
     return data
 
 
-def _accept_bounded_generic[T](data: BoundedDataSet[T]) -> BoundedDataSet[T]:
+def _accept_bounded_generic[T with Clone](data: BoundedDataSet[T]) -> BoundedDataSet[T]:
     return data
 
 
-def _accept_unbounded_generic[T](data: UnboundedDataSet[T]) -> UnboundedDataSet[T]:
+def _accept_unbounded_generic[T with Clone](data: UnboundedDataSet[T]) -> UnboundedDataSet[T]:
     return data
 
 
-def _accept_data_frame_concrete[T](data: DataFrame[T]) -> DataFrame[T]:
+def _accept_data_frame_concrete[T with Clone](data: DataFrame[T]) -> DataFrame[T]:
     return data
 
 
-def _accept_lazy_frame_concrete[T](data: LazyFrame[T]) -> LazyFrame[T]:
+def _accept_lazy_frame_concrete[T with Clone](data: LazyFrame[T]) -> LazyFrame[T]:
     return data
 
 
-def _accept_data_stream_concrete[T](data: DataStream[T]) -> DataStream[T]:
+def _accept_data_stream_concrete[T with Clone](data: DataStream[T]) -> DataStream[T]:
     return data
 
 
-def _upcast_data_frame_to_bounded[T](data: DataFrame[T]) -> BoundedDataSet[T]:
+def _upcast_data_frame_to_bounded[T with Clone](data: DataFrame[T]) -> BoundedDataSet[T]:
     return data
 
 
-def _upcast_lazy_frame_to_bounded[T](data: LazyFrame[T]) -> BoundedDataSet[T]:
+def _upcast_lazy_frame_to_bounded[T with Clone](data: LazyFrame[T]) -> BoundedDataSet[T]:
     return data
 
 
-def _upcast_data_stream_to_unbounded[T](data: DataStream[T]) -> UnboundedDataSet[T]:
+def _upcast_data_stream_to_unbounded[T with Clone](data: DataStream[T]) -> UnboundedDataSet[T]:
     return data
 
 
-def _upcast_bounded_to_data_set[T](data: BoundedDataSet[T]) -> DataSet[T]:
+def _upcast_bounded_to_data_set[T with Clone](data: BoundedDataSet[T]) -> DataSet[T]:
     return data
 
 
-def _upcast_unbounded_to_data_set[T](data: UnboundedDataSet[T]) -> DataSet[T]:
+def _upcast_unbounded_to_data_set[T with Clone](data: UnboundedDataSet[T]) -> DataSet[T]:
     return data
 
 
 def _touch[T](x: T) -> None:
     """Consume a value so assignment chains are not unused-variable warnings."""
     pass
-
 
 def _compile_hierarchy_assignability(order_frame: DataFrame[Order], order_lazy: LazyFrame[Order], event_stream: DataStream[Event]) -> None:
     """Compile-time shape checks for concrete -> trait -> supertrait assignments."""
@@ -83,9 +86,9 @@ def test_smoke__dataset_types_are_published() -> None:
 def test_type_contracts__signature_tiers_compile() -> None:
     """RFC 001: DataSet / BoundedDataSet / UnboundedDataSet accept concrete carriers."""
     row = Order(id=1)
-    df: DataFrame[Order] = DataFrame(_row_schema_marker=row)
+    df: DataFrame[Order] = DataFrame(_row_schema_marker=row, _substrait_rel=read_named_table_rel(str("orders")))
     ev = Event(id=2)
-    st: DataStream[Event] = DataStream(_row_schema_marker=ev)
+    st: DataStream[Event] = DataStream(_row_schema_marker=ev, _substrait_rel=read_named_table_rel(str("events")))
     _touch(_accept_data_set_generic(df))
     _touch(_accept_bounded_generic(df))
     _touch(_accept_data_set_generic(st))
@@ -94,10 +97,10 @@ def test_type_contracts__signature_tiers_compile() -> None:
 
 def test_type_contracts__concrete_carriers_compile() -> None:
     """RFC 001: concrete carriers flow through generic helper signatures."""
-    df: DataFrame[Order] = DataFrame(_row_schema_marker=Order(id=3))
-    lf: LazyFrame[Order] = LazyFrame(_row_schema_marker=Order(id=3003))
+    df: DataFrame[Order] = DataFrame(_row_schema_marker=Order(id=3), _substrait_rel=read_named_table_rel(str("orders")))
+    lf: LazyFrame[Order] = LazyFrame(_row_schema_marker=Order(id=3003), _substrait_rel=read_named_table_rel(str("orders")))
     ev = Event(id=4)
-    st: DataStream[Event] = DataStream(_row_schema_marker=ev)
+    st: DataStream[Event] = DataStream(_row_schema_marker=ev, _substrait_rel=read_named_table_rel(str("events")))
     _touch(_accept_data_frame_concrete(df))
     _touch(_accept_lazy_frame_concrete(lf))
     _touch(_accept_data_stream_concrete(st))
@@ -105,23 +108,23 @@ def test_type_contracts__concrete_carriers_compile() -> None:
 
 def test_hierarchy__concrete_and_supertrait_assignability() -> None:
     """RFC 001: concrete -> bounded/unbounded trait -> DataSet chains compile."""
-    df: DataFrame[Order] = DataFrame(_row_schema_marker=Order(id=5))
-    lf: LazyFrame[Order] = LazyFrame(_row_schema_marker=Order(id=5005))
+    df: DataFrame[Order] = DataFrame(_row_schema_marker=Order(id=5), _substrait_rel=read_named_table_rel(str("orders")))
+    lf: LazyFrame[Order] = LazyFrame(_row_schema_marker=Order(id=5005), _substrait_rel=read_named_table_rel(str("orders")))
     ev = Event(id=6)
-    st: DataStream[Event] = DataStream(_row_schema_marker=ev)
+    st: DataStream[Event] = DataStream(_row_schema_marker=ev, _substrait_rel=read_named_table_rel(str("events")))
     _compile_hierarchy_assignability(df, lf, st)
 
 
 def test_type_contracts__concrete_and_trait_types_match_generic_arguments() -> None:
     """Generic parameter T matches for DataFrame/LazyFrame/DataStream carriers."""
-    df: DataFrame[Order] = DataFrame(_row_schema_marker=Order(id=7))
-    lf: LazyFrame[Order] = LazyFrame(_row_schema_marker=Order(id=7007))
+    df: DataFrame[Order] = DataFrame(_row_schema_marker=Order(id=7), _substrait_rel=read_named_table_rel(str("orders")))
+    lf: LazyFrame[Order] = LazyFrame(_row_schema_marker=Order(id=7007), _substrait_rel=read_named_table_rel(str("orders")))
     bounded_df: BoundedDataSet[Order] = df
     bounded_lf: BoundedDataSet[Order] = lf
     _touch(bounded_df)
     _touch(bounded_lf)
     ev = Event(id=8)
-    st: DataStream[Event] = DataStream(_row_schema_marker=ev)
+    st: DataStream[Event] = DataStream(_row_schema_marker=ev, _substrait_rel=read_named_table_rel(str("events")))
     ub: UnboundedDataSet[Event] = st
     _touch(ub)
 
@@ -130,3 +133,30 @@ def test_version__inql_version_is_published() -> None:
     """InQL version should be available from metadata."""
     version = inql_version()
     assert_eq(version, "0.1.0", "InQL version should be 0.1.0")
+
+
+def test_dataset_ops__method_wrapper_matches_canonical_function() -> None:
+    """Method wrappers should preserve canonical dataset_ops semantics."""
+    base_row = Order(id=9)
+    via_function = filter_ds(read_named_table_rel(str("orders")), true)
+    via_method = DataFrame(_row_schema_marker=base_row, _substrait_rel=read_named_table_rel(str("orders"))).filter(true)
+    assert_eq(relation_kind_name(via_function), str("FilterRel"), "canonical function should produce FilterRel root")
+    assert_eq(plan_encoded_len(via_method.to_substrait_plan()) > 0, true, "method wrapper should still emit a real proto plan")
+    assert_eq(relation_kind_name(root_rel(via_method.to_substrait_plan())), str("FilterRel"), "method wrapper plan should preserve filter root")
+
+
+def test_dataset_ops__all_carriers_emit_real_plans() -> None:
+    df = DataFrame(_row_schema_marker=Order(id=10), _substrait_rel=read_named_table_rel(str("orders")))
+    lf = LazyFrame(_row_schema_marker=Order(id=11), _substrait_rel=read_named_table_rel(str("orders")))
+    st = DataStream(_row_schema_marker=Event(id=12), _substrait_rel=read_named_table_rel(str("events")))
+    assert_eq(plan_encoded_len(df.to_substrait_plan()) > 0, true, "DataFrame should emit a real plan")
+    assert_eq(plan_encoded_len(lf.to_substrait_plan()) > 0, true, "LazyFrame should emit a real plan")
+    assert_eq(plan_encoded_len(st.to_substrait_plan()) > 0, true, "DataStream should emit a real plan")
+
+
+def test_dataset_ops__api_lowered_boundary_facts_stay_stable() -> None:
+    left = DataFrame(_row_schema_marker=Order(id=13), _substrait_rel=read_named_table_rel(str("orders")))
+    joined_plan = plan_from_root_relation(join_ds(read_named_table_rel(str("orders")), read_named_table_rel(str("orders_archive")), true), [str("id")])
+    exploded_plan = left.explode().to_substrait_plan()
+    assert_eq(relation_kind_name(root_rel(joined_plan)), str("JoinRel"), "canonical join function should still lower to a JoinRel root")
+    assert_eq(plan_has_extension_urn(exploded_plan, explode_extension_uri()), true, "explode method should emit the registered extension URI")

@@ -2,7 +2,7 @@
 
 This guide is for contributors writing an RFC (design record) in the **InQL** repository.
 
-RFC means “Request for Comments”: a normative design document under [`docs/rfcs/`](../rfcs/README.md), numbered separately from [Incan language RFCs](https://github.com/dannys-code-corner/incan-programming-language/tree/main/workspaces/docs-site/docs/RFCs).
+RFC means “Request for Comments”: a normative design document under [`docs/rfcs/`](../rfcs/README.md), numbered separately from [Incan language RFCs](https://github.com/dannys-code-corner/incan/tree/main/workspaces/docs-site/docs/RFCs).
 
 !!! warning "Before you start"
 
@@ -74,7 +74,7 @@ When superseding or rejecting, update the status line (for example `Superseded b
 - Write **reference-level** sections so an implementer could build to them.
 - Call out **non-goals** explicitly.
 - If the design is too large, split into a sequence of smaller RFCs with clear **Related** links.
-- **Normative rules** must live in the RFC text (or this repo’s public docs), not in `__research__/` or private trees.
+- **Normative rules** must live in the RFC text (or this repo’s public docs), not in private notes or internal-only trees.
 
 ## Compiler and tooling work
 
@@ -87,5 +87,5 @@ Narrative docs and RFCs in this repo should stay compatible with how the Incan p
 - [Incan docs-site contributor loop][incan-docsite-loop] — Divio quadrants, snippets, PR checklist for the Incan docs site.
 - [Incan AGENTS.md — Docs-site workflow][incan-agents-docs-workflow] — prose without hard wrapping, `mkdocs build --strict`, and related expectations.
 
-[incan-docsite-loop]: https://github.com/dannys-code-corner/incan-programming-language/blob/main/workspaces/docs-site/docs/contributing/tutorials/book/08_docsite_contributor_loop.md
-[incan-agents-docs-workflow]: https://github.com/dannys-code-corner/incan-programming-language/blob/main/AGENTS.md#docs-site-workflow-mkdocs-material
+[incan-docsite-loop]: https://github.com/dannys-code-corner/incan/blob/main/workspaces/docs-site/docs/contributing/tutorials/book/08_docsite_contributor_loop.md
+[incan-agents-docs-workflow]: https://github.com/dannys-code-corner/incan/blob/main/AGENTS.md#docs-site-workflow-mkdocs-material

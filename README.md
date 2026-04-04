@@ -41,7 +41,7 @@ Normative proposals live under **[docs/rfcs/](docs/rfcs/README.md)**. InQL’s R
 - `src/lib.incn` — public exports
 - `src/` — library modules
 - `tests/` — tests
-- `.github/workflows/` — CI (builds Incan, then `make ci`)
+- `.github/workflows/` — CI (uses reusable Incan composite action for caching)
 
 Build and test from this repo root (with `incan` on your `PATH`):
 

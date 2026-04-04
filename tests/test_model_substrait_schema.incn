@@ -1,0 +1,23 @@
+"""Tests for model → Substrait NamedStruct prototype."""
+
+from std.testing import assert_eq
+from substrait.schema import (
+    demo_customer_row_shape,
+    row_shape_field_names,
+    row_shape_to_substrait_struct_type,
+    substrait_row_type_encoded_len,
+)
+
+def test_demo_customer_row_shape__field_order() -> None:
+    shape = demo_customer_row_shape()
+    assert_eq(shape.model_name, str("DemoCustomer"), "model name")
+    names = row_shape_field_names(shape)
+    assert_eq(len(names), 2, "column count")
+    assert_eq(names[0], str("id"), "first field is declaration order")
+    assert_eq(names[1], str("name"), "second field")
+
+
+def test_row_shape_to_substrait_struct_type__encodes() -> None:
+    row_ty = row_shape_to_substrait_struct_type(demo_customer_row_shape())
+    encoded = substrait_row_type_encoded_len(row_ty)
+    assert_eq(encoded > 0, true, "protobuf encoding should be non-empty")
