@@ -1,0 +1,10 @@
+"""
+This module contains the Substrait implementation for InQL.
+It uses the Substrait crate to be able to parse and serialize Substrait plans.
+
+ https://docs.rs/substrait/latest/substrait/
+
+Protobuf serialization and deserialization are provided via prost in the proto module.
+"""
+from rust::prost import Message
+from rust::substrait::proto import Plan

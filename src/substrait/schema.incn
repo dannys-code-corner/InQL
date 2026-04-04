@@ -1,0 +1,88 @@
+"""
+Describe an Incan row shape and lower it to Substrait schema structures.
+
+The demo model `DemoCustomer` is hand-authored; `demo_customer_row_shape()` lists columns in the same declaration order.
+A future compiler pass would derive `RowShapeSpec` from `model` AST.
+
+`NamedStruct` (names + struct) is the full read-root shape; this module emits the inner column
+types and exposes names separately until Incan can set prost's `r#struct` field ergonomically.
+
+See RFC 002: field order must match `NamedStruct` / field-reference indices.
+"""
+
+from rust::prost import Message
+from rust::substrait::proto import NamedStruct, Type
+from rust::substrait::proto::type import I64, Kind, Nullability, String as SubstraitString, Struct
+
+@derive(Clone)
+pub model DemoCustomer:
+    pub id: int
+    pub name: str
+
+
+@derive(Clone)
+pub enum SubstraitPrimitiveKind:
+    I64
+    String
+
+
+@derive(Clone)
+pub model RowColumnSpec:
+    pub name: str
+    pub kind: SubstraitPrimitiveKind
+    pub nullable: bool
+
+
+@derive(Clone)
+pub model RowShapeSpec:
+    pub model_name: str
+    pub columns: list[RowColumnSpec]
+
+
+pub def demo_customer_row_shape() -> RowShapeSpec:
+    """Return the row shape for `DemoCustomer` (manual until compiler-derived)."""
+    return RowShapeSpec(model_name=str("DemoCustomer"), columns=[RowColumnSpec(name=str("id"), kind=SubstraitPrimitiveKind.I64, nullable=false), RowColumnSpec(name=str("name"), kind=SubstraitPrimitiveKind.String, nullable=true)])
+
+
+pub def row_shape_field_names(shape: RowShapeSpec) -> list[str]:
+    """Field names in index order (flat row; no nested structs in this prototype)."""
+    return [col.name for col in shape.columns]
+
+
+def _type_from_primitive(kind: SubstraitPrimitiveKind, nullable: bool) -> Type:
+    mut n = Nullability.Required
+    if nullable:
+        n = Nullability.Nullable
+    # `incan fmt` currently rewrites `match`/`case` into invalid Rust-style patterns; use branches.
+    if kind == SubstraitPrimitiveKind.I64:
+        return Type(kind=Some(Kind.I64(I64(type_variation_reference=0, nullability=n.into()))))
+    return Type(kind=Some(Kind.String(SubstraitString(type_variation_reference=0, nullability=n.into()))))
+
+
+pub def row_shape_to_substrait_struct_type(shape: RowShapeSpec) -> Type:
+    """
+    Build a Substrait row type as `Type.kind = Struct` (column types in `RowShapeSpec` order).
+
+    Field **names** are not embedded here; pair with `row_shape_field_names(shape)` at the
+    `NamedStruct` boundary when wiring read roots (prost field `struct` is a Rust keyword and
+    is awkward to populate from Incan literals today).
+    """
+    mut types_collector: list[Type] = []
+    for col in shape.columns:
+        types_collector.append(_type_from_primitive(col.kind, col.nullable).clone())
+    struct_inner = Struct(types=types_collector, type_variation_reference=0, nullability=Nullability.Required.into())
+    return Type(kind=Some(Kind.Struct(struct_inner)))
+
+
+pub def row_shape_to_named_struct(shape: RowShapeSpec) -> NamedStruct:
+    """Build a NamedStruct from a row shape using DFS field order."""
+    mut types_collector: list[Type] = []
+    for col in shape.columns:
+        types_collector.append(_type_from_primitive(col.kind, col.nullable).clone())
+    struct_inner = Struct(types=types_collector, type_variation_reference=0, nullability=Nullability.Required.into())
+    return NamedStruct(names=row_shape_field_names(shape), struct=Some(struct_inner))
+
+
+pub def substrait_row_type_encoded_len(row_ty: Type) -> int:
+    """Protobuf-encoded size of the row `Type` (for tests)."""
+    return len(row_ty.encode_to_vec())

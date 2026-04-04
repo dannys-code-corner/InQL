@@ -1,0 +1,116 @@
+"""Tests for RFC 002 proto-backed Substrait emission and conformance alignment."""
+
+from std.testing import assert_eq
+from substrait.plan import (
+    SubstraitJoinKind,
+    SubstraitSetOperation,
+    explode_extension_uri,
+    extension_single_rel,
+    fetch_rel,
+    filter_rel,
+    join_rel_of_kind,
+    plan_has_extension_urn,
+    plan_contains_relation_kind,
+    plan_encoded_len,
+    plan_from_local_files,
+    plan_from_named_table,
+    plan_from_root_relation,
+    plan_from_virtual_table,
+    read_kind_name,
+    read_local_files_rel,
+    read_named_table_rel,
+    read_virtual_table_rel,
+    reference_rel,
+    reference_subtree_ordinal,
+    relation_kind_name,
+    registered_substrait_extension_uris,
+    root_rel,
+    set_rel,
+    set_operation_name,
+    set_rel_of_kind,
+    sort_rel,
+    substrait_producer_name,
+    substrait_release_tag,
+)
+from substrait.conformance import CoreScenarioKey, core_scenario_emission_matches, core_scenarios
+
+def _core_keys() -> list[CoreScenarioKey]:
+    return [CoreScenarioKey.ReadNamedTable, CoreScenarioKey.ReadLocalFiles, CoreScenarioKey.ReadVirtualTable, CoreScenarioKey.FilterRows, CoreScenarioKey.ProjectComputedColumns, CoreScenarioKey.JoinRelVariants, CoreScenarioKey.CrossRelCartesian, CoreScenarioKey.AggregateGroupingSets, CoreScenarioKey.SortRelOrdering, CoreScenarioKey.FetchRelLimitOffset, CoreScenarioKey.SetRelOperations, CoreScenarioKey.ReferenceRelSharedSubplan]
+
+
+def test_plan__named_table_root_kind() -> None:
+    plan = plan_from_named_table(str("orders"))
+    assert_eq(plan_encoded_len(plan) > 0, true, "proto-backed plan should encode")
+    assert_eq(relation_kind_name(root_rel(plan)), str("ReadRel"), "named table plan should expose ReadRel root")
+    assert_eq(read_kind_name(root_rel(plan)), str("NamedTable"), "named table plan should expose NamedTable root kind")
+
+
+def test_plan__read_root_kinds_are_distinguished() -> None:
+    named = plan_from_named_table(str("orders"))
+    local = plan_from_local_files(str("file:///tmp/orders.parquet"))
+    virtual = plan_from_virtual_table(str("inline_orders"))
+    assert_eq(read_kind_name(root_rel(named)), str("NamedTable"), "named table root should remain inspectable")
+    assert_eq(read_kind_name(root_rel(local)), str("LocalFiles"), "local files root should remain inspectable")
+    assert_eq(read_kind_name(root_rel(virtual)), str("VirtualTable"), "virtual table root should remain inspectable")
+
+
+def test_plan__combinators_compose_deterministically() -> None:
+    base = read_named_table_rel(str("orders"))
+    with_filter = filter_rel(base, true)
+    with_sort = sort_rel(with_filter)
+    with_fetch = fetch_rel(with_sort, 0, 10)
+    plan = plan_from_root_relation(with_fetch, [str("id")])
+    assert_eq(relation_kind_name(with_fetch), str("FetchRel"), "last combinator should become the root rel")
+    assert_eq(plan_encoded_len(plan) > 0, true, "composed plan should still encode")
+    assert_eq(plan_contains_relation_kind(plan, str("FilterRel")), true, "recursive traversal should find nested filter")
+    assert_eq(plan_contains_relation_kind(plan, str("SortRel")), true, "recursive traversal should find nested sort")
+    assert_eq(plan_contains_relation_kind(plan, str("FetchRel")), true, "recursive traversal should find fetch root")
+
+
+def test_plan__set_rel_uses_operation_enum() -> None:
+    left = read_named_table_rel(str("orders_current"))
+    right = read_named_table_rel(str("orders_archive"))
+    union_rel = set_rel(left, right, str("Union"))
+    union_plan = plan_from_root_relation(union_rel, [str("id")])
+    assert_eq(relation_kind_name(union_rel), str("SetRel"), "set combinator must produce SetRel root")
+    assert_eq(plan_encoded_len(union_plan) > 0, true, "set plan should still encode")
+    assert_eq(plan_contains_relation_kind(union_plan, str("ReadRel")), true, "set traversal should still reach child reads")
+
+
+def test_plan__enum_backed_join_and_set_builders_expose_boundary_facts() -> None:
+    left_join_rel = join_rel_of_kind(read_named_table_rel(str("orders")), read_named_table_rel(str("customers")), true, SubstraitJoinKind.Left)
+    union_distinct_rel = set_rel_of_kind(read_named_table_rel(str("orders_current")), read_named_table_rel(str("orders_archive")), SubstraitSetOperation.UnionDistinct)
+    assert_eq(relation_kind_name(left_join_rel), str("JoinRel"), "enum-backed join builder should still emit a JoinRel root")
+    assert_eq(set_operation_name(union_distinct_rel), str("UnionDistinct"), "enum-backed set builder should preserve the selected set operation")
+
+
+def test_plan__reference_rel_preserves_subtree_ordinal() -> None:
+    rel = reference_rel(7)
+    assert_eq(relation_kind_name(rel), str("ReferenceRel"), "reference builder should still expose ReferenceRel root kind")
+    assert_eq(reference_subtree_ordinal(rel), 7, "reference builder should preserve the requested subtree ordinal")
+
+
+def test_plan__extension_urns_are_surfaced() -> None:
+    extension_uri = explode_extension_uri()
+    rel = extension_single_rel(read_named_table_rel(str("orders")), extension_uri)
+    plan = plan_from_root_relation(rel, [str("id")])
+    assert_eq(plan_has_extension_urn(plan, extension_uri), true, "extension relation should populate extension URNs")
+    assert_eq(plan_contains_relation_kind(plan, str("ExtensionSingleRel")), true, "extension root should remain inspectable")
+
+
+def test_plan__revision_pin_and_extension_registry_are_exported() -> None:
+    registered = registered_substrait_extension_uris()
+    assert_eq(substrait_release_tag(), str("v0.63.0"), "revision helpers should expose the currently targeted Substrait release tag")
+    assert_eq(substrait_producer_name(), str("inql-rfc002"), "revision helpers should expose the package producer label")
+    assert_eq(len(registered), 1, "current package boundary should register one extension URI")
+    assert_eq(registered[0], explode_extension_uri(), "registry should include the emitted explode extension URI")
+
+
+def test_conformance__core_scenarios_validate_emission_output() -> None:
+    scenarios = core_scenarios()
+    assert_eq(len(scenarios), 12, "core scenario count should stay stable")
+    for scenario in scenarios:
+        assert_eq(len(scenario.capability_tags.0) > 0, true, "capability tags must remain non-empty")
+        assert_eq(len(scenario.references.0) > 0, true, "references must remain non-empty")
+    for key in _core_keys():
+        assert_eq(core_scenario_emission_matches(key), true, "scenario should validate the emitted plan shape")

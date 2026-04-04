@@ -1,8 +1,8 @@
 # InQL CI — Incan library package
 #
-# The compiler is built from the Incan repository on each run so this package tracks the default branch of the toolchain
-# (no pre-published `incan` binary required).
-# FIXME: once incan has the ability, switch to a published `incan` binary.
+# Uses the reusable Incan composite action from the incan repository.
+# This eliminates copy-paste drift and provides a supported integration path.
+# The composite action caches built binaries for faster subsequent runs.
 
 name: CI
 
@@ -21,9 +21,6 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
   INCAN_NO_BANNER: 1
-  # Pin the compiler checkout; bump when you intentionally require a newer Incan.
-  INCAN_REPO: dannys-code-corner/incan
-  INCAN_REF: main
 
 jobs:
   inql:
@@ -38,26 +35,12 @@ jobs:
       - name: Check out InQL
         uses: actions/checkout@v4
 
-      - name: Check out Incan (toolchain)
-        uses: actions/checkout@v4
+      - name: Install Incan (cached)
+        uses: dannys-code-corner/incan/.github/actions/install-incan@main
         with:
-          repository: ${{ env.INCAN_REPO }}
-          ref: ${{ env.INCAN_REF }}
-          path: incan
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Incan build
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: incan
-
-      - name: Build Incan
-        working-directory: incan
-        run: cargo build --release
-
-      - name: Add Incan to PATH
-        run: echo "${{ github.workspace }}/incan/target/release" >> "$GITHUB_PATH"
+          incan-ref: main
+          incan-repo: dannys-code-corner/incan
+          runner-os: ${{ matrix.os }}
 
       - name: Show toolchain
         run: |
