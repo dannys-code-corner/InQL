@@ -28,9 +28,9 @@ jobs:
       - name: Mint GitHub App installation token
         id: app_token
         env:
-          APP_ID: ${{ secrets.INQL_TRIAGE_APP_ID }}
-          INSTALLATION_ID: ${{ secrets.INQL_TRIAGE_APP_INSTALLATION_ID }}
-          PRIVATE_KEY: ${{ secrets.INQL_TRIAGE_APP_PRIVATE_KEY }}
+          APP_ID: ${{ secrets.TRIAGE_APP_ID }}
+          INSTALLATION_ID: ${{ secrets.TRIAGE_APP_INSTALLATION_ID }}
+          PRIVATE_KEY: ${{ secrets.TRIAGE_APP_PRIVATE_KEY }}
         run: |
           set -euo pipefail
 
