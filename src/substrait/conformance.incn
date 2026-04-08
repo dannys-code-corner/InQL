@@ -169,6 +169,7 @@ pub def core_scenario(key: CoreScenarioKey) -> SubstraitConformanceScenario:
             return _core_scenario(scenario_id=str("inql.substrait.core.reference_rel_shared_subplan.001"), title=str("ReferenceRel ordinal emission boundary"), capability_tags=_capability_tags([str("reference"), str("shared-subplan"), str("plan-dag")]), required_rels=[ConformanceRel.Reference], intent=str("Boundary-level ReferenceRel ordinal emission."), required_rel_shape=str("ReferenceRel(subtree_ordinal) inside one plan envelope."), expected_constraints=str("Current package code verifies ordinal preservation only; shared-subplan planning is deferred."), references=_refs_core_operator())
 
 
+
 pub def core_scenarios() -> list[SubstraitConformanceScenario]:
     """Return all currently defined read/query core scenarios."""
     return [core_scenario(CoreScenarioKey.ReadNamedTable), core_scenario(CoreScenarioKey.ReadLocalFiles), core_scenario(CoreScenarioKey.ReadVirtualTable), core_scenario(CoreScenarioKey.FilterRows), core_scenario(CoreScenarioKey.ProjectComputedColumns), core_scenario(CoreScenarioKey.JoinRelVariants), core_scenario(CoreScenarioKey.CrossRelCartesian), core_scenario(CoreScenarioKey.AggregateGroupingSets), core_scenario(CoreScenarioKey.SortRelOrdering), core_scenario(CoreScenarioKey.FetchRelLimitOffset), core_scenario(CoreScenarioKey.SetRelOperations), core_scenario(CoreScenarioKey.ReferenceRelSharedSubplan)]
@@ -201,6 +202,7 @@ pub def core_scenario_plan(key: CoreScenarioKey) -> Plan:
             return plan_from_root_relation(set_rel_of_kind(read_named_table_rel(str("orders_current")), read_named_table_rel(str("orders_archive")), SubstraitSetOperation.UnionDistinct), [str("id")])
         CoreScenarioKey.ReferenceRelSharedSubplan => 
             return plan_from_root_relation(reference_rel(7), [str("id")])
+
 
 
 def _kind_to_conformance_rel(kind: str) -> ConformanceRel:
@@ -308,3 +310,4 @@ def relation_kind_name_from_conformance(rel: ConformanceRel) -> str:
             return str("ExtensionLeafRel")
         _ => 
             return str("UnknownRel")
+
