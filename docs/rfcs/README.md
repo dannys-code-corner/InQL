@@ -11,15 +11,16 @@ InQL uses its **own** RFC series (starting at 000), independent of the [Incan la
 | [002][rfc-002] | In Progress | Apache Substrait — `Rel`-level contract, mapping catalog, binding boundaries                                                                                                                               |     |
 | [003][rfc-003] | Planned     | `query {}` blocks — grammar, typing, Substrait lowering                                                                                                                                                    |     |
 | [004][rfc-004] | Planned     | Execution context — session, DataFusion, read/transform/write                                                                                                                                              |     |
-| [005][rfc-005] | Blocked     | Pipe-forward relational syntax (`|>`) — optional surface                                                                                                        |     |
+| [005][rfc-005] | Blocked     | Pipe-forward relational syntax (`\|>`) — optional surface                                                                                                                                                  |     |
 | [006][rfc-006] | Blocked     | Promote unnest/explode to core Substrait lowering — blocked on upstream Substrait standardization                                                                                                          |     |
-| [007][rfc-007] | Draft       | Prism logical planning and optimization engine                                                                                                                                                              |     |
+| [007][rfc-007] | In Progress | Prism logical planning and optimization engine                                                                                                                                                             |     |
+| [008][rfc-008] | Draft       | Optimizer boundary, statistics, cost-based optimization, and adaptive execution                                                                                                                            |     |
 
 <!-- TODO: #7: auto populate this table (like how we do in incan) -->
 
-**Order:** [RFC 000][rfc-000] is the foundational language specification. [RFC 001][rfc-001] defines the dataset type hierarchy. [RFC 002][rfc-002] defines the Substrait interchange contract. [RFC 003][rfc-003] defines the `query {}` surface that lowers to Substrait per RFC 002 over carriers from RFC 001. [RFC 004][rfc-004] completes the end-to-end story: session, read, execute, write. [RFC 005][rfc-005] specifies optional pipe-forward syntax outside the RFC 000–004 milestone and currently blocked on Incan RFC 040. [RFC 006][rfc-006] tracks promotion of unnest/explode from gap to core Substrait lowering, blocked on upstream Substrait standardization. [RFC 007][rfc-007] defines Prism as InQL's internal logical planning and optimization engine, sitting beneath carriers and upstream of Substrait emission and session execution.
+**Order:** [RFC 000][rfc-000] is the foundational language specification. [RFC 001][rfc-001] defines the dataset type hierarchy. [RFC 002][rfc-002] defines the Substrait interchange contract. [RFC 003][rfc-003] defines the `query {}` surface that lowers to Substrait per RFC 002 over carriers from RFC 001. [RFC 004][rfc-004] completes the end-to-end story: session, read, execute, write. [RFC 005][rfc-005] specifies optional pipe-forward syntax outside the RFC 000–004 milestone and currently blocked on Incan RFC 040. [RFC 006][rfc-006] tracks promotion of unnest/explode from gap to core Substrait lowering, blocked on upstream Substrait standardization. [RFC 007][rfc-007] defines Prism as InQL's internal logical planning and optimization engine, sitting beneath carriers and upstream of Substrait emission and session execution. [RFC 008][rfc-008] refines the optimizer boundary: Prism owns semantic logical optimization, while `Session` owns backend-facing statistics, physical planning, and adaptive execution behavior.
 
-**v0.1 scope:** RFCs 000–004. When all five are resolved (Draft → Planned → Implemented), InQL v0.1 is complete: authors can read data, write typed queries, lower to Substrait, execute through DataFusion, and write results.
+**v0.1 scope:** RFCs 000–004 plus RFC 007. When those foundational RFCs are resolved (Draft → Planned → Implemented), InQL v0.1 is complete: authors can read data, write typed queries, lower through Prism to Substrait, execute through DataFusion, and write results.
 
 New RFCs should follow [TEMPLATE.md] (aligned with Incan’s RFC structure, adapted for InQL).
 
@@ -35,4 +36,5 @@ New RFCs should follow [TEMPLATE.md] (aligned with Incan’s RFC structure, adap
 [rfc-005]: 005_inql_pipe_forward.md
 [rfc-006]: 006_unnest_core_substrait.md
 [rfc-007]: 007_prism_planning_engine.md
+[rfc-008]: 008_optimizer_boundary_stats_cbo_aqe.md
 [incan-rfcs]: https://github.com/dannys-code-corner/incan/tree/main/workspaces/docs-site/docs/RFCs

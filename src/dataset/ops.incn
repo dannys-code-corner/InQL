@@ -1,35 +1,127 @@
-"""Canonical DataSet relation operation functions for RFC 002."""
+"""
+Canonical dataset-operation seam over concrete relation builders.
+
+These helpers keep carrier-level operation names (`filter`, `join`, `group_by`, ...) distinct from the exact
+Substrait builder functions used underneath. The current implementation is intentionally thin, but this module is the
+place where dataset-layer operation intent can diverge from raw relation-construction details without pushing that
+coupling into carrier types directly.
+"""
 
 from rust::substrait::proto import Rel
-from substrait.plan import aggregate_rel, explode_extension_uri, extension_single_rel, fetch_rel, filter_rel, join_rel, project_rel, sort_rel
+from substrait.plan import (
+    aggregate_rel,
+    explode_extension_uri,
+    extension_single_rel,
+    fetch_rel,
+    filter_rel,
+    join_rel,
+    project_rel,
+    sort_rel,
+)
 
 pub def filter_ds(rel: Rel, predicate: bool) -> Rel:
+    """
+    Apply dataset-level filter intent to one relation.
+
+    Args:
+        rel: Input relation to filter.
+        predicate: Placeholder filter condition for the current package slice.
+
+    Returns:
+        A relation shaped as a filter over the input relation.
+    """
     return filter_rel(rel, predicate)
 
 
 pub def join_ds(left_rel: Rel, right_rel: Rel, on: bool) -> Rel:
+    """
+    Apply dataset-level join intent to two relations.
+
+    Args:
+        left_rel: Left input relation.
+        right_rel: Right input relation.
+        on: Placeholder join condition for the current package slice.
+
+    Returns:
+        A relation shaped as a join over the two input relations.
+    """
     return join_rel(left_rel, right_rel, on)
 
 
 pub def select_ds(rel: Rel) -> Rel:
+    """
+    Apply dataset-level projection intent to one relation.
+
+    Args:
+        rel: Input relation to project.
+
+    Returns:
+        A relation shaped as a projection over the input relation.
+    """
     return project_rel(rel)
 
 
 pub def group_by_ds(rel: Rel) -> Rel:
+    """
+    Apply dataset-level grouping intent to one relation.
+
+    Args:
+        rel: Input relation to group.
+
+    Returns:
+        A relation shaped as the grouping form of aggregate over the input relation.
+    """
     return aggregate_rel(rel, false)
 
 
 pub def agg_ds(rel: Rel) -> Rel:
+    """
+    Apply dataset-level aggregation intent to one relation.
+
+    Args:
+        rel: Input relation to aggregate.
+
+    Returns:
+        A relation shaped as the aggregating form of aggregate over the input relation.
+    """
     return aggregate_rel(rel, true)
 
 
 pub def order_by_ds(rel: Rel) -> Rel:
+    """
+    Apply dataset-level ordering intent to one relation.
+
+    Args:
+        rel: Input relation to sort.
+
+    Returns:
+        A relation shaped as a sort over the input relation.
+    """
     return sort_rel(rel)
 
 
 pub def limit_ds(rel: Rel, n: int) -> Rel:
+    """
+    Apply dataset-level row-limit intent to one relation.
+
+    Args:
+        rel: Input relation to limit.
+        n: Maximum row count to request.
+
+    Returns:
+        A relation shaped as a fetch with zero offset over the input relation.
+    """
     return fetch_rel(rel, 0, n)
 
 
 pub def explode_ds(rel: Rel) -> Rel:
+    """
+    Apply dataset-level explode intent to one relation via the registered extension path.
+
+    Args:
+        rel: Input relation to explode.
+
+    Returns:
+        A relation shaped as the registered explode extension over the input relation.
+    """
     return extension_single_rel(rel, explode_extension_uri())

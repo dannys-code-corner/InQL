@@ -1,0 +1,89 @@
+"""Shared Prism types that define the internal planning substrate contract."""
+
+pub type PrismStoreId = newtype int
+
+
+@derive(Clone)
+pub enum PrismNodeKind:
+    """Logical node kinds Prism currently supports in authored and rewritten views."""
+
+    ReadNamedTable
+    Filter
+    Join
+    Project
+    GroupBy
+    Aggregate
+    OrderBy
+    Limit
+    Explode
+
+
+@derive(Clone)
+pub model PrismNode:
+    """
+    One immutable Prism logical node.
+
+    The same node shape is reused for append-only authored storage and rewritten lowering views so lineage can stay
+    simple in this slice.
+    """
+
+    pub node_id: int
+    pub kind: PrismNodeKind
+    pub input_ids: list[int]
+    pub named_table: str
+    pub predicate: bool
+    pub limit_count: int
+
+
+@derive(Clone)
+pub model PrismOptimizedView:
+    """
+    Lowering-ready Prism view rooted at one tip.
+
+    `origin_node_ids` preserves the mapping back to authored node ids so rewrites stay explainable in tests and
+    diagnostics.
+    """
+
+    pub root_tip_id: int
+    pub nodes: list[PrismNode]
+    pub origin_node_ids: list[int]
+
+
+pub model PrismStoreAdoption:
+    """Summary of one cross-store adoption pass into a target Prism store."""
+
+    pub adopted_tip_id: int
+    pub adopted_node_count: int
+
+
+pub model PrismRewriteExplain:
+    """Compact explain artifact for canonical rewrite results."""
+
+    pub authored_node_count: int
+    pub rewritten_node_count: int
+    pub applied_rule_names: list[str]
+    pub rewritten_to_authored_origin_ids: list[int]
+
+
+pub def authored_node_kind_name(node: PrismNode) -> str:
+    """Render one stable human-readable node-kind name for tests and diagnostics."""
+    match node.kind:
+        PrismNodeKind.ReadNamedTable => 
+            return str("ReadNamedTable")
+        PrismNodeKind.Filter => 
+            return str("Filter")
+        PrismNodeKind.Join => 
+            return str("Join")
+        PrismNodeKind.Project => 
+            return str("Project")
+        PrismNodeKind.GroupBy => 
+            return str("GroupBy")
+        PrismNodeKind.Aggregate => 
+            return str("Aggregate")
+        PrismNodeKind.OrderBy => 
+            return str("OrderBy")
+        PrismNodeKind.Limit => 
+            return str("Limit")
+        PrismNodeKind.Explode => 
+            return str("Explode")
+

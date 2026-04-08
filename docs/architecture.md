@@ -15,7 +15,7 @@ The Incan compiler remains responsible for parsing, typechecking, lowering, and 
 
 InQL is organized around three layers:
 
-- **Prism internally** — the immutable planning and optimization engine
+- **Prism internally** — the immutable planning and optimization engine over persistent authored plan state and derived optimized views
 - **Substrait at the boundary** — the normative emitted logical interchange contract
 - **Session for execution** — the execution/binding layer that consumes plans but does not define them
 
@@ -46,7 +46,7 @@ Incan models / model-derived schema
                  │
                  ├──► authored plan state
                  ├──► lineage-preserving optimization
-                 └──► optimized logical view
+                 └──► derived optimized views
                           │
                           ▼
                 Substrait Plan / Rel emission
@@ -66,7 +66,7 @@ The core rule is:
 
 ### Carriers
 
-The author-facing carrier family is rooted in `DataSet[T]` and currently includes `LazyFrame[T]`, `DataFrame[T]`, and `DataStream[T]`.
+The author-facing carrier family is rooted in `DataSet[T]` and includes `LazyFrame[T]`, `DataFrame[T]`, and `DataStream[T]`.
 
 Carriers are expected to be:
 
@@ -83,10 +83,10 @@ Per [RFC 007][rfc-007], Prism is InQL’s internal logical planning and optimiza
 
 Prism is responsible for:
 
-- persistent logical plan storage
+- persistent authored logical plan storage
 - cheap branching through structural sharing
 - lineage preservation
-- logical rewrites and optimization before boundary emission or execution
+- logical rewrites and derived optimized views before boundary emission or execution
 
 Prism is **not** the normative interchange format and **not** the execution engine.
 
@@ -122,15 +122,19 @@ Session is intentionally outside RFC 002’s normative emitted contract. It cons
 
 ## Current implementation
 
-The repository currently includes:
+The repository includes:
 
 - author-facing carrier types exist in [mod.incn](../src/dataset/mod.incn)
 - canonical relational operator helpers exist in [ops.incn](../src/dataset/ops.incn)
 - RFC 002 emits **real proto-backed Substrait plans**
 - conformance scenarios are represented as typed package code in [conformance.incn](../src/substrait/conformance.incn)
-- Prism is specified as the internal planning substrate, while parts of its full implementation remain ahead of the current package code
+- `LazyFrame[T]` is a thin adapter over a backend-native `PrismCursor[T]` in [mod.incn](../src/dataset/mod.incn)
+- the current internal Prism implementation lives in [prism/mod.incn](../src/prism/mod.incn) with an authored graph, `PrismCursor[T]`, default-on canonical rewrites before RFC 002 lowering, explain/debug artifacts (applied-rule list + rewritten-to-authored origins), and an Incan-native typed store-id allocator (`static` + `newtype`)
+- cross-store join adoption dedups equivalent reachable RHS nodes within one adoption pass before appending the join node
+- dataset methods route through Prism internal seam helpers so future authoring surfaces can reuse one planning entry path
+- `DataFrame[T]` and `DataStream[T]` still remain direct `Rel` wrappers for now
 
-This means the package has a concrete Substrait boundary and conformance layer, while some internal planning mechanics remain transitional.
+This means the package has a concrete Substrait boundary, conformance layer, and a real Prism-backed backend path for the current `LazyFrame[T]` operator surface with safe canonical rewrites. The remaining gap is breadth, not existence: Prism backs `LazyFrame[T]`, while other carriers, richer semantic spec types, and advanced optimizer phases remain follow-on work.
 
 ## Repository layout
 
@@ -140,6 +144,7 @@ This means the package has a concrete Substrait boundary and conformance layer, 
 | `src/lib.incn`                    | Public package exports                            |
 | `src/dataset/mod.incn`            | Carrier types and trait surface                   |
 | `src/dataset/ops.incn`            | Canonical relational operator helpers             |
+| `src/prism/mod.incn`              | Internal Prism graph, cursor, and lowering logic  |
 | `src/substrait/plan.incn`         | RFC 002 proto-backed Substrait emission helpers   |
 | `src/substrait/conformance.incn`  | Typed conformance corpus and validation helpers   |
 | `src/substrait/schema.incn`       | Model/schema to Substrait type bridging           |

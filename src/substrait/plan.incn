@@ -4,7 +4,7 @@ Proto-backed Substrait plan construction for InQL RFC 002.
 This module is the canonical emission boundary for Substrait plans. It uses the real `substrait::proto` types rather
 than a hand-rolled parallel plan model.
 
-TODO: (rfc-002) revisit this module's public surface once the proto-backed API stabilizes. 
+TODO: (rfc-002) revisit this module's public surface once the proto-backed API stabilizes.
       A thin wrapper class or classmethod-based entrypoint may read more cleanly than the current free-function-heavy
       shape, as long as it remains a wrapper over real proto plans rather than a parallel semantic model.
 """
@@ -13,7 +13,28 @@ from rust::prost import Message
 from rust::prost_types import Any
 from rust::std::boxed import Box
 from rust::std::primitive import i32 as RustI32
-from rust::substrait::proto import AggregateRel, CrossRel, Expression, ExtensionSingleRel, FetchRel, FilterRel, JoinRel, NamedStruct, Plan, PlanRel, ProjectRel, ReadRel, ReferenceRel, Rel, RelCommon, RelRoot, SetRel, SortField, SortRel, Version
+from rust::substrait::proto import (
+    AggregateRel,
+    CrossRel,
+    Expression,
+    ExtensionSingleRel,
+    FetchRel,
+    FilterRel,
+    JoinRel,
+    NamedStruct,
+    Plan,
+    PlanRel,
+    ProjectRel,
+    ReadRel,
+    ReferenceRel,
+    Rel,
+    RelCommon,
+    RelRoot,
+    SetRel,
+    SortField,
+    SortRel,
+    Version,
+)
 from rust::substrait::proto::aggregate_rel import Grouping, Measure
 from rust::substrait::proto::expression import Literal, RexType
 from rust::substrait::proto::expression::literal import LiteralType
@@ -22,24 +43,14 @@ from rust::substrait::proto::extensions import SimpleExtensionUrn
 from rust::substrait::proto::fetch_rel import CountMode, OffsetMode
 from rust::substrait::proto::join_rel import JoinType
 from rust::substrait::proto::plan_rel import RelType as PlanRelType
-from rust::substrait::proto::read_rel import LocalFiles
-from rust::substrait::proto::read_rel import NamedTable as ReadNamedTable
-from rust::substrait::proto::read_rel import ReadType, VirtualTable
+from rust::substrait::proto::read_rel import LocalFiles, NamedTable as ReadNamedTable, ReadType, VirtualTable
 from rust::substrait::proto::read_rel::local_files import FileOrFiles
-from rust::substrait::proto::read_rel::local_files::file_or_files import FileFormat
-from rust::substrait::proto::read_rel::local_files::file_or_files import ParquetReadOptions
-from rust::substrait::proto::read_rel::local_files::file_or_files import PathType
+from rust::substrait::proto::read_rel::local_files::file_or_files import FileFormat, ParquetReadOptions, PathType
 from rust::substrait::proto::rel import RelType
 from rust::substrait::proto::rel_common import Direct, EmitKind
 from rust::substrait::proto::set_rel import SetOp
 from rust::substrait::proto::sort_field import SortDirection, SortKind
-
-from substrait.schema import (
-    RowColumnSpec,
-    RowShapeSpec,
-    SubstraitPrimitiveKind,
-    row_shape_to_named_struct,
-)
+from substrait.schema import RowColumnSpec, RowShapeSpec, SubstraitPrimitiveKind, row_shape_to_named_struct
 
 @derive(Clone)
 pub type RelationKindName = newtype str
@@ -66,10 +77,10 @@ pub enum SubstraitSetOperation:
     UnionDistinct
     UnionAll
 
+
 # --- Internal helpers ------------------------------------------------------------------------------------------------
 # These keep the public RFC 002 surface compact by centralizing common proto defaults, relation wrapping, and temporary
 # compatibility shims.
-
 def _logical_shape(name: str) -> RowShapeSpec:
     return RowShapeSpec(model_name=name, columns=[RowColumnSpec(name=str("id"), kind=SubstraitPrimitiveKind.I64, nullable=false)])
 
@@ -172,24 +183,40 @@ def _set_operation_from_legacy_name(operation: str) -> SubstraitSetOperation:
 
 def _join_type_from_kind(kind: SubstraitJoinKind) -> RustI32:
     match kind:
-        SubstraitJoinKind.Inner => return JoinType.Inner.into()
-        SubstraitJoinKind.Left => return JoinType.Left.into()
-        SubstraitJoinKind.Right => return JoinType.Right.into()
-        SubstraitJoinKind.Outer => return JoinType.Outer.into()
-        SubstraitJoinKind.Semi => return JoinType.LeftSemi.into()
-        SubstraitJoinKind.Anti => return JoinType.LeftAnti.into()
-        SubstraitJoinKind.Single => return JoinType.LeftSingle.into()
-        SubstraitJoinKind.Mark => return JoinType.LeftMark.into()
+        SubstraitJoinKind.Inner => 
+            return JoinType.Inner.into()
+        SubstraitJoinKind.Left => 
+            return JoinType.Left.into()
+        SubstraitJoinKind.Right => 
+            return JoinType.Right.into()
+        SubstraitJoinKind.Outer => 
+            return JoinType.Outer.into()
+        SubstraitJoinKind.Semi => 
+            return JoinType.LeftSemi.into()
+        SubstraitJoinKind.Anti => 
+            return JoinType.LeftAnti.into()
+        SubstraitJoinKind.Single => 
+            return JoinType.LeftSingle.into()
+        SubstraitJoinKind.Mark => 
+            return JoinType.LeftMark.into()
+
 
 
 def _set_op_from_kind(operation: SubstraitSetOperation) -> RustI32:
     match operation:
-        SubstraitSetOperation.MinusPrimary => return SetOp.MinusPrimary.into()
-        SubstraitSetOperation.IntersectPrimary => return SetOp.IntersectionPrimary.into()
-        SubstraitSetOperation.IntersectMultiset => return SetOp.IntersectionMultiset.into()
-        SubstraitSetOperation.MinusMultiset => return SetOp.MinusMultiset.into()
-        SubstraitSetOperation.UnionDistinct => return SetOp.UnionDistinct.into()
-        SubstraitSetOperation.UnionAll => return SetOp.UnionAll.into()
+        SubstraitSetOperation.MinusPrimary => 
+            return SetOp.MinusPrimary.into()
+        SubstraitSetOperation.IntersectPrimary => 
+            return SetOp.IntersectionPrimary.into()
+        SubstraitSetOperation.IntersectMultiset => 
+            return SetOp.IntersectionMultiset.into()
+        SubstraitSetOperation.MinusMultiset => 
+            return SetOp.MinusMultiset.into()
+        SubstraitSetOperation.UnionDistinct => 
+            return SetOp.UnionDistinct.into()
+        SubstraitSetOperation.UnionAll => 
+            return SetOp.UnionAll.into()
+
 
 
 def _plan_root(input: Rel, names: list[str]) -> PlanRel:
@@ -337,49 +364,77 @@ pub def root_rel(plan: Plan) -> Rel:
         return read_named_table_rel(str("__malformed_plan__"))
     relation = plan.relations[0]
     match relation.rel_type:
-        Some(PlanRelType.Root(root)) =>
+        Some(PlanRelType.Root(root)) => 
             match root.input:
-                Some(rel) => return rel
-                None => return read_named_table_rel(str("__malformed_plan__"))
-        Some(PlanRelType.Rel(rel)) => return rel
-        _ => return read_named_table_rel(str("__malformed_plan__"))
+                Some(rel) => 
+                    return rel
+                None => 
+                    return read_named_table_rel(str("__malformed_plan__"))
+
+        Some(PlanRelType.Rel(rel)) => 
+            return rel
+        _ => 
+            return read_named_table_rel(str("__malformed_plan__"))
+
 
 
 pub def relation_kind_name(rel: Rel) -> str:
     """Return the public Substrait relation-kind label for one `Rel` node."""
     match rel.rel_type:
-        Some(RelType.Read(_)) => return str("ReadRel")
-        Some(RelType.Filter(_)) => return str("FilterRel")
-        Some(RelType.Project(_)) => return str("ProjectRel")
-        Some(RelType.Join(_)) => return str("JoinRel")
-        Some(RelType.Cross(_)) => return str("CrossRel")
-        Some(RelType.Aggregate(_)) => return str("AggregateRel")
-        Some(RelType.Sort(_)) => return str("SortRel")
-        Some(RelType.Fetch(_)) => return str("FetchRel")
-        Some(RelType.Set(_)) => return str("SetRel")
-        Some(RelType.Reference(_)) => return str("ReferenceRel")
-        Some(RelType.ExtensionSingle(_)) => return str("ExtensionSingleRel")
-        Some(RelType.ExtensionLeaf(_)) => return str("ExtensionLeafRel")
-        Some(RelType.ExtensionMulti(_)) => return str("ExtensionMultiRel")
-        _ => return str("UnknownRel")
+        Some(RelType.Read(_)) => 
+            return str("ReadRel")
+        Some(RelType.Filter(_)) => 
+            return str("FilterRel")
+        Some(RelType.Project(_)) => 
+            return str("ProjectRel")
+        Some(RelType.Join(_)) => 
+            return str("JoinRel")
+        Some(RelType.Cross(_)) => 
+            return str("CrossRel")
+        Some(RelType.Aggregate(_)) => 
+            return str("AggregateRel")
+        Some(RelType.Sort(_)) => 
+            return str("SortRel")
+        Some(RelType.Fetch(_)) => 
+            return str("FetchRel")
+        Some(RelType.Set(_)) => 
+            return str("SetRel")
+        Some(RelType.Reference(_)) => 
+            return str("ReferenceRel")
+        Some(RelType.ExtensionSingle(_)) => 
+            return str("ExtensionSingleRel")
+        Some(RelType.ExtensionLeaf(_)) => 
+            return str("ExtensionLeafRel")
+        Some(RelType.ExtensionMulti(_)) => 
+            return str("ExtensionMultiRel")
+        _ => 
+            return str("UnknownRel")
+
 
 
 pub def read_kind_name(rel: Rel) -> str:
     """Return the read-root kind label for one relation."""
     match rel.rel_type:
-        Some(RelType.Read(read)) =>
+        Some(RelType.Read(read)) => 
             match read.read_type:
-                Some(ReadType.NamedTable(_)) => return str("NamedTable")
-                Some(ReadType.LocalFiles(_)) => return str("LocalFiles")
-                Some(ReadType.VirtualTable(_)) => return str("VirtualTable")
-                _ => return str("ReadRel")
-        _ => return str("Unknown")
+                Some(ReadType.NamedTable(_)) => 
+                    return str("NamedTable")
+                Some(ReadType.LocalFiles(_)) => 
+                    return str("LocalFiles")
+                Some(ReadType.VirtualTable(_)) => 
+                    return str("VirtualTable")
+                _ => 
+                    return str("ReadRel")
+
+        _ => 
+            return str("Unknown")
+
 
 
 pub def set_operation_name(rel: Rel) -> str:
     """Return the public Substrait set-operation label for one `SetRel` node."""
     match rel.rel_type:
-        Some(RelType.Set(set_rel)) =>
+        Some(RelType.Set(set_rel)) => 
             if set_rel.op == _set_op_from_kind(SubstraitSetOperation.MinusPrimary):
                 return str("MinusPrimary")
             elif set_rel.op == _set_op_from_kind(SubstraitSetOperation.IntersectPrimary):
@@ -393,14 +448,19 @@ pub def set_operation_name(rel: Rel) -> str:
             elif set_rel.op == _set_op_from_kind(SubstraitSetOperation.UnionAll):
                 return str("UnionAll")
             return str("UnknownSetOp")
-        _ => return str("NotSet")
+        _ => 
+            return str("NotSet")
+
 
 
 pub def reference_subtree_ordinal(rel: Rel) -> RustI32:
     """Return the subtree ordinal for one `ReferenceRel`, or `-1` when the input is not a reference."""
     match rel.rel_type:
-        Some(RelType.Reference(reference)) => return reference.subtree_ordinal
-        _ => return -1
+        Some(RelType.Reference(reference)) => 
+            return reference.subtree_ordinal
+        _ => 
+            return -1
+
 
 
 pub def plan_encoded_len(plan: Plan) -> int:
@@ -410,50 +470,79 @@ pub def plan_encoded_len(plan: Plan) -> int:
 
 def _relation_children(rel: Rel) -> list[Rel]:
     match rel.rel_type:
-        Some(RelType.Filter(filter)) =>
+        Some(RelType.Filter(filter)) => 
             match filter.input:
-                Some(child) => return [child.as_ref().clone()]
-                None => return []
-        Some(RelType.Project(project)) =>
+                Some(child) => 
+                    return [child.as_ref().clone()]
+                None => 
+                    return []
+
+        Some(RelType.Project(project)) => 
             match project.input:
-                Some(child) => return [child.as_ref().clone()]
-                None => return []
-        Some(RelType.Join(join)) =>
+                Some(child) => 
+                    return [child.as_ref().clone()]
+                None => 
+                    return []
+
+        Some(RelType.Join(join)) => 
             mut children: list[Rel] = []
             match join.left:
                 Some(left) => children.append(left.as_ref().clone())
-                None => pass
+                None => 
+                    pass
+
             match join.right:
                 Some(right) => children.append(right.as_ref().clone())
-                None => pass
+                None => 
+                    pass
+
             return children
-        Some(RelType.Cross(cross)) =>
+        Some(RelType.Cross(cross)) => 
             mut children: list[Rel] = []
             match cross.left:
                 Some(left) => children.append(left.as_ref().clone())
-                None => pass
+                None => 
+                    pass
+
             match cross.right:
                 Some(right) => children.append(right.as_ref().clone())
-                None => pass
+                None => 
+                    pass
+
             return children
-        Some(RelType.Aggregate(aggregate)) =>
+        Some(RelType.Aggregate(aggregate)) => 
             match aggregate.input:
-                Some(child) => return [child.as_ref().clone()]
-                None => return []
-        Some(RelType.Sort(sort)) =>
+                Some(child) => 
+                    return [child.as_ref().clone()]
+                None => 
+                    return []
+
+        Some(RelType.Sort(sort)) => 
             match sort.input:
-                Some(child) => return [child.as_ref().clone()]
-                None => return []
-        Some(RelType.Fetch(fetch)) =>
+                Some(child) => 
+                    return [child.as_ref().clone()]
+                None => 
+                    return []
+
+        Some(RelType.Fetch(fetch)) => 
             match fetch.input:
-                Some(child) => return [child.as_ref().clone()]
-                None => return []
-        Some(RelType.Set(set_rel)) => return set_rel.inputs
-        Some(RelType.ExtensionSingle(extension)) =>
+                Some(child) => 
+                    return [child.as_ref().clone()]
+                None => 
+                    return []
+
+        Some(RelType.Set(set_rel)) => 
+            return set_rel.inputs
+        Some(RelType.ExtensionSingle(extension)) => 
             match extension.input:
-                Some(child) => return [child.as_ref().clone()]
-                None => return []
-        _ => return []
+                Some(child) => 
+                    return [child.as_ref().clone()]
+                None => 
+                    return []
+
+        _ => 
+            return []
+
 
 
 pub def plan_contains_relation_kind(plan: Plan, expected_kind: str) -> bool:
@@ -478,13 +567,17 @@ def _extension_urns_for_rel(rel: Rel) -> list[SimpleExtensionUrn]:
 def _collect_extension_urns(rel: Rel) -> list[SimpleExtensionUrn]:
     mut urns: list[SimpleExtensionUrn] = []
     match rel.rel_type.clone():
-        Some(RelType.ExtensionSingle(extension)) =>
+        Some(RelType.ExtensionSingle(extension)) => 
             match extension.detail:
-                Some(detail) =>
+                Some(detail) => 
                     if detail.type_url != str(""):
                         urns.append(SimpleExtensionUrn(extension_urn_anchor=1, urn=detail.type_url))
-                None => pass
-        _ => pass
+                None => 
+                    pass
+
+        _ => 
+            pass
+
     for child in _relation_children(rel):
         for urn in _collect_extension_urns(child):
             urns.append(SimpleExtensionUrn(extension_urn_anchor=1, urn=urn.urn))

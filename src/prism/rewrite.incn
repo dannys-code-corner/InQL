@@ -1,0 +1,198 @@
+"""Prism optimized-view derivation, canonical rewrite rules, and explain artifacts."""
+
+from prism.types import PrismNode, PrismNodeKind, PrismOptimizedView, PrismRewriteExplain, PrismStoreId
+from prism.store import node_at, reachable_node_ids, remap_input_ids, store_nodes
+
+model PrismRewriteResult:
+    view: PrismOptimizedView
+    applied_rule_names: list[str]
+
+
+pub def derive_optimized_view(store_id: PrismStoreId, tip_id: int) -> PrismOptimizedView:
+    """
+    Derive the identity-shaped lowering view for one authored tip.
+
+    This reflects authored structure exactly and serves as the input to canonical rewrites.
+    """
+    authored_store_nodes = store_nodes(store_id)
+    mut origin_node_ids: list[int] = []
+    for node in authored_store_nodes:
+        origin_node_ids.append(node.node_id)
+    return PrismOptimizedView(root_tip_id=tip_id, nodes=_clone_nodes(authored_store_nodes), origin_node_ids=origin_node_ids)
+
+
+pub def optimized_origin_for(view: PrismOptimizedView, optimized_node_id: int) -> int:
+    """Return the authored origin id for one node in a rewritten view."""
+    return view.origin_node_ids[optimized_node_id]
+
+
+pub def derive_rewritten_view(store_id: PrismStoreId, tip_id: int) -> PrismOptimizedView:
+    """
+    Derive the canonical lowering view for one authored tip.
+
+    Rewrites are deliberately narrow and semantics-preserving. They simplify obvious redundant unary structure without
+    introducing cost-based behavior or store mutation.
+    """
+    return _derive_rewrite_result(store_id, tip_id).view
+
+
+pub def rewrite_explain(store_id: PrismStoreId, tip_id: int) -> PrismRewriteExplain:
+    """Return narrow explain metadata for the current canonical rewrite pass."""
+    result = _derive_rewrite_result(store_id, tip_id)
+    return PrismRewriteExplain(authored_node_count=len(reachable_node_ids(store_id, tip_id)), rewritten_node_count=len(result.view.nodes), applied_rule_names=result.applied_rule_names, rewritten_to_authored_origin_ids=result.view.origin_node_ids)
+
+
+pub def rewritten_node_at(view: PrismOptimizedView, node_id: int) -> PrismNode:
+    """Return one node from a rewritten view by node id."""
+    return view.nodes[node_id]
+
+
+def _derive_rewrite_result(store_id: PrismStoreId, tip_id: int) -> PrismRewriteResult:
+    authored_view = derive_optimized_view(store_id, tip_id)
+    authored_nodes = authored_view.nodes
+    authored_reachable_ids = reachable_node_ids(store_id, tip_id)
+    mut authored_to_rewritten_id: list[int] = []
+    for _node in authored_nodes:
+        authored_to_rewritten_id.append(-1)
+    mut rewritten_nodes = _empty_prism_nodes()
+    mut rewritten_origin_ids = _empty_ints()
+    mut applied_rule_names = _empty_strings()
+    # Walk authored nodes in dependency order, remapping each node into the rewritten view.
+    for authored_node_id in authored_reachable_ids:
+        authored_node = authored_nodes[authored_node_id]
+        remapped_inputs = remap_input_ids(authored_node.input_ids, authored_to_rewritten_id)
+        # Rules that erase a node map the authored node directly onto an existing rewritten input.
+        if _can_eliminate_filter_true(authored_node):
+            authored_to_rewritten_id[authored_node_id] = remapped_inputs[0]
+            applied_rule_names.append(str("eliminate_filter_true"))
+            continue
+        # Rules that replace a node append one rewritten node with a simplified shape.
+        if _can_collapse_adjacent_limit(authored_node, remapped_inputs, rewritten_nodes):
+            collapsed_id = len(rewritten_nodes)
+            rewritten_nodes.append(_build_collapsed_limit_node(authored_node, remapped_inputs, rewritten_nodes, collapsed_id))
+            rewritten_origin_ids.append(authored_node_id)
+            authored_to_rewritten_id[authored_node_id] = collapsed_id
+            applied_rule_names.append(str("collapse_adjacent_limit"))
+            continue
+        # Rules that collapse onto an equivalent rewritten parent reuse the parent node id.
+        if _can_collapse_adjacent_project(authored_node, remapped_inputs, rewritten_nodes):
+            authored_to_rewritten_id[authored_node_id] = remapped_inputs[0]
+            applied_rule_names.append(str("collapse_adjacent_project"))
+            continue
+        if _can_collapse_adjacent_order_by(authored_node, remapped_inputs, rewritten_nodes):
+            authored_to_rewritten_id[authored_node_id] = remapped_inputs[0]
+            applied_rule_names.append(str("collapse_adjacent_order_by"))
+            continue
+        rewritten_id = len(rewritten_nodes)
+        rewritten_nodes.append(_build_rewritten_node(authored_node, remapped_inputs, rewritten_id))
+        rewritten_origin_ids.append(authored_node_id)
+        authored_to_rewritten_id[authored_node_id] = rewritten_id
+    compacted_view = _compact_optimized_view(PrismOptimizedView(root_tip_id=authored_to_rewritten_id[tip_id], nodes=rewritten_nodes, origin_node_ids=rewritten_origin_ids))
+    return PrismRewriteResult(view=compacted_view, applied_rule_names=applied_rule_names)
+
+
+def _can_eliminate_filter_true(node: PrismNode) -> bool:
+    return node.kind == PrismNodeKind.Filter and node.predicate
+
+
+def _can_collapse_adjacent_limit(node: PrismNode, remapped_inputs: list[int], rewritten_nodes: list[PrismNode]) -> bool:
+    if node.kind != PrismNodeKind.Limit:
+        return false
+    return rewritten_nodes[remapped_inputs[0]].kind == PrismNodeKind.Limit
+
+
+def _build_collapsed_limit_node(node: PrismNode, remapped_inputs: list[int], rewritten_nodes: list[PrismNode], rewritten_id: int) -> PrismNode:
+    limit_input = rewritten_nodes[remapped_inputs[0]]
+    return PrismNode(node_id=rewritten_id, kind=PrismNodeKind.Limit, input_ids=[limit_input.input_ids[0]], named_table=str(""), predicate=false, limit_count=_min_int(limit_input.limit_count, node.limit_count))
+
+
+def _can_collapse_adjacent_project(node: PrismNode, remapped_inputs: list[int], rewritten_nodes: list[PrismNode]) -> bool:
+    if node.kind != PrismNodeKind.Project:
+        return false
+    return rewritten_nodes[remapped_inputs[0]].kind == PrismNodeKind.Project
+
+
+def _can_collapse_adjacent_order_by(node: PrismNode, remapped_inputs: list[int], rewritten_nodes: list[PrismNode]) -> bool:
+    if node.kind != PrismNodeKind.OrderBy:
+        return false
+    return rewritten_nodes[remapped_inputs[0]].kind == PrismNodeKind.OrderBy
+
+
+def _build_rewritten_node(node: PrismNode, remapped_inputs: list[int], rewritten_id: int) -> PrismNode:
+    return PrismNode(node_id=rewritten_id, kind=node.kind, input_ids=remapped_inputs, named_table=node.named_table, predicate=node.predicate, limit_count=node.limit_count)
+
+
+def _min_int(left: int, right: int) -> int:
+    if left < right:
+        return left
+    return right
+
+
+def _empty_prism_nodes() -> list[PrismNode]:
+    mut nodes: list[PrismNode] = []
+    return nodes
+
+
+def _empty_ints() -> list[int]:
+    mut values: list[int] = []
+    return values
+
+
+def _empty_strings() -> list[str]:
+    mut values: list[str] = []
+    return values
+
+
+def _compact_optimized_view(view: PrismOptimizedView) -> PrismOptimizedView:
+    """
+    Re-pack a rewritten view into a dense node-id space.
+
+    Rewrites can leave gaps when authored nodes collapse onto earlier rewritten nodes. Compaction preserves semantics
+    while producing a clean lowering view and one-to-one origin list.
+    """
+    reachable_ids = _reachable_view_node_ids(view)
+    mut old_to_new_ids: list[int] = []
+    for _node in view.nodes:
+        old_to_new_ids.append(-1)
+    mut compacted_nodes = _empty_prism_nodes()
+    mut compacted_origins = _empty_ints()
+    for old_node_id in reachable_ids:
+        old_node = view.nodes[old_node_id]
+        mut remapped_inputs = _empty_ints()
+        for input_id in old_node.input_ids:
+            remapped_inputs.append(old_to_new_ids[input_id])
+        new_node_id = len(compacted_nodes)
+        compacted_nodes.append(PrismNode(node_id=new_node_id, kind=old_node.kind, input_ids=remapped_inputs, named_table=old_node.named_table, predicate=old_node.predicate, limit_count=old_node.limit_count))
+        compacted_origins.append(view.origin_node_ids[old_node_id])
+        old_to_new_ids[old_node_id] = new_node_id
+    return PrismOptimizedView(root_tip_id=old_to_new_ids[view.root_tip_id], nodes=compacted_nodes, origin_node_ids=compacted_origins)
+
+
+def _reachable_view_node_ids(view: PrismOptimizedView) -> list[int]:
+    """Return rewritten-view node ids reachable from the root in view order."""
+    mut visited: list[bool] = []
+    for _node in view.nodes:
+        visited.append(false)
+    mut pending: list[int] = [view.root_tip_id]
+    mut cursor = 0
+    while cursor < len(pending):
+        node_id = pending[cursor]
+        cursor = cursor + 1
+        if visited[node_id]:
+            continue
+        visited[node_id] = true
+        node = view.nodes[node_id]
+        for input_id in node.input_ids:
+            pending.append(input_id)
+    mut ordered = _empty_ints()
+    for node in view.nodes:
+        if visited[node.node_id]:
+            ordered.append(node.node_id)
+    return ordered
+
+
+def _clone_nodes(nodes: list[PrismNode]) -> list[PrismNode]:
+    mut cloned: list[PrismNode] = []
+    for node in nodes:
+        cloned.append(node)
+    return cloned
