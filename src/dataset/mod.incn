@@ -65,9 +65,24 @@ def generic_any(data: DataSet[T]) -> None: ...
 ```
 """
 
+# TODO:
+# 1. add more detailed docstrings (including examples) for each method in the trait impls.
+# 2. see about moving the LazyFrame methods to the higher level carriers (DataSet or BoundedDataSet)
 from rust::substrait::proto import Plan, Rel
 from substrait.plan import plan_from_root_relation
 from dataset.ops import filter_ds, join_ds, select_ds, group_by_ds, agg_ds, order_by_ds, limit_ds, explode_ds
+from prism import (
+    PrismCursor,
+    prism_cursor_apply_agg,
+    prism_cursor_apply_explode,
+    prism_cursor_apply_filter,
+    prism_cursor_apply_group_by,
+    prism_cursor_apply_join,
+    prism_cursor_apply_limit,
+    prism_cursor_apply_order_by,
+    prism_cursor_apply_select,
+    prism_cursor_named_table,
+)
 
 # ---- DataSet trait ----
 pub trait DataSet[T with Clone]:
@@ -129,36 +144,49 @@ pub class DataFrame[T with Clone] with BoundedDataSet:
 
 
 pub class LazyFrame[T with Clone] with BoundedDataSet:
-    pub _row_schema_marker: T
-    pub _substrait_rel: Rel
+    # TODO: needs docstring and examples for the public API and overall purpose of this type.
+    pub _cursor: PrismCursor[T]
+
+    @staticmethod
+    def named_table(row_schema_marker: T, table_name: str) -> LazyFrame[T]:
+        """Create a deferred lazy carrier rooted at one logical named-table read."""
+        return LazyFrame(_cursor=prism_cursor_named_table(row_schema_marker, table_name))
 
     def to_substrait_plan(self) -> Plan:
-        # TODO(#229): switch back to an empty root-name list once Incan preserves element type context for `[]`.
-        return plan_from_root_relation(self._substrait_rel, [str("id")])
+        """Lower this lazy pipeline to a Substrait `Plan` at the boundary."""
+        return self._cursor.to_substrait_plan()
 
     def filter(self, predicate: bool) -> Self:
-        return LazyFrame(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=filter_ds(self._substrait_rel, predicate))
+        """Return one new lazy carrier with an appended filter stage."""
+        return LazyFrame(_cursor=prism_cursor_apply_filter(self._cursor, predicate))
 
     def join(self, other: Self, on: bool) -> Self:
-        return LazyFrame(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=join_ds(self._substrait_rel, other._substrait_rel, on))
+        """Return one new lazy carrier with an appended join stage against another lazy carrier."""
+        return LazyFrame(_cursor=prism_cursor_apply_join(self._cursor, other._cursor.clone(), on))
 
     def select(self) -> Self:
-        return LazyFrame(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=select_ds(self._substrait_rel))
+        """Return one new lazy carrier with an appended projection stage."""
+        return LazyFrame(_cursor=prism_cursor_apply_select(self._cursor))
 
     def group_by(self) -> Self:
-        return LazyFrame(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=group_by_ds(self._substrait_rel))
+        """Return one new lazy carrier with an appended grouping stage."""
+        return LazyFrame(_cursor=prism_cursor_apply_group_by(self._cursor))
 
     def agg(self) -> Self:
-        return LazyFrame(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=agg_ds(self._substrait_rel))
+        """Return one new lazy carrier with an appended aggregation stage."""
+        return LazyFrame(_cursor=prism_cursor_apply_agg(self._cursor))
 
     def order_by(self) -> Self:
-        return LazyFrame(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=order_by_ds(self._substrait_rel))
+        """Return one new lazy carrier with an appended ordering stage."""
+        return LazyFrame(_cursor=prism_cursor_apply_order_by(self._cursor))
 
     def limit(self, n: int) -> Self:
-        return LazyFrame(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=limit_ds(self._substrait_rel, n))
+        """Return one new lazy carrier with an appended row-limit stage."""
+        return LazyFrame(_cursor=prism_cursor_apply_limit(self._cursor, n))
 
     def explode(self) -> Self:
-        return LazyFrame(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=explode_ds(self._substrait_rel))
+        """Return one new lazy carrier with an appended explode/unnest stage."""
+        return LazyFrame(_cursor=prism_cursor_apply_explode(self._cursor))
 
 
 # ---- UnboundedDataSet trait and concrete types ----

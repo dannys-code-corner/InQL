@@ -1,6 +1,6 @@
 # InQL RFC 007: Prism logical planning and optimization engine
 
-- **Status:** Draft
+- **Status:** In Progress
 - **Created:** 2026-04-02
 - **Author(s):** Danny Meijer
 - **Related:**
@@ -9,7 +9,7 @@
   - InQL RFC 003 (`query {}` — lowers through Prism-managed logical work before Substrait emission)
   - InQL RFC 004 (execution context — session executes Prism-backed plans but does not define Prism)
   - InQL RFC 005 (optional pipe-forward — must stay Prism-consistent with equivalent surfaces)
-- **Issue:** —
+- **Issue:** [InQL #16](https://github.com/dannys-code-corner/InQL/issues/16)
 - **RFC PR:** —
 - **Written against:** Incan v0.2
 - **Shipped in:** —
@@ -17,6 +17,8 @@
 ## Summary
 
 This RFC defines **Prism** as InQL's immutable internal logical planning and optimization engine. Prism owns persistent plan storage, cheap branching through structural sharing, lineage-preserving rewrites, and logical optimization prior to Substrait emission or session execution. Prism is an **internal planning substrate**, not the normative interchange contract: **Apache Substrait** remains the boundary format per InQL RFC 002. `LazyFrame`, `DataFrame`, and `DataStream` are carrier experiences over Prism-managed plan state; `Session` and `SessionContext` bind and execute those plans per InQL RFC 004.
+
+RFC 007 is the design and implementation record for the first Prism adoption slice. Optimizer-boundary ownership is further clarified by [InQL RFC 008](008_optimizer_boundary_stats_cbo_aqe.md): Prism owns immutable authored state, lineage-preserving logical work, and internal optimized views, while RFC 008 governs ownership of statistics, backend pushdown policy, physical planning, cost-based optimization inputs, and adaptive re-planning at the `Session` boundary. Follow-on RFC 007 hardening includes an Incan-native typed store-id allocator (`static` + `newtype`) and cross-store adoption dedup for equivalent reachable RHS nodes; this remains internal Prism substrate work and does not expand RFC 008 scope.
 
 ## Motivation
 
@@ -29,7 +31,7 @@ Prism gives that layer a home. It lets InQL say clearly that:
 - optimization is a first-class responsibility, not an incidental backend side effect
 - lineage must survive rewrites so optimized plans remain explainable
 
-This matters for more than simple query lowering. Complex multi-hop pipelines, future interactive environments, and prospective reuse of the planning substrate beyond InQL all benefit from a stable definition of what the internal plan engine is allowed and required to do.
+This matters for more than simple query lowering. Complex multi-hop pipelines, future interactive environments, and future explain/debug tooling all benefit from a stable definition of what the internal plan engine is allowed and required to do.
 
 ## Goals
 
@@ -46,7 +48,7 @@ This matters for more than simple query lowering. Complex multi-hop pipelines, f
 - Defining physical execution behavior, backend binding, or secret management — that remains outside Prism and is scoped by InQL RFC 004 and surrounding operational layers.
 - Defining new author-facing query syntax — Prism is an internal planning engine, not a new language surface.
 - Forcing one exact in-memory data structure implementation for authored and optimized plan state.
-- Promising Prism as a general-purpose platform beyond InQL today. This RFC scopes Prism normatively to InQL, while requiring a clean enough module boundary that future extraction remains possible.
+- Promising Prism as a general-purpose platform beyond InQL today. This RFC scopes Prism normatively to InQL; future extraction remains a possible consequence of a clean boundary, not a current requirement.
 
 ## Guide-level explanation
 
@@ -69,7 +71,7 @@ The important user-visible behavior is:
 - branching from a shared base plan is cheap
 - execution still belongs to the session boundary
 
-Prism is the reason this can work efficiently. It stores the shared logical planning state, allows both `high_value` and `recent` to branch from the same base plan, and may optimize the resulting logical graph before the plan is emitted to Substrait or executed by a session.
+Prism is the reason this can work efficiently. It stores the shared authored planning state, allows both `high_value` and `recent` to branch from the same base plan, and may derive optimized views of that state before the plan is emitted to Substrait or executed by a session.
 
 Prism should be thought of as the internal engine that **thinks** about the plan. Substrait is how the plan is **communicated** at the boundary. Session is how the plan is **executed**.
 
@@ -107,7 +109,7 @@ The relationship is:
 - Prism = internal logical planning, lineage, and optimization
 - Substrait = emitted logical interchange contract
 
-An implementation **may** use Prism-native node kinds or overlays internally, but emitted plans that claim conformance **must** still follow InQL RFC 002.
+An implementation **may** use Prism-native node kinds or derived optimized views internally, but emitted plans that claim conformance **must** still follow InQL RFC 002.
 
 ### Relationship to session execution
 
@@ -123,7 +125,7 @@ Prism **should** conceptually distinguish between:
 - **optimized plan state**: semantically equivalent rewritten state used for lowering or execution
 - **lineage metadata**: mappings from optimized state back to authored history
 
-This distinction is normative at the conceptual level, but implementations retain freedom in how they realize it. A single persistent graph with overlays, separate graphs with references, or another equivalent structure are all acceptable if the invariants below hold.
+This distinction is normative at the conceptual level, but implementations retain freedom in how they realize it. The intended first implementation centers on a persistent authored graph with derived optimized views and explicit origin mappings. Equivalent implementations, including separate optimized graphs, remain acceptable if the invariants below hold.
 
 ### Required invariants
 
@@ -139,16 +141,16 @@ The following invariants **must** hold:
 
 Optimization is a core Prism responsibility, not merely a downstream backend concern.
 
-Prism **may** perform:
+For the first Prism slice, Prism **may** perform:
 
 - projection pruning
 - predicate pushdown
 - redundant-node elimination
 - normalization of equivalent logical shapes
-- shared subplan detection and sharing
+- simple shared subplan detection and sharing
 - other semantically valid rewrites consistent with schema and lineage invariants
 
-More advanced rewrites such as join reordering or sink-aware splitting **may** be added later.
+More advanced rewrites such as join reordering, cost-based optimization, or sink-aware splitting **may** be added later.
 
 Implementations **may** apply some rewrites incrementally during plan construction and defer others until lowering or explicit analysis, provided authored history remains intact.
 
@@ -204,11 +206,103 @@ It may, however, motivate refactoring of implementation architecture so that pla
 - **Execution / interchange** — Session-backed lowering and execution flows **must** treat Prism as internal preparation and Substrait as the boundary contract.
 - **Documentation** — RFC indexes, architecture notes, and implementation planning notes **should** distinguish Prism from Substrait and from session execution.
 
-## Unresolved questions
+## Implementation Plan
 
-- Should Prism maintain one persistent graph with optimized overlays, or separate authored and optimized graphs with explicit references?
-- Which optimization passes are part of the Prism north star immediately, and which should be deferred until after the first implementation?
-- What is the most useful lineage metadata shape for explain/debug tooling without making normal plan construction expensive?
-- Are there Incan language or tooling limitations around model-derived schema facts that Prism depends on and that may require an upstream Incan RFC?
+### Phase 1: Internal Prism carrier slice
 
-<!-- When every question is resolved, rename this section to **Design Decisions**, group answers under ### Resolved, and remove this comment. -->
+- Rework `LazyFrame[T]` to become the first real Prism-backed carrier while keeping the public dataset API stable.
+- Replace direct `Rel` storage in `LazyFrame[T]` with Prism-managed authored state plus a current logical tip.
+- Keep Prism internal-only; do not expose public `Prism*` package APIs in this phase.
+
+### Phase 2: Authored graph + optimized view contract
+
+- Implement the minimum Prism authored node set needed for the first slice: read roots, filters, and joins.
+- Represent optimized state as a derived view over authored state with explicit optimized-to-authored origin mappings.
+- Keep the first rewrite surface limited to safe canonicalization (`Filter(true)` elimination and adjacent `Limit`/`Project`/`OrderBy` collapse) with explicit lineage bookkeeping; defer heavier rewrite families.
+
+### Phase 3: Boundary lowering and source construction
+
+- Keep RFC 002 as the only emitted boundary by lowering Prism-backed `LazyFrame` state into Substrait at `to_substrait_plan()`.
+- Add the internal source-construction seam needed to create Prism-backed lazy carriers from named tables or equivalent read roots.
+- Support joins between independently constructed lazy carriers by unifying roots into one Prism-authored graph when needed; do not keep the research-only same-graph join restriction.
+
+### Phase 4: Tests, docs, and current-slice hardening
+
+- Add package tests that prove immutable branching, lineage preservation, and stable lowering back to real proto-backed Substrait plans.
+- Update architecture and RFC docs so the implementation status matches the intended internal design rather than the earlier research-only framing.
+
+### Phase 5: Broader carrier and authoring-surface adoption
+
+- Extend Prism backing beyond `LazyFrame[T]` once the remaining foundational RFCs are landed and the surrounding carrier/session story is stable enough to avoid churn.
+- Evaluate where `DataFrame[T]`, `DataStream[T]`, and `query {}` should converge on shared Prism planning entry paths without forcing premature execution-boundary coupling.
+- Keep advanced optimization families (for example join reordering, cost-based exploration, and AQE-adjacent behavior) out of this phase; those remain optimizer-boundary follow-on work under RFC 008.
+
+## Progress Checklist
+
+### Spec / design
+
+- [x] Lock Prism as an internal-only planning substrate rather than a public package API.
+- [x] Lock the intended first implementation to authored graph + derived optimized view + origin mappings.
+- [x] Reject the prototype's same-graph-only join constraint as the production design.
+- [x] Lock `LazyFrame[T]` as the first real Prism-backed carrier.
+
+### Prism core
+
+- [x] Define the current authored node set for the first implementation slice (`Read`, `Filter`, `Join`, `Project`, `GroupBy`, `Aggregate`, `OrderBy`, `Limit`, `Explode`) so the existing `LazyFrame[T]` method surface is Prism-native.
+- [x] Add persistent Prism-managed plan state plus logical tip tracking for `LazyFrame[T]`.
+- [x] Add derived optimized views with stable optimized-to-authored origin mappings.
+- [x] Introduce a backend-native `PrismCursor[T]` handle as the internal target for `LazyFrame[T]` method delegation.
+- [x] Replace temporary Rust-backed Prism store-id allocation with Incan-native typed module static allocation.
+- [x] Dedup equivalent reachable RHS nodes during cross-store join adoption while keeping authored-store append-only semantics.
+- [x] Retire prototype naming in package internals by moving Prism implementation to `src/prism/mod.incn` and stable `Prism*` internal type names.
+- [x] Add default canonical rewrite passes for safe local simplifications (`Filter(true)` elimination, adjacent `Limit`/`Project`/`OrderBy` collapse) before RFC 002 lowering.
+- [x] Keep authored graph immutable while deriving rewritten views with rewritten-to-authored origin mappings.
+- [x] Add internal rewrite explain artifacts (applied-rule names and rewritten/origin cardinality facts) for test diagnostics.
+
+### Carrier integration
+
+- [x] Replace `LazyFrame[T]` direct `Rel` storage with Prism-backed state.
+- [x] Keep the public `DataSet[T]` / `LazyFrame[T]` method surface unchanged.
+- [x] Support joins across independently constructed lazy carriers by graph unification rather than prototype-only shared-graph assumptions.
+- [x] Route `LazyFrame[T]` method semantics through a backend-native cursor layer instead of per-method carrier-owned graph manipulation.
+- [x] Route `LazyFrame[T]` methods through Prism internal seam helpers so future authoring surfaces can reuse one planning entry path.
+
+### Substrait boundary
+
+- [x] Lower Prism-backed `LazyFrame[T]` into real RFC 002 Substrait only at the boundary.
+- [x] Preserve current conformance behavior for `Read`, `Filter`, and `Join`.
+- [x] Replace identity-only lowering with safe canonical rewritten lowering while preserving semantic equivalence.
+
+### Tests
+
+- [x] Add package tests for immutable branching over shared authored state.
+- [x] Add package tests for optimized-view origin mapping.
+- [x] Add package tests for join lowering across branches and independently constructed lazy carriers.
+- [x] Add regression coverage proving Prism-backed `LazyFrame[T]` still emits real proto-backed Substrait plans.
+- [x] Add regression coverage proving the current `LazyFrame[T]` method surface now maps to native Prism node kinds rather than opaque compatibility nodes.
+- [x] Add rewrite regressions for canonicalization and explain artifact coherence.
+
+### Docs
+
+- [x] Update architecture docs to reflect Prism as active implementation work rather than purely ahead-of-code design.
+- [x] Keep RFC 007, RFC index, and related architecture notes aligned as implementation lands.
+
+### Phase 5 follow-on adoption
+
+- [ ] Extend Prism backing to `DataFrame[T]` once the remaining foundational RFCs are complete.
+- [ ] Extend Prism backing to `DataStream[T]` once the remaining foundational RFCs are complete.
+- [ ] Route `query {}` authoring through shared Prism planning entry paths once the remaining foundational RFCs are complete.
+
+## Design Decisions
+
+### Resolved
+
+- Prism conceptually distinguishes authored and optimized state, but the intended first implementation centers on a persistent authored graph with derived optimized views and explicit origin mappings. Equivalent implementations, including separate optimized graphs, remain acceptable if they preserve the same invariants.
+- The first Prism slice commits only to safe logical rewrites: projection pruning, predicate pushdown, redundant-node elimination, normalization of equivalent logical shapes, and optional simple shared-subplan detection. Heavier work such as join reordering, cost-based optimization, and sink-aware splitting is explicitly deferred.
+- The minimum lineage contract is stable authored node IDs plus optimized-to-authored origin mappings. Richer explain/debug structures may be added later, but they are not required for the RFC to be complete.
+- RFC 007 does not require a new upstream Incan RFC before moving to `Planned`. Implementation may expose compiler or tooling gaps later, but those are implementation dependencies rather than specification blockers.
+- Prism remains an internal InQL planning substrate for now; the first implementation does not expose public `Prism*` package APIs.
+- `LazyFrame[T]` is the first real Prism-backed carrier. `DataFrame[T]`, `DataStream[T]`, and `query {}` integration remain follow-on work unless the `LazyFrame[T]` slice proves a hard dependency.
+- `PrismCursor[T]` is the current backend-native handle beneath `LazyFrame[T]`. It is an internal convergence target for future `query {}` and pipe-forward lowering, not a public package API.
+- The research prototype demonstrated the seam, but its clone-heavy storage and same-graph-only join restriction are not the intended production design.
+- Real joins between lazy carriers must work even when the two sides were constructed independently; implementations may unify roots into one authored graph internally, but they must not require pre-shared lineage as a public contract.

@@ -17,6 +17,8 @@
 
 This RFC specifies the **execution context**: the session object that bridges InQL's **typed logical plans** and **real execution**. It defines how authors **read data** into `DataSet[T]` values, **execute plans** (lowered to Substrait per InQL RFC 002), and **write results** back to storage. **Apache DataFusion** is the **reference (and default) execution backend** for plan optimization and execution: it consumes Substrait plans, applies query optimizations (predicate pushdown, projection pruning, join reordering, constant folding), and executes against registered data sources, returning **Apache Arrow** record batches that InQL wraps in typed `DataFrame[T]` carriers. This RFC standardizes the explicit core `Session` contract; higher operational layers may compose, scope, or inject sessions and adapter conveniences on top, but they do not redefine InQL execution semantics. With RFCs 000–004, InQL is usable for read → transform → write workflows.
 
+> Editorial note (2026-04-07): RFC 004 remains authoritative for the `Session` execution boundary and backend abstraction. The optimizer boundary between Prism and `Session` is clarified by [InQL RFC 008](008_optimizer_boundary_stats_cbo_aqe.md), which governs ownership of statistics, cost-based optimization inputs, physical planning, and adaptive re-planning.
+
 ## Core model
 
 1. A **`Session`** (or **execution context**) is the entry point for InQL programs that interact with data. It holds **table registrations**, **configuration**, and a **reference to the execution backend**.

@@ -1,0 +1,245 @@
+"""
+Internal Prism planning façade.
+
+Prism is intentionally not re-exported from `lib.incn`. This façade keeps one stable internal import surface while the
+implementation is split into focused submodules:
+
+- `prism.types`: shared node/view/explain types
+- `prism.store`: append-only authored storage and cross-store adoption
+- `prism.rewrite`: canonical rewrite derivation and explain artifacts
+- `prism.lower`: lowering from rewritten views into Substrait
+"""
+
+from rust::substrait::proto import Plan, Rel
+from prism.lower import lower_prism_tip as lower_prism_tip_impl, prism_rel_to_plan
+from prism.rewrite import (
+    derive_optimized_view as derive_optimized_view_impl,
+    derive_rewritten_view as derive_rewritten_view_impl,
+    optimized_origin_for as optimized_origin_for_impl,
+    rewrite_explain,
+    rewritten_node_at,
+)
+from prism.store import (
+    adopt_cursor_subgraph,
+    allocate_prism_store_id,
+    append_node,
+    node_at,
+    reachable_node_ids,
+    store_nodes,
+)
+from prism.types import (
+    authored_node_kind_name,
+    PrismNode,
+    PrismNodeKind,
+    PrismOptimizedView,
+    PrismRewriteExplain,
+    PrismStoreAdoption,
+    PrismStoreId,
+)
+
+pub class PrismCursor[T with Clone]:
+    """
+    Immutable handle over one Prism-authored query lineage.
+
+    A cursor carries the schema marker, owning store id, and current authored tip. Deriving a new cursor never copies
+    prior authored state; Prism appends one node to the shared store and returns a new handle pointing at the new tip.
+    """
+
+    pub row_schema_marker: T
+    pub store_id: PrismStoreId
+    pub tip_id: int
+
+    def clone(self) -> Self:
+        return PrismCursor(row_schema_marker=self.row_schema_marker.clone(), store_id=self.store_id, tip_id=self.tip_id)
+
+    def filter(self, predicate: bool) -> Self:
+        """Append one filter node in the shared authored store and return the derived tip."""
+        next_tip_id = append_node(self.store_id, PrismNodeKind.Filter, [self.tip_id], str(""), predicate, 0)
+        return PrismCursor(row_schema_marker=self.row_schema_marker.clone(), store_id=self.store_id, tip_id=next_tip_id)
+
+    def join(self, other: Self, predicate: bool) -> Self:
+        """Append one join against another cursor, adopting foreign authored state only when stores differ."""
+        if self.store_id.0 == other.store_id.0:
+            next_tip_id = append_node(self.store_id, PrismNodeKind.Join, [self.tip_id, other.tip_id], str(""), predicate, 0)
+            return PrismCursor(row_schema_marker=self.row_schema_marker.clone(), store_id=self.store_id, tip_id=next_tip_id)
+        adoption = adopt_cursor_subgraph(self.store_id, other.store_id, other.tip_id)
+        next_tip_id = append_node(self.store_id, PrismNodeKind.Join, [self.tip_id, adoption.adopted_tip_id], str(""), predicate, 0)
+        return PrismCursor(row_schema_marker=self.row_schema_marker.clone(), store_id=self.store_id, tip_id=next_tip_id)
+
+    def select(self) -> Self:
+        """Append one projection node and return the derived tip."""
+        next_tip_id = append_node(self.store_id, PrismNodeKind.Project, [self.tip_id], str(""), false, 0)
+        return PrismCursor(row_schema_marker=self.row_schema_marker.clone(), store_id=self.store_id, tip_id=next_tip_id)
+
+    def group_by(self) -> Self:
+        """Append one grouping node and return the derived tip."""
+        next_tip_id = append_node(self.store_id, PrismNodeKind.GroupBy, [self.tip_id], str(""), false, 0)
+        return PrismCursor(row_schema_marker=self.row_schema_marker.clone(), store_id=self.store_id, tip_id=next_tip_id)
+
+    def agg(self) -> Self:
+        """Append one aggregate node and return the derived tip."""
+        next_tip_id = append_node(self.store_id, PrismNodeKind.Aggregate, [self.tip_id], str(""), false, 0)
+        return PrismCursor(row_schema_marker=self.row_schema_marker.clone(), store_id=self.store_id, tip_id=next_tip_id)
+
+    def order_by(self) -> Self:
+        """Append one ordering node and return the derived tip."""
+        next_tip_id = append_node(self.store_id, PrismNodeKind.OrderBy, [self.tip_id], str(""), false, 0)
+        return PrismCursor(row_schema_marker=self.row_schema_marker.clone(), store_id=self.store_id, tip_id=next_tip_id)
+
+    def limit(self, n: int) -> Self:
+        """Append one row-limit node and return the derived tip."""
+        next_tip_id = append_node(self.store_id, PrismNodeKind.Limit, [self.tip_id], str(""), false, n)
+        return PrismCursor(row_schema_marker=self.row_schema_marker.clone(), store_id=self.store_id, tip_id=next_tip_id)
+
+    def explode(self) -> Self:
+        """Append one explode node and return the derived tip."""
+        next_tip_id = append_node(self.store_id, PrismNodeKind.Explode, [self.tip_id], str(""), false, 0)
+        return PrismCursor(row_schema_marker=self.row_schema_marker.clone(), store_id=self.store_id, tip_id=next_tip_id)
+
+    def derive_optimized_view(self) -> PrismOptimizedView:
+        """Expose the identity-shaped authored view for internal inspection and tests."""
+        return derive_optimized_view(self.store_id, self.tip_id)
+
+    def lower_to_rel(self) -> Rel:
+        """Lower the current tip through canonical rewrites to one Substrait root relation."""
+        return lower_prism_tip(self.store_id, self.tip_id)
+
+    def to_substrait_plan(self) -> Plan:
+        """Lower the current tip all the way to one Substrait plan."""
+        return prism_rel_to_plan(self.lower_to_rel())
+
+
+pub def prism_cursor_named_table[T with Clone](row_schema_marker: T, table_name: str) -> PrismCursor[T]:
+    """Create the minimal shared-store cursor rooted at one named-table read."""
+    store_id = allocate_prism_store_id()
+    tip_id = append_node(store_id, PrismNodeKind.ReadNamedTable, [], table_name, false, 0)
+    return PrismCursor(row_schema_marker=row_schema_marker, store_id=store_id, tip_id=tip_id)
+
+
+pub def prism_cursor_apply_filter[T with Clone](cursor: PrismCursor[T], predicate: bool) -> PrismCursor[T]:
+    """Apply dataset-level filter intent through Prism's shared authored store."""
+    next_tip_id = append_node(cursor.store_id, PrismNodeKind.Filter, [cursor.tip_id], str(""), predicate, 0)
+    return PrismCursor(row_schema_marker=cursor.row_schema_marker.clone(), store_id=cursor.store_id, tip_id=next_tip_id)
+
+
+pub def prism_cursor_apply_join[T with Clone](left: PrismCursor[T], right: PrismCursor[T], predicate: bool) -> PrismCursor[T]:
+    """Apply dataset-level join intent while preserving same-store cheapness and cross-store correctness."""
+    if left.store_id.0 == right.store_id.0:
+        next_tip_id = append_node(left.store_id, PrismNodeKind.Join, [left.tip_id, right.tip_id], str(""), predicate, 0)
+        return PrismCursor(row_schema_marker=left.row_schema_marker.clone(), store_id=left.store_id, tip_id=next_tip_id)
+    adoption = adopt_cursor_subgraph(left.store_id, right.store_id, right.tip_id)
+    next_tip_id = append_node(left.store_id, PrismNodeKind.Join, [left.tip_id, adoption.adopted_tip_id], str(""), predicate, 0)
+    return PrismCursor(row_schema_marker=left.row_schema_marker.clone(), store_id=left.store_id, tip_id=next_tip_id)
+
+
+pub def prism_cursor_apply_select[T with Clone](cursor: PrismCursor[T]) -> PrismCursor[T]:
+    """Apply dataset-level projection intent through Prism."""
+    next_tip_id = append_node(cursor.store_id, PrismNodeKind.Project, [cursor.tip_id], str(""), false, 0)
+    return PrismCursor(row_schema_marker=cursor.row_schema_marker.clone(), store_id=cursor.store_id, tip_id=next_tip_id)
+
+
+pub def prism_cursor_apply_group_by[T with Clone](cursor: PrismCursor[T]) -> PrismCursor[T]:
+    """Apply dataset-level grouping intent through Prism."""
+    next_tip_id = append_node(cursor.store_id, PrismNodeKind.GroupBy, [cursor.tip_id], str(""), false, 0)
+    return PrismCursor(row_schema_marker=cursor.row_schema_marker.clone(), store_id=cursor.store_id, tip_id=next_tip_id)
+
+
+pub def prism_cursor_apply_agg[T with Clone](cursor: PrismCursor[T]) -> PrismCursor[T]:
+    """Apply dataset-level aggregation intent through Prism."""
+    next_tip_id = append_node(cursor.store_id, PrismNodeKind.Aggregate, [cursor.tip_id], str(""), false, 0)
+    return PrismCursor(row_schema_marker=cursor.row_schema_marker.clone(), store_id=cursor.store_id, tip_id=next_tip_id)
+
+
+pub def prism_cursor_apply_order_by[T with Clone](cursor: PrismCursor[T]) -> PrismCursor[T]:
+    """Apply dataset-level ordering intent through Prism."""
+    next_tip_id = append_node(cursor.store_id, PrismNodeKind.OrderBy, [cursor.tip_id], str(""), false, 0)
+    return PrismCursor(row_schema_marker=cursor.row_schema_marker.clone(), store_id=cursor.store_id, tip_id=next_tip_id)
+
+
+pub def prism_cursor_apply_limit[T with Clone](cursor: PrismCursor[T], n: int) -> PrismCursor[T]:
+    """Apply dataset-level row-limit intent through Prism."""
+    next_tip_id = append_node(cursor.store_id, PrismNodeKind.Limit, [cursor.tip_id], str(""), false, n)
+    return PrismCursor(row_schema_marker=cursor.row_schema_marker.clone(), store_id=cursor.store_id, tip_id=next_tip_id)
+
+
+pub def prism_cursor_apply_explode[T with Clone](cursor: PrismCursor[T]) -> PrismCursor[T]:
+    """Apply dataset-level explode intent through Prism."""
+    next_tip_id = append_node(cursor.store_id, PrismNodeKind.Explode, [cursor.tip_id], str(""), false, 0)
+    return PrismCursor(row_schema_marker=cursor.row_schema_marker.clone(), store_id=cursor.store_id, tip_id=next_tip_id)
+
+
+pub def lower_prism_tip(store_id: PrismStoreId, tip_id: int) -> Rel:
+    """Lower one authored Prism tip through canonical rewrite view to the `Rel` boundary."""
+    return lower_prism_tip_impl(store_id, tip_id)
+
+
+pub def derive_optimized_view(store_id: PrismStoreId, tip_id: int) -> PrismOptimizedView:
+    """Derive the current identity-shaped view for one authored tip."""
+    return derive_optimized_view_impl(store_id, tip_id)
+
+
+pub def optimized_origin_for(view: PrismOptimizedView, optimized_node_id: int) -> int:
+    return optimized_origin_for_impl(view, optimized_node_id)
+
+
+pub def derive_rewritten_view(store_id: PrismStoreId, tip_id: int) -> PrismOptimizedView:
+    """Derive the canonical rewritten lowering view for one authored tip."""
+    return derive_rewritten_view_impl(store_id, tip_id)
+
+
+pub def prism_cursor_rewrite_explain[T with Clone](cursor: PrismCursor[T]) -> PrismRewriteExplain:
+    """Return narrow explain metadata for the cursor's current canonical rewrite pass."""
+    return rewrite_explain(cursor.store_id, cursor.tip_id)
+
+
+pub def prism_cursor_authored_node_count[T with Clone](cursor: PrismCursor[T]) -> int:
+    """Count authored nodes reachable from the cursor tip."""
+    return len(reachable_node_ids(cursor.store_id, cursor.tip_id))
+
+
+pub def prism_cursor_rewritten_node_count[T with Clone](cursor: PrismCursor[T]) -> int:
+    return prism_cursor_rewrite_explain(cursor).rewritten_node_count
+
+
+pub def prism_cursor_store_node_count[T with Clone](cursor: PrismCursor[T]) -> int:
+    """Count all authored nodes currently stored in the cursor's store."""
+    return len(store_nodes(cursor.store_id))
+
+
+pub def prism_cursor_store_id_value[T with Clone](cursor: PrismCursor[T]) -> int:
+    """Expose the raw store-id value for narrow invariant tests."""
+    return cursor.store_id.0
+
+
+pub def prism_cursor_tip_kind_name[T with Clone](cursor: PrismCursor[T]) -> str:
+    """Return the authored node-kind name at the current cursor tip."""
+    return authored_node_kind_name(node_at(cursor.store_id, cursor.tip_id))
+
+
+pub def prism_cursor_tip_origin_id[T with Clone](cursor: PrismCursor[T]) -> int:
+    """Return the authored origin id of the tip in the identity-shaped optimized view."""
+    view = derive_optimized_view(cursor.store_id, cursor.tip_id)
+    return optimized_origin_for(view, view.root_tip_id)
+
+
+pub def prism_cursor_rewritten_tip_kind_name[T with Clone](cursor: PrismCursor[T]) -> str:
+    """Return the rewritten node-kind name at the lowered tip after canonical rewrites."""
+    view = derive_rewritten_view(cursor.store_id, cursor.tip_id)
+    return authored_node_kind_name(rewritten_node_at(view, view.root_tip_id))
+
+
+pub def prism_cursor_rewrite_applied_rule_count[T with Clone](cursor: PrismCursor[T]) -> int:
+    return len(prism_cursor_rewrite_explain(cursor).applied_rule_names)
+
+
+pub def prism_cursor_rewrite_applied_rule_name_at[T with Clone](cursor: PrismCursor[T], index: int) -> str:
+    return prism_cursor_rewrite_explain(cursor).applied_rule_names[index]
+
+
+pub def prism_cursor_rewritten_origin_count[T with Clone](cursor: PrismCursor[T]) -> int:
+    return len(prism_cursor_rewrite_explain(cursor).rewritten_to_authored_origin_ids)
+
+
+pub def prism_cursors_share_store[T with Clone](left: PrismCursor[T], right: PrismCursor[T]) -> bool:
+    """Return whether two cursors share the same authored store backing."""
+    return left.store_id.0 == right.store_id.0
