@@ -1,8 +1,8 @@
 # InQL CI — Incan library package
 #
-# Uses the reusable Incan composite action from the incan repository.
-# This eliminates copy-paste drift and provides a supported integration path.
-# The composite action caches built binaries for faster subsequent runs.
+# Builds the Incan compiler from source in CI, then runs the InQL package
+# checks against that local binary. Keeping this workflow self-contained avoids
+# a hard dependency on a remote composite action path staying in sync.
 
 name: CI
 
@@ -35,12 +35,27 @@ jobs:
       - name: Check out InQL
         uses: actions/checkout@v4
 
-      - name: Install Incan (cached)
-        uses: dannys-code-corner/incan/.github/actions/install-incan@main
+      - name: Check out Incan
+        uses: actions/checkout@v4
         with:
-          incan-ref: main
-          incan-repo: dannys-code-corner/incan
-          runner-os: ${{ matrix.os }}
+          repository: dannys-code-corner/incan
+          ref: main
+          path: incan
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Incan build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: incan -> target
+
+      - name: Build Incan compiler
+        working-directory: incan
+        run: cargo build --locked --bin incan
+
+      - name: Expose local Incan binary on PATH
+        run: echo "$GITHUB_WORKSPACE/incan/target/debug" >> "$GITHUB_PATH"
 
       - name: Show toolchain
         run: |

@@ -85,15 +85,15 @@ Templates apply **type** labels (`bug`, `feature`, `chore`, `documentation`, `RF
 
 ### Triage GitHub App (CI)
 
-The auto-label workflow uses a **GitHub App** (same pattern as the Incan repository). Add these **repository secrets** on `dannys-code-corner/InQL`:
+The auto-label workflow uses a shared **organization-level GitHub App** installation for `dannys-code-corner`. Configure these **organization Actions secrets** and grant access to this repository:
 
 | Secret | Purpose |
 | ------ | ------- |
-| `INQL_TRIAGE_APP_ID` | App ID |
-| `INQL_TRIAGE_APP_INSTALLATION_ID` | Installation ID for **this** repo (differs per installation) |
-| `INQL_TRIAGE_APP_PRIVATE_KEY` | App private key (PEM) |
+| `TRIAGE_APP_ID` | App ID |
+| `TRIAGE_APP_INSTALLATION_ID` | Installation ID for the **organization-level** app installation |
+| `TRIAGE_APP_PRIVATE_KEY` | App private key (PEM) |
 
-Install the app on the InQL repository (you can reuse the same app as Incan with a second installation). Without these secrets the workflow fails at the token step.
+Install the app on the `dannys-code-corner` organization and grant it access to `InQL` (and any future repositories that should share triage automation). Without these secrets the workflow fails at the token step.
 
 ## Pull request guidelines
 
