@@ -3,9 +3,9 @@
 
 [incan]
 format = 1
-incan-version = "0.2.0-rc6"
-generated = "2026-04-19T20:15:34.939995Z"
-deps-fingerprint = "sha256:4fa2c8c76795bb493c487e4cc58afa348958f70c56df1ad68907e31c3e2224db"
+incan-version = "0.2.0-rc7"
+generated = "2026-04-19T20:56:56.844002Z"
+deps-fingerprint = "sha256:f72686d8d8288c27ae8a2c83690ced0169cc3b8646a064ce1249db86d635b97e"
 cargo-features = []
 cargo-no-default-features = false
 cargo-all-features = false
@@ -1815,14 +1815,14 @@ dependencies = [
 
 [[package]]
 name = "incan_core"
-version = "0.2.0-rc6"
+version = "0.2.0-rc7"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "incan_derive"
-version = "0.2.0-rc6"
+version = "0.2.0-rc7"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1831,10 +1831,11 @@ dependencies = [
 
 [[package]]
 name = "incan_stdlib"
-version = "0.2.0-rc6"
+version = "0.2.0-rc7"
 dependencies = [
  "incan_core",
  "incan_derive",
+ "tokio",
 ]
 
 [[package]]
@@ -1851,7 +1852,7 @@ dependencies = [
 
 [[package]]
 name = "inql"
-version = "0.2.0-rc6"
+version = "0.2.0-rc7"
 dependencies = [
  "datafusion",
  "datafusion-substrait",
@@ -1860,6 +1861,7 @@ dependencies = [
  "prost",
  "prost-types",
  "substrait 0.63.0",
+ "tokio",
 ]
 
 [[package]]
@@ -2066,6 +2068,17 @@ checksum = "1fa76a2c86f704bdb222d66965fb3d63269ce38518b83cb0575fca855ebb6316"
 dependencies = [
  "adler2",
  "simd-adler32",
+]
+
+[[package]]
+name = "mio"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "50b7e5b27aa02a74bac8c3f23f448f8d87ff11f92d3aac1a6ed369ee08cc56c1"
+dependencies = [
+ "libc",
+ "wasi",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2760,6 +2773,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1b6b67fb9a61334225b5b790716f609cd58395f895b3fe8b328786812a40bc3b"
 
 [[package]]
+name = "socket2"
+version = "0.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3a766e1110788c36f4fa1c2b71b387a7815aa65f88ce0229841826633d93723e"
+dependencies = [
+ "libc",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "sqlparser"
 version = "0.61.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2948,8 +2971,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b67dee974fe86fd92cc45b7a95fdd2f99a36a6d7b0d431a231178d3d670bbcc6"
 dependencies = [
  "bytes",
+ "libc",
+ "mio",
  "pin-project-lite",
+ "socket2",
  "tokio-macros",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
