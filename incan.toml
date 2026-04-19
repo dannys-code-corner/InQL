@@ -8,3 +8,6 @@ prost = "0.14"
 prost-types = "0.14"
 # Build needs `protoc` on PATH (`brew install protobuf`), or `features = ["protoc"]` + CMake.
 substrait = { version = "0.63", features = ["protoc"] }
+# Datafusion is InQL default query engine, and provides the Substrait to Datafusion translation.
+datafusion = "53"
+datafusion-substrait = { version = "53", features = ["protoc"] }

@@ -18,7 +18,7 @@
 
 This RFC defines **Prism** as InQL's immutable internal logical planning and optimization engine. Prism owns persistent plan storage, cheap branching through structural sharing, lineage-preserving rewrites, and logical optimization prior to Substrait emission or session execution. Prism is an **internal planning substrate**, not the normative interchange contract: **Apache Substrait** remains the boundary format per InQL RFC 002. `LazyFrame`, `DataFrame`, and `DataStream` are carrier experiences over Prism-managed plan state; `Session` and `SessionContext` bind and execute those plans per InQL RFC 004.
 
-RFC 007 is the design and implementation record for the first Prism adoption slice. Optimizer-boundary ownership is further clarified by [InQL RFC 008](008_optimizer_boundary_stats_cbo_aqe.md): Prism owns immutable authored state, lineage-preserving logical work, and internal optimized views, while RFC 008 governs ownership of statistics, backend pushdown policy, physical planning, cost-based optimization inputs, and adaptive re-planning at the `Session` boundary. Follow-on RFC 007 hardening includes an Incan-native typed store-id allocator (`static` + `newtype`) and cross-store adoption dedup for equivalent reachable RHS nodes; this remains internal Prism substrate work and does not expand RFC 008 scope.
+RFC 007 is the design and implementation record for the first Prism adoption slice. Optimizer-boundary ownership is further clarified by [InQL RFC 008](008_optimizer_boundary_stats_cbo_aqe.md): Prism owns immutable authored state, lineage-preserving logical work, and internal optimized views, while RFC 008 narrows the split with `Session` around backend-facing statistics, physical planning, and adaptive execution concerns. Follow-on RFC 007 hardening includes an Incan-native typed store-id allocator (`static` + `newtype`) and cross-store adoption dedup for equivalent reachable RHS nodes; this remains internal Prism substrate work and does not expand RFC 008 scope.
 
 ## Motivation
 
@@ -55,7 +55,7 @@ This matters for more than simple query lowering. Complex multi-hop pipelines, f
 From an author's point of view, Prism is not something they use directly. Authors work with InQL carriers such as `LazyFrame[T]`, `DataFrame[T]`, and (later) `DataStream[T]`. Those carriers build or operate over logical work that Prism stores and optimizes internally.
 
 ```incan
-orders = session.table("orders")
+orders = session.table[Order]("orders")?
 cutoff = ...  # some appropriate value
 
 high_value = orders.filter(.amount > 1000)

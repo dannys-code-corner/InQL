@@ -55,6 +55,8 @@ This profile is reflected by:
 - `src/substrait/schema.incn`
 - `src/substrait/plan.incn`
 - `src/substrait/conformance.incn`
+- `src/substrait/conformance_catalog.incn`
+- `src/substrait/conformance_validate.incn`
 - `docs/language/reference/substrait/conformance.md`
 
 ### Current implementation status
@@ -263,7 +265,7 @@ Non-normative: toolchains **should** maintain golden Substrait plans or equivale
 - **Mutation relations:** `WriteRel`, `DdlRel`, and `UpdateRel` remain an optional mutation profile. They are not part of the minimum read/query analytical core required for InQL v0.1, and implementations **may** expose them only when the execution context and backend support them.
 - **Correlated subqueries:** InQL v0.1 does not standardize a single correlated-subquery desugaring because correlated subquery surface syntax is not part of the minimum relational grammar. If a future RFC adds correlated subqueries, that RFC **must** define the lowering contract explicitly rather than relying on implicit emitter policy.
 
-<!-- Link references (single place for targets) -->
+<!-- References -->
 
 [ref-operator-catalog]: ../language/reference/substrait/operator_catalog.md
 [ref-revision-policy]: ../language/reference/substrait/revision_and_extension_policy.md

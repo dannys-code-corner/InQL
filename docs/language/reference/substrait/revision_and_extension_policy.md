@@ -95,7 +95,7 @@ Breaking emitter changes **must**:
 
 Reclassification from gap → core or extension → core is **not** breaking (it broadens portability). It **must** still be documented in release notes and the operator catalog.
 
-<!-- Link references (single place for targets) -->
+<!-- References -->
 
 [rfc-002]: ../../rfcs/002_apache_substrait_integration.md
 [ref-operator-catalog]: ./operator_catalog.md

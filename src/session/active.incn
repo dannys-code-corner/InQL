@@ -1,0 +1,75 @@
+"""
+Active-session registry for LazyFrame collect/display conveniences.
+
+This module intentionally stores a lightweight session snapshot (backend + registrations) rather than a full Session
+object to keep ownership boundaries explicit across session submodules.
+"""
+
+from backends import BackendSelection, TableSource, default_backend_selection
+
+@derive(Clone)
+pub class ActiveRegistration:
+    pub logical_name: str
+    pub source: TableSource
+
+    def clone(self) -> Self:
+        """Return one cloned active registration entry."""
+        return ActiveRegistration(logical_name=self.logical_name, source=self.source)
+
+
+@derive(Clone)
+pub class ActiveSessionState:
+    pub backend: BackendSelection
+    pub registrations: list[ActiveRegistration]
+
+    def clone(self) -> Self:
+        """Return one cloned active-session snapshot."""
+        return ActiveSessionState(backend=self.backend, registrations=self.registrations)
+
+
+pub model ActiveSessionError:
+    pub kind: str
+    pub message: str
+
+
+static _active_session_states: list[ActiveSessionState] = []
+static _active_session_flags: list[bool] = []
+
+
+pub def set_active_session_state(state: ActiveSessionState) -> None:
+    """Record one active-session snapshot in append-only state history."""
+    _active_session_states.append(state)
+    _active_session_flags.append(true)
+    return
+
+
+pub def clear_active_session_state() -> None:
+    """Mark the active-session binding as cleared for subsequent lookups."""
+    _active_session_states.append(ActiveSessionState(backend=default_backend_selection(), registrations=[]))
+    _active_session_flags.append(false)
+    return
+
+
+pub def get_active_session_state() -> Result[ActiveSessionState, ActiveSessionError]:
+    """Return the latest active-session snapshot or `no_active_session` when unset."""
+    err_msg = "no active session; call session.activate() before lazy.collect()"
+
+    # Flags are append-only lifecycle markers (`activate` => true, `clear` => false).
+    # We intentionally read the latest marker to decide whether lookup is currently valid.
+    mut found_flag = false
+    mut latest_has_active = false
+    for flag in _active_session_flags:
+        latest_has_active = flag
+        found_flag = true
+    if found_flag is false or latest_has_active is false:
+        return Err(ActiveSessionError(kind="no_active_session", message=err_msg))
+    # State snapshots are also append-only.
+    # The latest entry is the active snapshot payload associated with the most recent lifecycle marker.
+    mut found_state = false
+    mut active = ActiveSessionState(backend=default_backend_selection(), registrations=[])
+    for candidate in _active_session_states:
+        active = candidate.clone()
+        found_state = true
+    if found_state is false:
+        return Err(ActiveSessionError(kind="no_active_session", message=err_msg))
+    return Ok(active)

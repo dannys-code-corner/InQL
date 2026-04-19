@@ -1,0 +1,14 @@
+"""
+Session execution-context package (RFC 004).
+
+Module layout:
+- `session.types`: public Session API and read/execute/collect/write boundaries
+- `session.errors`: Session-facing typed errors and diagnostics helpers
+- `session.domain`: Session boundary newtypes and sink-kind enum
+- `session.csv_schema`: CSV schema inference helpers used by Session read paths
+- `session.active`: active-session registry used by LazyFrame collect/display conveniences
+- `session.datafusion_backend`: internal DataFusion backend implementation
+"""
+
+pub from session.types import Session, SessionBuilder
+pub from session.errors import SessionError, format_session_diagnostic, report_session_error

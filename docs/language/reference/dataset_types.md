@@ -1,6 +1,6 @@
 # Dataset types (Reference)
 
-This page documents the InQL dataset type hierarchy: the traits and concrete types that carry schema-parameterized tabular data through relational pipelines.
+This page documents the current InQL dataset type hierarchy: the traits and concrete types that carry schema-parameterized tabular data through relational pipelines.
 
 ## Type hierarchy
 
@@ -29,11 +29,11 @@ Extends `DataSet[T]` — data from a streaming or unbounded source. Operations r
 
 ### `DataFrame[T]`
 
-Implements `BoundedDataSet[T]`. Materialized/eager result; always bounded. Conceptually the product of collecting or executing a `LazyFrame`.
+Implements `BoundedDataSet[T]`. Materialized/eager result; always bounded. Conceptually the product of `session.collect(...)` or `lazy.collect()`.
 
 ### `LazyFrame[T]`
 
-Implements `BoundedDataSet[T]`. Holds a logical plan (or equivalent) until an explicit execute, collect, or write boundary. Always bounded.
+Implements `BoundedDataSet[T]`. Holds a logical plan (or equivalent) until an explicit execution, collection, or write boundary. Always bounded.
 
 ### `DataStream[T]`
 
@@ -41,13 +41,18 @@ Implements `UnboundedDataSet[T]`. Shares the `DataSet[T]` operation API but sign
 
 ## Operation API
 
-The following instance methods are defined on `DataSet[T]`:
+The following instance methods are defined on `DataSet[T]` in the current shipped package surface.
+
+Current note:
+
+- the trait surface uses `Self`-based signatures
+- output-schema refinement is tracked through typing/lowering rather than extra method-level type parameters on the public trait today
 
 | Method     | Signature                                       | Description                                                                                                                             |
 | ---------- | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | `filter`   | `def filter(self, predicate: bool) -> Self`     | Restrict rows by a boolean relational expression                                                                                        |
-| `join`     | `def join(self, other: Self, on: bool) -> Self` | Combine with another relation on a join condition (`other: Self` at the trait level; see RFC 001 **Shipped trait signatures (`Self`)**) |
-| `select`   | `def select(self) -> Self`                      | Project columns and expressions; logical output schema is tracked when lowering/typing (RFC 003)                                        |
+| `join`     | `def join(self, other: Self, on: bool) -> Self` | Combine with another relation on a join condition                                                                                       |
+| `select`   | `def select(self) -> Self`                      | Project columns and expressions; logical output schema is tracked when lowering/typing                                                  |
 | `group_by` | `def group_by(self) -> Self`                    | Define grouping keys for aggregation                                                                                                    |
 | `agg`      | `def agg(self) -> Self`                         | Apply aggregate functions over groups; use imported helpers from `pub::inql.functions` (e.g. `total`, `count_rows`)                     |
 | `order_by` | `def order_by(self) -> Self`                    | Define sort keys and directions                                                                                                         |
@@ -61,6 +66,11 @@ The following instance methods are defined on `DataSet[T]`:
 | `DataSet[T]`             | Intersection of bounded + unbounded capabilities       | Most restrictive (concrete kind unknown) |
 | `BoundedDataSet[T]`      | All relational operations                              | Unrestricted                             |
 | `UnboundedDataSet[T]`    | Relational operations minus unbounded-state operations | Streaming constraints enforced           |
+
+## Related docs
+
+- For execution, collection, and writes, see [Execution context (Reference)](execution_context.md)
+- For the conceptual model behind these carriers, see [Dataset types (Explanation)](../explanation/dataset_types.md)
 
 ## Usage
 

@@ -6,10 +6,10 @@ This document describes the architectural model of **InQL**. It is scoped to the
 
 InQL is two things that evolve together:
 
-1. **A specification** — Normative design under [docs/rfcs/][inql-rfcs]: naming and core semantics, dataset carriers,  Substrait emission, query authoring, the execution boundary, and the internal planning substrate.
-2. **An Incan library package** — `.incn` modules built with `incan build --lib`, consumed by Incan programs as a typed relational package.
+1. **A specification** under [docs/rfcs/][inql-rfcs]: naming and core semantics, dataset carriers, Substrait emission, query authoring, the execution boundary, and the internal planning substrate.
+2. **An Incan library package**: `.incn` modules built with `incan build --lib`, consumed by Incan programs as a typed relational package.
 
-The Incan compiler remains responsible for parsing, typechecking, lowering, and Rust/code generation. The InQL repo holds the author-facing package and the RFCs that define what that package is supposed to mean.
+The Incan compiler remains responsible for parsing, typechecking, lowering, and Rust/code generation. The InQL repo holds the author-facing package, its documentation, and the RFCs that define what that package is supposed to mean.
 
 ## Architectural model
 
@@ -17,7 +17,7 @@ InQL is organized around three layers:
 
 - **Prism internally** — the immutable planning and optimization engine over persistent authored plan state and derived optimized views
 - **Substrait at the boundary** — the normative emitted logical interchange contract
-- **Session for execution** — the execution/binding layer that consumes plans but does not define them
+- **Session for execution** — the execution and binding layer that consumes plans but does not define them
 
 That gives each major concept one job:
 
@@ -25,11 +25,17 @@ That gives each major concept one job:
 - **Substrait** communicates the plan
 - **Session** executes the plan
 
-This separation is important because it keeps internal planning concerns, portable interchange semantics, and runtime execution concerns from collapsing into one another.
+Per [RFC 008][rfc-008], that split is intentionally minimal at this stage:
+
+- Prism owns logical plan shaping before execution
+- Session owns backend binding, physical planning, runtime metrics, and adaptive behavior
+- richer statistics transport and optimizer mechanics remain follow-on work
+
+This separation keeps internal planning concerns, portable interchange semantics, and runtime execution concerns from collapsing into one another.
 
 ## Conceptual pipeline
 
-InQL is intended to follow this shape:
+InQL follows this shape:
 
 ```text
 Incan models / model-derived schema
@@ -75,7 +81,9 @@ Carriers are expected to be:
 - cheap to branch
 - execution-neutral on their own
 
-They should be understood as **experiences over shared Prism-managed planning state**, not as independent semantic systems.
+They should be understood as experiences over planning state, not as independent semantic systems.
+
+For current package behavior, see [Dataset types (Reference)][dataset-ref] and [Dataset types (Explanation)][dataset-expl].
 
 ### Prism
 
@@ -88,7 +96,7 @@ Prism is responsible for:
 - lineage preservation
 - logical rewrites and derived optimized views before boundary emission or execution
 
-Prism is **not** the normative interchange format and **not** the execution engine.
+Prism is not the normative interchange format and not the execution engine.
 
 ### Substrait
 
@@ -101,58 +109,57 @@ That means:
 - extension and gap handling are documented at the Substrait boundary
 - internal planning freedom is allowed, but emitted plans must follow RFC 002
 
-Today, the package’s RFC 002-facing code lives primarily in:
-
-- [plan.incn](../src/substrait/plan.incn)
-- [conformance.incn](../src/substrait/conformance.incn)
-- [schema.incn](../src/substrait/schema.incn)
+Substrait-facing package code lives primarily under [substrait/](../src/substrait/). For current boundary docs, start with [Substrait read-root and binding contract][substrait-read-root].
 
 ### Session
 
-Per [RFC 004][rfc-004], `Session` / `SessionContext` own binding and execution.
+Per [RFC 004][rfc-004], `Session` owns binding and execution.
 
 Session is responsible for:
 
 - resolving logical reads to physical resources
 - applying backend-specific execution behavior
+- owning physical planning and runtime adaptation policy
 - collecting or materializing results
 - writing to sinks where appropriate
 
+The public Session surface is sync-first for common author workflows, but the execution substrate underneath it remains async-capable. That keeps local and batch usage ergonomic without collapsing the backend seam into a permanently blocking design.
+
 Session is intentionally outside RFC 002’s normative emitted contract. It consumes plans; it does not define plan semantics.
 
-## Current implementation
+For current package behavior, see [Execution context (Reference)][execution-ref] and [Execution context (Explanation)][execution-expl].
 
-The repository includes:
+## Current implementation shape
 
-- author-facing carrier types exist in [mod.incn](../src/dataset/mod.incn)
-- canonical relational operator helpers exist in [ops.incn](../src/dataset/ops.incn)
-- RFC 002 emits **real proto-backed Substrait plans**
-- conformance scenarios are represented as typed package code in [conformance.incn](../src/substrait/conformance.incn)
-- `LazyFrame[T]` is a thin adapter over a backend-native `PrismCursor[T]` in [mod.incn](../src/dataset/mod.incn)
-- the current internal Prism implementation lives in [prism/mod.incn](../src/prism/mod.incn) with an authored graph, `PrismCursor[T]`, default-on canonical rewrites before RFC 002 lowering, explain/debug artifacts (applied-rule list + rewritten-to-authored origins), and an Incan-native typed store-id allocator (`static` + `newtype`)
-- cross-store join adoption dedups equivalent reachable RHS nodes within one adoption pass before appending the join node
-- dataset methods route through Prism internal seam helpers so future authoring surfaces can reuse one planning entry path
-- `DataFrame[T]` and `DataStream[T]` still remain direct `Rel` wrappers for now
+The package currently uses the following implementation shape:
 
-This means the package has a concrete Substrait boundary, conformance layer, and a real Prism-backed backend path for the current `LazyFrame[T]` operator surface with safe canonical rewrites. The remaining gap is breadth, not existence: Prism backs `LazyFrame[T]`, while other carriers, richer semantic spec types, and advanced optimizer phases remain follow-on work.
+- author-facing carrier types live in [mod.incn](../src/dataset/mod.incn)
+- canonical relational operator helpers live in [ops.incn](../src/dataset/ops.incn)
+- Substrait emission lives under [substrait/](../src/substrait/)
+- Prism internals live under [prism/](../src/prism/)
+- `LazyFrame[T]` currently routes through a backend-native `PrismCursor[T]`
+- `DataFrame[T]` and `DataStream[T]` are not yet fully converged on the same internal backing model as `LazyFrame[T]`
+
+This is enough to explain the package architecture while keeping current API behavior in language docs and follow-on gaps in RFCs, issues, and release notes.
 
 ## Repository layout
 
-| Path                              | Role                                              |
-| --------------------------------- | ------------------------------------------------- |
-| `incan.toml`                      | Package metadata and Rust dependency declarations |
-| `src/lib.incn`                    | Public package exports                            |
-| `src/dataset/mod.incn`            | Carrier types and trait surface                   |
-| `src/dataset/ops.incn`            | Canonical relational operator helpers             |
-| `src/prism/mod.incn`              | Internal Prism graph, cursor, and lowering logic  |
-| `src/substrait/plan.incn`         | RFC 002 proto-backed Substrait emission helpers   |
-| `src/substrait/conformance.incn`  | Typed conformance corpus and validation helpers   |
-| `src/substrait/schema.incn`       | Model/schema to Substrait type bridging           |
-| `tests/`                          | Package tests run through `incan test`            |
-| `docs/rfcs/`                      | Normative RFC series                              |
-| `docs/architecture.md`            | This overview                                     |
+| Path                             | Role                                               |
+| -------------------------------- | -------------------------------------------------- |
+| `incan.toml`                     | Package metadata and Rust dependency declarations  |
+| `src/lib.incn`                   | Public package exports                             |
+| `src/dataset/mod.incn`           | Carrier types and trait surface                    |
+| `src/dataset/ops.incn`           | Canonical relational operator helpers              |
+| `src/prism/mod.incn`             | Internal Prism graph, cursor, and lowering logic   |
+| `src/substrait/plan.incn`        | RFC 002 proto-backed Substrait emission helpers    |
+| `src/substrait/conformance.incn` | Typed conformance facade over catalog + validators |
+| `src/substrait/schema.incn`      | Model/schema to Substrait type bridging            |
+| `tests/`                         | Package tests run through `incan test`             |
+| `docs/language/`                 | Current package docs                               |
+| `docs/rfcs/`                     | Normative RFC series                               |
+| `docs/release_notes/`            | Release-facing notes                               |
 
-Normative behavior lives in the RFC series first. If code and RFCs disagree, treat that as a bug or transition state to resolve explicitly.
+Normative behavior lives in the RFC series first. Current package behavior and usage belong in the language docs. If code and RFCs disagree, treat that as a bug or transition state to resolve explicitly.
 
 ## Repository vs compiler
 
@@ -162,7 +169,7 @@ The InQL repository and the Incan compiler have different responsibilities.
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │  InQL repo                                                                  │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│  RFCs, package modules, tests, architecture, conformance corpus             │
+│  RFCs, package modules, tests, docs, architecture, conformance corpus       │
 │  Defines the relational package surface and its normative contracts         │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
@@ -172,11 +179,11 @@ The InQL repository and the Incan compiler have different responsibilities.
 │  Incan compiler                                                             │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  Parsing, typechecking, lowering, Rust emission, LSP, test runner, builds   │
-│  Makes InQL package code executable and eventually supports new surfaces    │
+│  Makes InQL package code executable and supports language surfaces          │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-That distinction matters because some InQL architecture is specified before the compiler fully supports every intended implementation path. Prism is a good example: the planning boundary is specified even where current compiler and tooling constraints still force temporary implementation compromises.
+That distinction matters because package design and compiler implementation move at different speeds. The repo owns the package and its design records; the compiler owns the language and tooling machinery that makes those surfaces executable.
 
 ## Build and test
 
@@ -184,42 +191,53 @@ From the repo root, with `incan` on `PATH`:
 
 ```text
 incan build --lib
-incan test
+incan test tests
 ```
 
 In practice:
 
 - `incan build --lib` parses, typechecks, lowers, and emits a Rust crate for the InQL library
-- `incan test` discovers and runs tests under `tests/`
+- `incan test tests` discovers and runs package tests under `tests/`
 
 CI builds `incan` first, then runs the InQL package checks against that compiler.
 
 ## Reading order
 
-If you want the clearest architecture story, read in this order:
+If you want the clearest current story, read in this order:
 
-1. [RFC 001][rfc-001] — carrier semantics
-2. [RFC 002][rfc-002] — Substrait boundary
-3. [RFC 004][rfc-004] — execution boundary
-4. [RFC 007][rfc-007] — Prism internal planning substrate
-
-That sequence mirrors the intended separation between authoring surface, interchange, execution, and internal planning.
+1. [Language overview][language-root]
+2. [Dataset types (Explanation)][dataset-expl]
+3. [Execution context (Explanation)][execution-expl]
+4. [Dataset types (Reference)][dataset-ref]
+5. [Execution context (Reference)][execution-ref]
+6. RFCs for normative and historical design context
 
 ## Where to read more
 
-| Topic                       | Location                                      |
-| --------------------------- | --------------------------------------------- |
-| InQL RFC index              | [docs/rfcs/README.md][inql-rfcs]              |
-| Prism planning engine       | [RFC 007][rfc-007]                            |
-| Substrait integration       | [RFC 002][rfc-002]                            |
-| Execution context           | [RFC 004][rfc-004]                            |
-| Incan compiler architecture | [Incan architecture docs][incan-architecture] |
-| Contributing                | [CONTRIBUTING.md][inql-contributing]          |
+| Topic                       | Location                                                   |
+| --------------------------- | ---------------------------------------------------------- |
+| Docs landing page           | [docs/README.md][docs-root]                                |
+| Language overview           | [docs/language/README.md][language-root]                   |
+| Dataset types               | [Reference][dataset-ref] · [Explanation][dataset-expl]     |
+| Execution context           | [Reference][execution-ref] · [Explanation][execution-expl] |
+| Substrait integration       | [Reference docs][substrait-read-root] · [RFC 002][rfc-002] |
+| Prism planning engine       | [RFC 007][rfc-007]                                         |
+| InQL RFC index              | [docs/rfcs/README.md][inql-rfcs]                           |
+| Incan compiler architecture | [Incan architecture docs][incan-architecture]              |
+| Contributing                | [CONTRIBUTING.md][inql-contributing]                       |
 
+<!-- References -->
 [incan-architecture]: https://github.com/dannys-code-corner/incan/blob/main/workspaces/docs-site/docs/contributing/explanation/architecture.md
+[docs-root]: README.md
+[language-root]: language/README.md
 [inql-rfcs]: rfcs/README.md
 [inql-contributing]: ../CONTRIBUTING.md
-[rfc-001]: rfcs/001_inql_dataset.md
+[dataset-ref]: language/reference/dataset_types.md
+[dataset-expl]: language/explanation/dataset_types.md
+[execution-ref]: language/reference/execution_context.md
+[execution-expl]: language/explanation/execution_context.md
+[substrait-read-root]: language/reference/substrait/read_root_binding_contract.md
 [rfc-002]: rfcs/002_apache_substrait_integration.md
 [rfc-004]: rfcs/004_inql_execution_context.md
 [rfc-007]: rfcs/007_prism_planning_engine.md
+[rfc-008]: rfcs/008_optimizer_boundary_stats_cbo_aqe.md

@@ -1,0 +1,145 @@
+"""CSV schema inference helpers for Session read paths."""
+
+from rust::std::fs import read_to_string
+from session.errors import SessionError, invalid_registration
+from substrait.schema import RowColumnSpec, SubstraitPrimitiveKind
+
+pub def infer_csv_schema_columns(uri: str) -> Result[list[RowColumnSpec], SessionError]:
+    """Read one CSV file and infer schema columns (name, nullability, primitive kind) from header + rows."""
+    match read_to_string(uri):
+        Ok(content) => 
+            normalized = str(content).replace(str("\r"), str(""))
+            lines = normalized.split(str("\n"))
+            if len(lines) == 0:
+                return Err(invalid_registration(f"csv source '{uri}' is empty"))
+            header = lines[0].strip()
+            if len(header) == 0:
+                return Err(invalid_registration(f"csv source '{uri}' has an empty header row"))
+            columns = _non_empty_csv_header_columns(header)
+            if len(columns) == 0:
+                return Err(invalid_registration(f"csv source '{uri}' produced no column names"))
+            mut inferred: list[SubstraitPrimitiveKind] = [SubstraitPrimitiveKind.I64 for _ in columns]
+            mut nullable: list[bool] = [false for _ in columns]
+            mut inferred_seeded: list[bool] = [false for _ in columns]
+
+            for raw_line in lines[1:]:
+                line = raw_line.strip()
+                if len(line) == 0:
+                    continue
+                cells = line.split(str(","))
+                for col_idx in range(len(columns)):
+                    if col_idx >= len(cells):
+                        nullable[col_idx] = true
+                        continue
+                    value = _strip_csv_quotes(cells[col_idx].strip())
+                    if len(value) == 0:
+                        nullable[col_idx] = true
+                        continue
+                    value_kind = _infer_primitive_kind(value)
+                    if inferred_seeded[col_idx] == false:
+                        inferred[col_idx] = value_kind
+                        inferred_seeded[col_idx] = true
+                    else:
+                        inferred[col_idx] = _merge_primitive_kind(inferred[col_idx], value_kind)
+            mut specs: list[RowColumnSpec] = []
+            for spec_idx in range(len(columns)):
+                mut kind = inferred[spec_idx]
+                if inferred_seeded[spec_idx] == false:
+                    kind = SubstraitPrimitiveKind.String
+                specs.append(RowColumnSpec(name=columns[spec_idx], kind=kind, nullable=nullable[spec_idx]))
+            return Ok(specs)
+        Err(err) => 
+            return Err(invalid_registration(f"failed to read csv source '{uri}': {err.to_string()}"))
+
+
+
+def _non_empty_csv_header_columns(header: str) -> list[str]:
+    """Parse one CSV header row into non-empty trimmed column names."""
+    return [raw_name.strip() for raw_name in header.split(str(",")) if len(raw_name.strip()) > 0]
+
+
+def _infer_primitive_kind(value: str) -> SubstraitPrimitiveKind:
+    """Infer a primitive kind from one CSV cell string value."""
+    lower = value.lower()
+    if lower == "true" or lower == "false":
+        return SubstraitPrimitiveKind.Bool
+    if _is_timestamp_like(value):
+        return SubstraitPrimitiveKind.Timestamp
+    if _is_integer_like(value):
+        return SubstraitPrimitiveKind.I64
+    if _is_float_like(value):
+        return SubstraitPrimitiveKind.F64
+    return SubstraitPrimitiveKind.String
+
+
+def _merge_primitive_kind(current: SubstraitPrimitiveKind, incoming: SubstraitPrimitiveKind) -> SubstraitPrimitiveKind:
+    """Merge two inferred primitive kinds into a safe common kind."""
+    if current == SubstraitPrimitiveKind.String or incoming == SubstraitPrimitiveKind.String:
+        return SubstraitPrimitiveKind.String
+    if current == incoming:
+        return current
+    if (current == SubstraitPrimitiveKind.I64 and incoming == SubstraitPrimitiveKind.F64) or (current == SubstraitPrimitiveKind.F64 and incoming == SubstraitPrimitiveKind.I64):
+        return SubstraitPrimitiveKind.F64
+    return SubstraitPrimitiveKind.String
+
+
+def _is_integer_like(value: str) -> bool:
+    """Return whether a string is a signed integer lexical form."""
+    if len(value) == 0:
+        return false
+    mut start = 0
+    if value[0] == str("-"):
+        if len(value) == 1:
+            return false
+        start = 1
+    for i in range(start, len(value)):
+        if _is_ascii_digit(value[i]) is false:
+            return false
+    return true
+
+
+def _strip_csv_quotes(value: str) -> str:
+    """Strip one pair of surrounding double quotes from a CSV cell value."""
+    if len(value) >= 2 and value[0] == str("\"") and value[len(value) - 1] == str("\""):
+        return value[1:len(value) - 1]
+    return value
+
+
+def _is_float_like(value: str) -> bool:
+    """
+    Return whether a string is a signed decimal lexical form.
+
+    Note: this implemenation is deliberately simple at this stage. RFC 010 is expected to introduce more robust and
+          configurable CSV parsing, at which point this can be revisited and likely replaced with a more complete
+          implementation.
+    """
+    if len(value) == 0:
+        return false
+    # Optional leading sign.
+    mut start_idx = 0
+    if value[0] == str("-"):
+        if len(value) == 1:
+            return false
+        start_idx = 1
+    # Must contain exactly one decimal point; all other chars must be digits.
+    mut seen_dot = false
+    for i in range(start_idx, len(value)):
+        ch = value[i]
+        if ch == str("."):
+            if seen_dot:
+                return false
+            seen_dot = true
+            continue
+        if _is_ascii_digit(ch) is false:
+            return false
+    return seen_dot
+
+
+def _is_ascii_digit(ch: str) -> bool:
+    """Return whether one single-character string is an ASCII decimal digit."""
+    return ch >= str("0") and ch <= str("9")
+
+
+def _is_timestamp_like(value: str) -> bool:
+    """Return whether a value looks like an ISO-like timestamp token."""
+    return value.contains(str("T")) and value.contains(str(":"))

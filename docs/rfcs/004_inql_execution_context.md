@@ -1,6 +1,6 @@
 # InQL RFC 004: Execution context and DataFusion
 
-- **Status:** Planned
+- **Status:** In Progress
 - **Created:** 2026-03-24
 - **Author(s):** Danny Meijer
 - **Related:**
@@ -8,16 +8,16 @@
   - InQL RFC 001 (dataset types — `DataSet[T]` carriers; `DataFrame[T]` as materialized result)
   - InQL RFC 002 (Apache Substrait — plan interchange; `ReadRel` and logical reads)
   - InQL RFC 003 (query DSL — `query {}` produces plans this RFC executes)
+  - InQL RFC 007 (Prism logical planning and optimization engine)
+  - InQL RFC 008 (optimizer boundary, statistics, cost-based optimization, and adaptive execution)
 - **Issue:** [InQL #5](https://github.com/dannys-code-corner/InQL/issues/5)
 - **RFC PR:** -
 - **Written against:** Incan v0.2
-- **Shipped in:** -
+- **Shipped in:** —
 
 ## Summary
 
 This RFC specifies the **execution context**: the session object that bridges InQL's **typed logical plans** and **real execution**. It defines how authors **read data** into `DataSet[T]` values, **execute plans** (lowered to Substrait per InQL RFC 002), and **write results** back to storage. **Apache DataFusion** is the **reference (and default) execution backend** for plan optimization and execution: it consumes Substrait plans, applies query optimizations (predicate pushdown, projection pruning, join reordering, constant folding), and executes against registered data sources, returning **Apache Arrow** record batches that InQL wraps in typed `DataFrame[T]` carriers. This RFC standardizes the explicit core `Session` contract; higher operational layers may compose, scope, or inject sessions and adapter conveniences on top, but they do not redefine InQL execution semantics. With RFCs 000–004, InQL is usable for read → transform → write workflows.
-
-> Editorial note (2026-04-07): RFC 004 remains authoritative for the `Session` execution boundary and backend abstraction. The optimizer boundary between Prism and `Session` is clarified by [InQL RFC 008](008_optimizer_boundary_stats_cbo_aqe.md), which governs ownership of statistics, cost-based optimization inputs, physical planning, and adaptive re-planning.
 
 ## Core model
 
@@ -345,3 +345,37 @@ Non-normative: the reference implementation **should** use DataFusion's `Session
 - **Execution backend vs source/sink integrations:** the backend named in `Session` is the engine that optimizes and executes the plan. External systems used for reads or writes may be integrated through registration or adapter layers without becoming separate execution backends in the core model.
 - **Scoped session conveniences:** workflow or adapter layers may offer locally scoped session access as ergonomic sugar, but the normative InQL contract remains the explicit `Session` API defined in this RFC.
 - **Session API inspiration:** the `Session` surface intentionally takes ergonomic inspiration from familiar data-runtime entry points such as Spark's session object, but InQL keeps its own typed carrier semantics, backend abstraction, and explicit execution model. Familiarity is a usability goal, not a promise of Spark API or semantic compatibility.
+
+## Implementation plan and checklist (non-normative)
+
+This section tracks the implementation path for this RFC. It is intentionally operational and does not change the
+normative semantics above.
+
+### Plan
+
+1. Land core `Session` surface and DataFusion-backed execution boundary.
+2. Land materialization boundary (`collect`) and typed `DataFrame[T]` payload contract.
+3. Land sink writes (`write_csv`, `write_parquet`) from deferred and materialized carriers.
+4. Keep backend abstraction portable while shipping only DataFusion as the implemented backend.
+5. Close remaining API gaps required by this RFC before marking status as `Implemented`.
+
+### Checklist
+
+- [x] `Session.default()` and `Session.builder()` exist.
+- [x] DataFusion is wired as the reference/default backend.
+- [x] Read paths exist for `table`, `read_csv`, `read_parquet`, and `read_arrow`.
+- [x] `Session.execute(...)` exists as explicit execution checkpoint.
+- [x] `Session.collect(...)` materializes `DataFrame[T]`.
+- [x] `LazyFrame.collect()` convenience delegates through active-session/session-owned semantics.
+- [x] `Session.write_csv(...)` and `Session.write_parquet(...)` exist.
+- [x] Typed execution/write errors are surfaced across registration, planning, runtime, and sink failures.
+- [ ] Logical-name schema binding is formalized as an explicit catalog/snapshot model rather than an implicit global registry, with clear overwrite diagnostics for collisions.
+- [ ] Public dataset join typing is aligned with the intended DX for heterogeneous joins, including a real output-schema contract rather than a temporary `Self`-only surface.
+- [ ] `Session.from_values(...)` is implemented as part of the core `Session` API surface described in this RFC.
+- [ ] Generic `Session.write(data, target)` API is implemented (beyond file-specific sink methods).
+- [ ] Multi-backend implementation beyond DataFusion is shipped through the backend abstraction.
+
+### Exit criteria for RFC status change
+
+RFC 004 can move from `In Progress` to `Implemented` when all checklist items above are complete and the InQL CI gate
+is green on the target release branch.

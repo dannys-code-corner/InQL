@@ -1,0 +1,32 @@
+"""Example: Session read -> transform -> write CSV using LazyFrame."""
+
+from functions import display
+from session import Session, SessionError, report_session_error
+
+@derive(Clone)
+pub model CsvOrder:
+    pub id: int
+
+
+def main() -> None:
+    mut session = Session.default()
+    input_uri = "tests/fixtures/orders.csv"
+    output_uri = "tests/target/session_example_orders_out.csv"
+
+    match _read_transform_write(session, input_uri, output_uri):
+        Ok(_) => print("Wrote CSV to: " + output_uri)
+        Err(err) => report_session_error("example.read_transform_write_csv", err)
+
+
+
+def _read_transform_write(mut session: Session, input_uri: str, output_uri: str) -> Result[None, SessionError]:
+    # Read path stays deferred: this returns LazyFrame, not local materialized data.
+    orders = session.read_csv[CsvOrder]("orders", input_uri)?
+    # Activate after registration so LazyFrame.collect/display sees the registered sources.
+    session.activate()
+
+    # Keep transform simple and schema-safe for the current fixture.
+    transformed = orders.filter(true).limit(2)
+    session.write_csv(transformed, output_uri)?
+    display(transformed)
+    return Ok(None)

@@ -1,6 +1,6 @@
 # InQL RFC 008: Optimizer boundary, statistics, cost-based optimization, and adaptive execution
 
-- **Status:** Draft
+- **Status:** Planned
 - **Created:** 2026-04-07
 - **Author(s):** Danny Meijer
 - **Related:**
@@ -13,7 +13,7 @@
 
 ## Summary
 
-This RFC defines the optimizer boundary between **Prism** and **`Session`** as InQL grows beyond the first Prism adoption slice. Prism remains the internal engine for analyzed logical planning, semantic rewrites, property inference, logical alternative exploration, and cost-model hooks. `Session` remains the owner of backend capabilities, catalog statistics, physical planning, pushdown policy, runtime statistics, and adaptive re-planning during execution. This RFC does not replace RFC 007's role in establishing Prism as the internal planning substrate; it supersedes only the optimizer-boundary guidance where RFC 007 used broader wording or early-slice examples that would otherwise blur semantic optimization and backend execution policy.
+This RFC defines the optimizer boundary between **Prism** and **`Session`** as InQL grows beyond the first Prism adoption slice. Prism remains the owner of analyzed logical planning, semantic rewrites, canonicalization, schema-preserving logical optimization, and any static planning facts that do not depend on runtime feedback. `Session` remains the owner of backend capabilities, physical planning, backend pushdown policy, runtime statistics, execution metrics, and adaptive re-planning during execution. This RFC does not replace RFC 007's role in establishing Prism as the internal planning substrate; it settles the ownership boundary needed for RFC 004 and defers deeper statistics, CBO, and AQE mechanics until the execution side is better grounded.
 
 ## Motivation
 
@@ -30,6 +30,12 @@ InQL needs the same kind of separation that high-performance query engines conve
 - a runtime layer that can react when real cardinalities, partition sizes, or skew differ from pre-execution estimates
 
 The goal is not to copy Spark literally. The goal is to adopt the useful split in spirit: logical optimization is not the same thing as physical optimization, and neither is the same thing as adaptive re-optimization during execution.
+
+This RFC intentionally stops at the minimum boundary needed to keep the architecture coherent:
+
+- ownership is clear enough that RFC 004 can proceed
+- the boundary is explicit enough that deeper optimizer work has a stable home later
+- detailed statistics transport, cost formulas, and AQE mechanics remain follow-on work
 
 ## Goals
 
@@ -75,8 +81,8 @@ from models import Customer, Order, RegionalSummary
 
 session = Session.default()
 
-orders: LazyFrame[Order] = session.table("orders")
-customers: LazyFrame[Customer] = session.table("customers")
+orders: LazyFrame[Order] = session.table[Order]("orders")?
+customers: LazyFrame[Customer] = session.table[Customer]("customers")?
 
 summary: LazyFrame[RegionalSummary] = query {
     FROM orders
@@ -93,19 +99,20 @@ summary.raw_plan()
 summary.analyzed_plan()
 summary.plan_after_inql_rules()
 
-# Session-owned execution and runtime behavior
-result: DataFrame[RegionalSummary] = session.collect(summary)
+# Session-owned execution and runtime behavior (current slice uses execute/write)
+executed: LazyFrame[RegionalSummary] = session.execute(summary)?
+session.write_csv(executed, "target/summary.csv")?
 session.session_plan(summary)
 session.executed_plan(summary)
 ```
 
-For explain and tooling, InQL should make the stages explicit instead of collapsing them into one vague “optimized plan” label. A future author or tool should be able to ask for at least:
+For explain and tooling, InQL should make the stages explicit instead of collapsing them into one vague “optimized plan” label. A future author or tool should be able to distinguish at least:
 
-- `raw_plan()` — authored Prism DAG
-- `analyzed_plan()` — resolved names, schemas, and derived logical properties
-- `plan_after_inql_rules()` — Prism-owned logical rewrites
-- `session_plan()` — backend-bound physical or session-owned optimized plan
-- `executed_plan()` — what actually ran, including adaptive changes when available
+- authored Prism state
+- analyzed Prism state
+- Prism-owned logical rewrites
+- session-owned planning / execution state
+- executed runtime state when adaptive behavior exists
 
 ## Reference-level explanation (precise rules)
 
@@ -146,10 +153,10 @@ This RFC distinguishes three statistics families:
 
 Ownership rules:
 
-- Prism **may** consume all three families when available.
+- Prism **may** consume logical inferred facts and pre-execution source statistics when they are available.
 - Prism **must** be able to produce a valid logical result even when only logical inferred facts are available.
-- `Session` **must** supply source and runtime statistics to the extent the selected backend can provide them.
-- Runtime statistics **must not** be treated as Prism-authored facts; they belong to execution-time artifacts.
+- `Session` **may** supply pre-execution source statistics to Prism when the chosen backend or catalog can provide them.
+- Runtime statistics **must** remain session-owned execution artifacts even when they later inform planning.
 
 ### 3. Cost-based optimization
 
@@ -172,11 +179,11 @@ That means:
 - `Session` may record those adaptive decisions in `executed_plan()` or equivalent explain surfaces.
 - Adaptive behavior **must not** mutate Prism-authored history.
 
-### 5. Named optimizer artifacts
+### 5. Illustrative plan-stage vocabulary
 
-Implementations **should** expose distinct names for plan stages rather than one ambiguous “optimized plan” API.
+Implementations **should** expose distinct names for plan stages rather than one ambiguous “optimized plan” API, but this RFC does **not** standardize one exact public explain surface yet.
 
-Minimum intended names:
+Illustrative names:
 
 - `raw_plan()`
 - `analyzed_plan()`
@@ -184,7 +191,7 @@ Minimum intended names:
 - `session_plan()`
 - `executed_plan()`
 
-Equivalent names are acceptable if they preserve the same separation.
+Equivalent names are acceptable if they preserve the same separation. The exact public placement of these surfaces remains follow-on design work and is not a blocker for RFC 004.
 
 ### 6. Precedence against older RFCs
 
@@ -242,6 +249,14 @@ This RFC is additive at the API and architecture level:
 
 Existing prototype APIs that use vague names like `optimized_view` remain acceptable as transitional implementation details, but future public-facing documentation **should** migrate to more precise stage names.
 
+## Design Decisions
+
+- **Boundary-first scope:** RFC 008 settles Prism vs `Session` ownership first. It does not attempt to finish the statistics, CBO, or AQE architecture before RFC 004 begins.
+- **Statistics ownership split:** Prism may use logical inferred facts and any pre-execution source statistics that `Session` chooses to provide. Runtime-observed statistics remain session-owned and must not become Prism-authored facts.
+- **Explain/API scope:** Distinct authored, analyzed, rewritten, session, and executed stages are part of the intended mental model, but the exact public API names and attachment points remain illustrative in this RFC.
+- **Cross-execution reuse boundary:** Runtime-derived information may be cached only as session-scoped or execution-scoped metadata. It must not mutate authored Prism history or be reclassified as authored semantic truth.
+- **Deferred follow-on design:** Detailed statistics transport, concrete cost interfaces, memo/CBO design, and AQE mechanics are intentionally deferred until after RFC 004 gives the execution side a firmer shape.
+
 ## Alternatives considered
 
 - **Keep RFC 007 as the only optimizer RFC** — rejected; RFC 007 already serves as the Prism adoption record for the first implementation slice, and retrofitting a more detailed optimizer boundary into it would mix historical adoption work with the follow-on architecture.
@@ -262,10 +277,9 @@ Existing prototype APIs that use vague names like `optimized_view` remain accept
 - **Execution / interchange** — `Session` and backend integration layers **must** own physical planning, runtime stats, and adaptive re-planning policy.
 - **Documentation** — explain surfaces and architecture notes **should** stop using “optimized plan” as an undifferentiated term.
 
-## Unresolved questions
+## Deferred follow-on work
 
-- Should the Prism/`Session` handoff carry source statistics as a concrete snapshot artifact, a callable capability surface, or both?
-- Should `session_plan()` and `executed_plan()` be exposed on `Session`, on carriers, or through a dedicated explain object?
-- When runtime statistics materially improve later planning, what information may be cached across executions without blurring authored facts, session facts, and execution facts?
-
-<!-- Rename this section to "Design Decisions" once all questions have been resolved. An RFC cannot move from Draft to Planned until no unresolved questions remain. -->
+- Define the concrete statistics handoff shape when RFC 004 and the execution side are better grounded.
+- Specify cost-based optimization machinery on the Prism side.
+- Specify adaptive execution and runtime feedback mechanics on the `Session` side.
+- Decide the final public explain surface for authored, analyzed, rewritten, session, and executed plan stages.

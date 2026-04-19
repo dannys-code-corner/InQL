@@ -1,0 +1,132 @@
+"""
+Validation helpers for Substrait conformance scenario contracts.
+
+This module evaluates emitted Substrait plans against the machine-readable contracts declared in the conformance
+catalog. Its responsibility is validation logic:
+
+- root-shape checks
+- required relation-kind coverage
+- scenario-specific invariant checks that are independent from fixture literals
+
+It intentionally does not construct plans or own sample fixture identities such as table names, column labels, or URIs.
+Those belong in tests so production conformance code remains about contract validation rather than synthetic example
+generation.
+
+These validators are designed to prove boundary facts about emitted plans. They are not a complete semantic oracle for
+every relational operation InQL may eventually support.
+"""
+
+from rust::substrait::proto import Plan
+from substrait.plan import (
+    plan_contains_relation_kind,
+    plan_encoded_len,
+    read_kind_name,
+    reference_subtree_ordinal,
+    relation_kind_name,
+    root_rel,
+    set_operation_name,
+)
+from substrait.conformance_catalog import ConformanceRel, CoreScenarioKey, SubstraitConformanceScenario
+
+def _capability_tags_contain(scenario: SubstraitConformanceScenario, expected: str) -> bool:
+    """Check scenario capability-tag membership."""
+    for tag in scenario.capability_tags.0:
+        if tag == expected:
+            return true
+    return false
+
+
+pub def relation_kind_name_from_conformance(rel: ConformanceRel) -> str:
+    """Map one conformance relation enum to the public Substrait relation-kind label."""
+    match rel:
+        ConformanceRel.Read => 
+            return str("ReadRel")
+        ConformanceRel.Filter => 
+            return str("FilterRel")
+        ConformanceRel.Project => 
+            return str("ProjectRel")
+        ConformanceRel.Join => 
+            return str("JoinRel")
+        ConformanceRel.Cross => 
+            return str("CrossRel")
+        ConformanceRel.Aggregate => 
+            return str("AggregateRel")
+        ConformanceRel.Sort => 
+            return str("SortRel")
+        ConformanceRel.Fetch => 
+            return str("FetchRel")
+        ConformanceRel.Set => 
+            return str("SetRel")
+        ConformanceRel.Reference => 
+            return str("ReferenceRel")
+        ConformanceRel.ExtensionSingle => 
+            return str("ExtensionSingleRel")
+        ConformanceRel.ExtensionLeaf => 
+            return str("ExtensionLeafRel")
+        _ => 
+            return str("UnknownRel")
+
+
+
+def _root_matches_declared_read_kind(scenario: SubstraitConformanceScenario, plan: Plan) -> bool:
+    """
+    Validate read-root subtype constraints declared by scenario capability tags.
+
+    This checks read-kind shape only; it intentionally does not assert fixture table names, column names, or URI
+    literals.
+    """
+    root = root_rel(plan)
+    if relation_kind_name(root) != str("ReadRel"):
+        return false
+    if _capability_tags_contain(scenario, str("named-table")):
+        return read_kind_name(root) == str("NamedTable")
+    if _capability_tags_contain(scenario, str("local-files")):
+        return read_kind_name(root) == str("LocalFiles")
+    if _capability_tags_contain(scenario, str("virtual-table")):
+        return read_kind_name(root) == str("VirtualTable")
+    return true
+
+
+pub def scenario_matches_root_shape(scenario: SubstraitConformanceScenario, plan: Plan) -> bool:
+    """
+    Check whether one emitted plan satisfies the scenario root contract.
+
+    This function validates root relation shape constraints only, and does not validate recursive required relations or
+    scenario-specific invariants.
+    """
+    if plan_encoded_len(plan) == 0:
+        return false
+    root = root_rel(plan)
+    if scenario.root_rel == ConformanceRel.Read:
+        return _root_matches_declared_read_kind(scenario, plan)
+    return relation_kind_name(root) == relation_kind_name_from_conformance(scenario.root_rel)
+
+
+pub def scenario_has_required_rel_kinds(scenario: SubstraitConformanceScenario, plan: Plan) -> bool:
+    """
+    Check recursive relation-kind coverage for one scenario.
+
+    This validates that each declared required relation kind appears somewhere in the plan tree.
+    """
+    for expected_ref in scenario.required_rels:
+        kind = relation_kind_name_from_conformance(expected_ref)
+        if plan_contains_relation_kind(plan, kind) is false:
+            return false
+    return true
+
+
+pub def scenario_matches_key_invariants(key: CoreScenarioKey, plan: Plan) -> bool:
+    """
+    Validate scenario-key invariants that are independent from fixture identities.
+
+    These checks intentionally avoid asserting fixture table names, column labels, or URI literals.
+    """
+    root = root_rel(plan)
+    match key:
+        CoreScenarioKey.SetRelOperations => 
+            return set_operation_name(root) == str("UnionDistinct")
+        CoreScenarioKey.ReferenceRelSharedSubplan => 
+            return reference_subtree_ordinal(root) == 7
+        _ => 
+            return true
+

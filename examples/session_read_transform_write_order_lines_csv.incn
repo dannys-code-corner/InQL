@@ -1,0 +1,40 @@
+"""Example: Session read -> transform -> collect/display -> write CSV with multi-column order lines."""
+
+from functions import display
+from session import Session, SessionError, report_session_error
+
+@derive(Clone)
+pub model OrderLine:
+    pub order_id: int
+    pub line_id: int
+    pub sku: str
+    pub qty: int
+    pub unit_price: float
+    pub currency: str
+    pub status: str
+    pub created_at: str
+
+
+def main() -> None:
+    mut session = Session.default()
+    input_uri = "tests/fixtures/order_lines.csv"
+    output_uri = "tests/target/session_example_order_lines_out.csv"
+
+    match _read_transform_collect_display_write(session, input_uri, output_uri):
+        Ok(_) => print("Wrote CSV to: " + output_uri)
+        Err(err) => report_session_error("example.read_transform_write_order_lines_csv", err)
+
+
+
+def _read_transform_collect_display_write(mut session: Session, input_uri: str, output_uri: str) -> Result[None, SessionError]:
+    raw = session.read_csv[OrderLine]("order_lines", input_uri)?
+    # Activate after registration so LazyFrame.collect/display sees the registered sources.
+    session.activate()
+
+    # Apply one concrete transform with visible effect: reduce to top-2 rows.
+    # (Note: More expressive predicates/order keys are tracked as separate surface work.)
+    transformed = raw.limit(2)
+
+    session.write_csv(transformed, output_uri)?
+    display(transformed)
+    return Ok(None)

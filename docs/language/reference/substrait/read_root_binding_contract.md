@@ -14,12 +14,12 @@ The execution context **must** resolve logical reads to physical resources throu
 
 ## `ReadRel` variant reference
 
-| Variant | Substrait field | Typical InQL use | Portability |
-| --- | --- | --- | --- |
-| `NamedTable` | `named_table` (list of name parts) | Registered logical table name; resolved by session registry | Portable across conforming consumers that have registered the same logical name |
-| `LocalFiles` | `local_files` (file list + format options) | Parquet, CSV, Arrow IPC scan from a URI | Portable if consumers can resolve the URI; URI format is not standardized by Substrait |
-| `VirtualTable` | `virtual_table` (inline rows) | Literal or embedded row data; `session.from_values(...)` | Fully portable; rows are embedded directly in the plan |
-| Extension leaf | `ExtensionLeafRel` | Custom source type with no applicable standard `ReadRel` variant | Extension-URI-dependent; portability requires consumers to support the registered URI |
+| Variant        | Substrait field                            | Typical InQL use                                                 | Portability                                                                            |
+| -------------- | ------------------------------------------ | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `NamedTable`   | `named_table` (list of name parts)         | Registered logical table name; resolved by session registry      | Portable across conforming consumers that have registered the same logical name        |
+| `LocalFiles`   | `local_files` (file list + format options) | Parquet, CSV, Arrow IPC scan from a URI                          | Portable if consumers can resolve the URI; URI format is not standardized by Substrait |
+| `VirtualTable` | `virtual_table` (inline rows)              | Literal or embedded row data                                     | Fully portable; rows are embedded directly in the plan                                 |
+| Extension leaf | `ExtensionLeafRel`                         | Custom source type with no applicable standard `ReadRel` variant | Extension-URI-dependent; portability requires consumers to support the registered URI  |
 
 ### What a `ReadRel` must carry
 
@@ -45,7 +45,7 @@ The execution context ([InQL RFC 004][rfc-004] `Session`) **must**:
 
 ## Adapter boundary
 
-Product SDKs and higher operational layers **may** provide convenience read APIs (for example, `session.read_parquet(uri)` wrapping a `ReadRel` + `LocalFiles`). These convenience surfaces:
+Product SDKs and higher operational layers **may** provide convenience read APIs (for example, `session.read_csv[T](name, uri)` wrapping registration + `ReadRel` resolution). These convenience surfaces:
 
 - **Must** produce a `ReadRel` in the normative Substrait interchange with the logical identity encoded appropriately for the variant.
 - **Must not** embed execution-context state — resolved credentials, session tokens, resolved endpoint URLs — in the `ReadRel` payload of the normative plan.
@@ -57,18 +57,16 @@ Adapter-specific "open connection" or "bind source" APIs **should not** be speci
 
 The following table summarizes how each `Session` read method maps to a `ReadRel` variant and the resulting InQL carrier type.
 
-| `Session` method | Returns | `ReadRel` variant |
-| --- | --- | --- |
-| `session.table(name)` | `LazyFrame[T]` | `NamedTable` |
-| `session.read_parquet(uri)` | `LazyFrame[T]` | `LocalFiles` (Parquet format) |
-| `session.read_csv(uri)` | `LazyFrame[T]` | `LocalFiles` (delimited text format) |
-| `session.read_arrow(uri)` | `LazyFrame[T]` | `LocalFiles` (Arrow IPC format) |
-| `session.from_values(rows)` | `LazyFrame[T]` | `VirtualTable` |
+| `Session` method                     | Returns        | `ReadRel` variant                                 |
+| ------------------------------------ | -------------- | ------------------------------------------------- |
+| `session.table[T](name)`             | `LazyFrame[T]` | `NamedTable`                                      |
+| `session.read_csv[T](name, uri)`     | `LazyFrame[T]` | `NamedTable` (via Session registration + binding) |
+| `session.read_parquet[T](name, uri)` | `LazyFrame[T]` | `NamedTable` (via Session registration + binding) |
+| `session.read_arrow[T](name, uri)`   | `LazyFrame[T]` | `NamedTable` (via Session registration + binding) |
 
-In all cases the `LazyFrame[T]` holds a deferred plan — no data is fetched until `session.collect(...)` is called. The `ReadRel` in the deferred plan carries only the logical identity; resolution to a physical source happens at execution time per the execution context obligations described above.
+In all cases the `LazyFrame[T]` holds a deferred plan — no data is fetched until Session execution is triggered by `session.execute(...)`, `session.collect(...)`, a convenience call such as `lazy.collect()`, or a Session-owned write. The `ReadRel` in the deferred plan carries only the logical identity; resolution to a physical source happens at execution time per the execution context obligations described above.
 
-<!-- Link references (single place for targets) -->
+<!-- References -->
 
 [rfc-002]: ../../rfcs/002_apache_substrait_integration.md
-[rfc-001]: ../../rfcs/001_inql_dataset.md
 [rfc-004]: ../../../rfcs/004_inql_execution_context.md

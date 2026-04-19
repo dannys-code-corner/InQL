@@ -7,14 +7,22 @@ model PrismStoredNode:
     node: PrismNode
 
 
+model PrismStoreNodeCount:
+    store_id_raw: int
+    next_node_id: int
+
+
+# -- static buffers for append-only store state --
 static allocated_prism_stores: list[bool] = []
 static prism_stored_nodes: list[PrismStoredNode] = []
+static prism_store_node_counts: list[PrismStoreNodeCount] = []
 
 
 pub def allocate_prism_store_id() -> PrismStoreId:
     """Allocate one monotonic module-owned Prism store id."""
     next_id = len(allocated_prism_stores)
     allocated_prism_stores.append(true)
+    prism_store_node_counts.append(PrismStoreNodeCount(store_id_raw=next_id, next_node_id=0))
     return PrismStoreId(next_id)
 
 
@@ -24,8 +32,10 @@ pub def append_node(store_id: PrismStoreId, kind: PrismNodeKind, input_ids: list
 
     Node ids are store-local and monotonic. Appending never mutates earlier nodes.
     """
-    next_id = len(store_nodes(store_id))
-    prism_stored_nodes.append(PrismStoredNode(store_id_raw=store_id.0, node=PrismNode(node_id=next_id, kind=kind, input_ids=input_ids, named_table=named_table, predicate=predicate, limit_count=limit_count)))
+    next_id = _latest_store_next_node_id(store_id)
+    appended = PrismNode(node_id=next_id, kind=kind, input_ids=input_ids, named_table=named_table, predicate=predicate, limit_count=limit_count)
+    prism_stored_nodes.append(PrismStoredNode(store_id_raw=store_id.0, node=appended))
+    prism_store_node_counts.append(PrismStoreNodeCount(store_id_raw=store_id.0, next_node_id=next_id + 1))
     return next_id
 
 
@@ -38,24 +48,26 @@ pub def adopt_cursor_subgraph(target_store_id: PrismStoreId, source_store_id: Pr
     """
     mut id_map: list[int] = []
     mut adopted_node_ids: list[int] = []
+    source_store_nodes = store_nodes(source_store_id)
+    mut target_store_nodes = store_nodes(target_store_id)
 
     # Seed the source->target id map with "unmapped" sentinels for every source-store node id.
-    for _node in store_nodes(source_store_id):
-        id_map.append(-1)
-    reachable_node_ids = reachable_node_ids(source_store_id, tip_id)
+    id_map = [-1 for _node in source_store_nodes]
+    reachable_ids = reachable_node_ids(source_store_id, tip_id)
     mut adopted_node_count = 0
-    for source_node_id in reachable_node_ids:
-        source_node = node_at(source_store_id, source_node_id)
+    for source_node_id in reachable_ids:
+        source_node = source_store_nodes[source_node_id]
 
         # Inputs are remapped first so structural equality is evaluated in the target store's id space.
         remapped_input_ids = remap_input_ids(source_node.input_ids, id_map)
 
         # Dedup is intentionally local to this adoption pass. We do not attempt global memoization across stores yet.
-        reused_adopted_id = _find_existing_adopted_node_id(target_store_id, source_node, remapped_input_ids, adopted_node_ids)
+        reused_adopted_id = _find_existing_adopted_node_id(target_store_nodes, source_node, remapped_input_ids, adopted_node_ids)
         if reused_adopted_id >= 0:
             id_map[source_node_id] = reused_adopted_id
         else:
             adopted_id = append_node(target_store_id, source_node.kind, remapped_input_ids, source_node.named_table, source_node.predicate, source_node.limit_count)
+            target_store_nodes.append(PrismNode(node_id=adopted_id, kind=source_node.kind, input_ids=remapped_input_ids, named_table=source_node.named_table, predicate=source_node.predicate, limit_count=source_node.limit_count))
             id_map[source_node_id] = adopted_id
             adopted_node_ids.append(adopted_id)
             adopted_node_count = adopted_node_count + 1
@@ -65,10 +77,7 @@ pub def adopt_cursor_subgraph(target_store_id: PrismStoreId, source_store_id: Pr
 
 pub def store_nodes(store_id: PrismStoreId) -> list[PrismNode]:
     """Materialize the current authored nodes for one store in node-id order."""
-    mut nodes: list[PrismNode] = []
-    for stored in prism_stored_nodes:
-        if stored.store_id_raw == store_id.0:
-            nodes.append(stored.node)
+    nodes = [stored.node for stored in prism_stored_nodes if stored.store_id_raw == store_id.0]
     return nodes
 
 
@@ -87,13 +96,11 @@ pub def reachable_node_ids(store_id: PrismStoreId, tip_id: int) -> list[int]:
         if visited[node_id]:
             continue
         visited[node_id] = true
-        node = node_at(store_id, node_id)
+        node = store_nodes_for_id[node_id]
         for input_id in node.input_ids:
             pending.append(input_id)
-    mut ordered: list[int] = []
-    for node in store_nodes_for_id:
-        if visited[node.node_id]:
-            ordered.append(node.node_id)
+    # Compute reachable node ids in store order for stable iteration in later passes.
+    ordered = [node.node_id for node in store_nodes_for_id if visited[node.node_id]]
     return ordered
 
 
@@ -105,22 +112,22 @@ pub def node_at(store_id: PrismStoreId, node_id: int) -> PrismNode:
 
 pub def remap_input_ids(input_ids: list[int], id_map: list[int]) -> list[int]:
     """Remap one input-id list through a node-id translation table."""
-    mut remapped: list[int] = []
-    for input_id in input_ids:
-        remapped.append(id_map[input_id])
+    remapped = [id_map[input_id] for input_id in input_ids]
     return remapped
 
 
-def _find_existing_adopted_node_id(target_store_id: PrismStoreId, source_node: PrismNode, remapped_input_ids: list[int], adopted_node_ids: list[int]) -> int:
+def _find_existing_adopted_node_id(target_store_nodes: list[PrismNode], source_node: PrismNode, remapped_input_ids: list[int], adopted_node_ids: list[int]) -> int:
+    """Return an already adopted node id with matching structure, or `-1`."""
     # Only scan nodes appended during this adoption pass; older target-store nodes are out of scope for this slice.
     for adopted_node_id in adopted_node_ids:
-        candidate = node_at(target_store_id, adopted_node_id)
+        candidate = target_store_nodes[adopted_node_id]
         if _nodes_structurally_equal(candidate, source_node, remapped_input_ids):
             return adopted_node_id
     return -1
 
 
 def _nodes_structurally_equal(candidate: PrismNode, source_node: PrismNode, remapped_input_ids: list[int]) -> bool:
+    """Return whether candidate and source node are structurally equivalent."""
     if candidate.kind != source_node.kind:
         return false
     if candidate.named_table != source_node.named_table:
@@ -130,3 +137,18 @@ def _nodes_structurally_equal(candidate: PrismNode, source_node: PrismNode, rema
     if candidate.limit_count != source_node.limit_count:
         return false
     return candidate.input_ids == remapped_input_ids
+
+
+def _latest_store_next_node_id(store_id: PrismStoreId) -> int:
+    """
+    Return next store-local node id for one store.
+
+    This scans backward through per-store counter events, so append avoids rebuilding the full store node snapshot.
+    """
+    mut idx = len(prism_store_node_counts)
+    while idx > 0:
+        idx -= 1
+        candidate = prism_store_node_counts[idx]
+        if candidate.store_id_raw == store_id.0:
+            return candidate.next_node_id
+    return 0

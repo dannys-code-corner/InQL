@@ -70,3 +70,6 @@ jobs:
 
       - name: Run tests
         run: make test
+
+      - name: Pub consumer smoke check
+        run: make smoke-consumer

@@ -96,7 +96,7 @@ No surface changes. The `EXPLODE` clause in `query {}` and the `explode` method 
 - Which exact Substrait revision introduces the portable unnest `Rel`? (Blocked on upstream; track `substrait-io/substrait`.)
 - Are there semantic edge cases between the InQL extension encoding and the upstream core `Rel` that require a compatibility shim or a lowering-time rewrite?
 
-<!-- Link references (single place for targets) -->
+<!-- References -->
 
 [ref-operator-catalog]: ../language/reference/substrait/operator_catalog.md
 [ref-revision-policy]: ../language/reference/substrait/revision_and_extension_policy.md

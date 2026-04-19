@@ -1,0 +1,161 @@
+"""
+Scenario catalog for InQL's Substrait conformance corpus.
+
+This module owns the machine-readable contract metadata for the current InQL Substrait profile:
+
+- stable scenario identifiers
+- scenario taxonomy and portability classification
+- required relation-shape declarations
+- human-readable intent and constraint text that describes the contract
+
+It does not own synthetic fixture plans. Production code defines the contract; tests build representative plans and
+validate them against this catalog.
+
+The catalog is intentionally narrower than full semantic correctness. A scenario entry describes what boundary facts
+InQL claims to emit or preserve in a plan. It does not, by itself, prove that higher-level query semantics are
+complete.
+"""
+
+pub enum ConformanceStatus:
+    Core
+    Extension
+    Gap
+    OptionalMutation
+
+
+pub enum ConformanceProfileTag:
+    ReadQueryCore
+    OptionalMutation
+    GapPolicy
+    ReadBindingBoundary
+
+
+@derive(Clone)
+pub enum ConformanceRel:
+    Read
+    Filter
+    Project
+    Join
+    Cross
+    Aggregate
+    Sort
+    Fetch
+    Set
+    Reference
+    Write
+    Update
+    Ddl
+    ExtensionLeaf
+    ExtensionSingle
+    ExtensionMulti
+
+
+pub enum ConformancePortability:
+    Portable
+    ConsumerConditional
+    NonPortable
+
+
+pub enum CoreScenarioKey:
+    ReadNamedTable
+    ReadLocalFiles
+    ReadVirtualTable
+    FilterRows
+    ProjectComputedColumns
+    JoinRelVariants
+    CrossRelCartesian
+    AggregateGroupingSets
+    SortRelOrdering
+    FetchRelLimitOffset
+    SetRelOperations
+    ReferenceRelSharedSubplan
+
+
+@derive(Clone)
+pub type ConformanceCapabilityTags = newtype list[str]
+
+
+@derive(Clone)
+pub type ConformanceReferences = newtype list[str]
+
+
+pub model SubstraitConformanceScenario:
+    """Machine-readable conformance contract metadata for one scenario."""
+
+    pub scenario_id: str
+    pub title: str
+    pub status: ConformanceStatus
+    pub profile_tags: list[ConformanceProfileTag]
+    pub capability_tags: ConformanceCapabilityTags
+    pub root_rel: ConformanceRel
+    pub required_rels: list[ConformanceRel]
+    pub portability: ConformancePortability
+    pub intent: str
+    pub required_rel_shape: str
+    pub expected_constraints: str
+    pub references: ConformanceReferences
+
+
+def _capability_tags(tags: list[str]) -> ConformanceCapabilityTags:
+    """Wrap raw tag strings as typed conformance capability tags."""
+    return ConformanceCapabilityTags(tags)
+
+
+def _references(paths: list[str]) -> ConformanceReferences:
+    """Wrap raw reference paths as typed conformance reference links."""
+    return ConformanceReferences(paths)
+
+
+def _refs_read_root_binding() -> ConformanceReferences:
+    """Return canonical reference links for read root-binding scenarios."""
+    return _references([str("docs/rfcs/002_apache_substrait_integration.md"), str("docs/language/reference/substrait/operator_catalog.md"), str("docs/language/reference/substrait/read_root_binding_contract.md")])
+
+
+def _refs_core_operator() -> ConformanceReferences:
+    """Return canonical reference links for core operator scenarios."""
+    return _references([str("docs/rfcs/002_apache_substrait_integration.md"), str("docs/language/reference/substrait/operator_catalog.md")])
+
+
+def _core_scenario(scenario_id: str, title: str, capability_tags: ConformanceCapabilityTags, root_rel: ConformanceRel, required_rels: list[ConformanceRel], intent: str, required_rel_shape: str, expected_constraints: str, references: ConformanceReferences) -> SubstraitConformanceScenario:
+    """
+    Build one core-profile conformance scenario entry.
+
+    Scenario IDs remain stable identifiers for the contract itself; architecture refactors must not churn IDs when
+    semantics stay compatible.
+    """
+    return SubstraitConformanceScenario(scenario_id=scenario_id, title=title, status=ConformanceStatus.Core, profile_tags=[ConformanceProfileTag.ReadQueryCore], capability_tags=capability_tags, root_rel=root_rel, required_rels=required_rels, portability=ConformancePortability.Portable, intent=intent, required_rel_shape=required_rel_shape, expected_constraints=expected_constraints, references=references)
+
+
+pub def core_scenario(key: CoreScenarioKey) -> SubstraitConformanceScenario:
+    """Lookup one core conformance scenario by enum key."""
+    match key:
+        CoreScenarioKey.ReadNamedTable => 
+            return _core_scenario(scenario_id=str("inql.substrait.core.read_named_table.001"), title=str("ReadRel named table without secret material"), capability_tags=_capability_tags([str("read"), str("named-table")]), root_rel=ConformanceRel.Read, required_rels=[ConformanceRel.Read], intent=str("Logical read from a registered table name without embedding execution secrets."), required_rel_shape=str("ReadRel(NamedTable) with model-compatible schema."), expected_constraints=str("No secrets or resolved execution-bound endpoint material in normative plan payload."), references=_refs_read_root_binding())
+        CoreScenarioKey.ReadLocalFiles => 
+            return _core_scenario(scenario_id=str("inql.substrait.core.read_local_files.001"), title=str("ReadRel local files with portable format fields"), capability_tags=_capability_tags([str("read"), str("local-files")]), root_rel=ConformanceRel.Read, required_rels=[ConformanceRel.Read], intent=str("Logical scan of file-backed sources with pinned-revision format descriptors."), required_rel_shape=str("ReadRel(LocalFiles) with supported file format fields."), expected_constraints=str("No credential or session-state material in normative plan payload."), references=_refs_read_root_binding())
+        CoreScenarioKey.ReadVirtualTable => 
+            return _core_scenario(scenario_id=str("inql.substrait.core.read_virtual_table.001"), title=str("ReadRel virtual table with schema-aligned rows"), capability_tags=_capability_tags([str("read"), str("virtual-table"), str("literal-rows")]), root_rel=ConformanceRel.Read, required_rels=[ConformanceRel.Read], intent=str("Inline row materialization through VirtualTable payload."), required_rel_shape=str("ReadRel(VirtualTable) with schema-consistent embedded rows."), expected_constraints=str("No external binding required to interpret inline rows."), references=_refs_read_root_binding())
+        CoreScenarioKey.FilterRows => 
+            return _core_scenario(scenario_id=str("inql.substrait.core.filter_rows.001"), title=str("FilterRel boolean row predicate"), capability_tags=_capability_tags([str("filter"), str("predicate")]), root_rel=ConformanceRel.Filter, required_rels=[ConformanceRel.Filter], intent=str("Boolean predicate filtering over relation input."), required_rel_shape=str("FilterRel(predicate) over one child relation."), expected_constraints=str("Boundary coverage is relation-shape only; richer query-surface parity is deferred."), references=_refs_core_operator())
+        CoreScenarioKey.ProjectComputedColumns => 
+            return _core_scenario(scenario_id=str("inql.substrait.core.project_computed_columns.001"), title=str("ProjectRel boundary scaffold"), capability_tags=_capability_tags([str("project"), str("shape-scaffold")]), root_rel=ConformanceRel.Project, required_rels=[ConformanceRel.Project], intent=str("Boundary-level ProjectRel envelope for package-authored plans."), required_rel_shape=str("ProjectRel(expressions) over one child relation."), expected_constraints=str("Current package code verifies shape only; computed-column and window semantics are deferred."), references=_refs_core_operator())
+        CoreScenarioKey.JoinRelVariants => 
+            return _core_scenario(scenario_id=str("inql.substrait.core.join_rel_variants.001"), title=str("JoinRel variant emission boundary"), capability_tags=_capability_tags([str("join"), str("inner"), str("left"), str("semi"), str("anti"), str("single"), str("mark")]), root_rel=ConformanceRel.Join, required_rels=[ConformanceRel.Join], intent=str("Explicit JoinRel variant emission over two child inputs."), required_rel_shape=str("JoinRel(join_type, expression) with optional post_join_filter when needed."), expected_constraints=str("Variant selection is owned by the boundary helper; broader planning semantics are deferred."), references=_refs_core_operator())
+        CoreScenarioKey.CrossRelCartesian => 
+            return _core_scenario(scenario_id=str("inql.substrait.core.cross_rel_cartesian.001"), title=str("CrossRel cartesian product semantics"), capability_tags=_capability_tags([str("cross"), str("cartesian-product")]), root_rel=ConformanceRel.Cross, required_rels=[ConformanceRel.Cross], intent=str("Cartesian multiplication of rows across two inputs."), required_rel_shape=str("CrossRel(left, right) without predicate fields."), expected_constraints=str("Row cardinality follows cartesian product semantics."), references=_refs_core_operator())
+        CoreScenarioKey.AggregateGroupingSets => 
+            return _core_scenario(scenario_id=str("inql.substrait.core.aggregate_grouping_sets.001"), title=str("AggregateRel boundary scaffold"), capability_tags=_capability_tags([str("aggregate"), str("shape-scaffold")]), root_rel=ConformanceRel.Aggregate, required_rels=[ConformanceRel.Aggregate], intent=str("Boundary-level AggregateRel envelope for package-authored plans."), required_rel_shape=str("AggregateRel(groupings, measures) over child relation."), expected_constraints=str("Current package code verifies scaffold shape only; grouping-set and distinct semantics are deferred."), references=_refs_core_operator())
+        CoreScenarioKey.SortRelOrdering => 
+            return _core_scenario(scenario_id=str("inql.substrait.core.sort_rel_ordering.001"), title=str("SortRel deterministic ordering contract"), capability_tags=_capability_tags([str("sort"), str("order-by"), str("collation")]), root_rel=ConformanceRel.Sort, required_rels=[ConformanceRel.Sort], intent=str("Deterministic collation semantics for ordered result sets."), required_rel_shape=str("SortRel(collation_fields) over child relation."), expected_constraints=str("Ordering behavior follows declared collation and null-order settings."), references=_refs_core_operator())
+        CoreScenarioKey.FetchRelLimitOffset => 
+            return _core_scenario(scenario_id=str("inql.substrait.core.fetch_rel_limit_offset.001"), title=str("FetchRel offset and count windowing"), capability_tags=_capability_tags([str("fetch"), str("limit"), str("offset")]), root_rel=ConformanceRel.Fetch, required_rels=[ConformanceRel.Fetch], intent=str("Top-N and offset-based windowing over ordered or unordered relation output."), required_rel_shape=str("FetchRel(offset,count) over child relation."), expected_constraints=str("Fetch changes row window only; it does not alter row values or schema."), references=_refs_core_operator())
+        CoreScenarioKey.SetRelOperations => 
+            return _core_scenario(scenario_id=str("inql.substrait.core.set_rel_operations.001"), title=str("SetRel operation emission boundary"), capability_tags=_capability_tags([str("set"), str("union"), str("intersect"), str("except")]), root_rel=ConformanceRel.Set, required_rels=[ConformanceRel.Set], intent=str("Explicit SetRel operation emission for schema-compatible inputs."), required_rel_shape=str("SetRel(operation, inputs) with compatible schemas."), expected_constraints=str("Operation selection is owned by the boundary helper; richer planning semantics are deferred."), references=_refs_core_operator())
+        CoreScenarioKey.ReferenceRelSharedSubplan => 
+            return _core_scenario(scenario_id=str("inql.substrait.core.reference_rel_shared_subplan.001"), title=str("ReferenceRel ordinal emission boundary"), capability_tags=_capability_tags([str("reference"), str("shared-subplan"), str("plan-dag")]), root_rel=ConformanceRel.Reference, required_rels=[ConformanceRel.Reference], intent=str("Boundary-level ReferenceRel ordinal emission."), required_rel_shape=str("ReferenceRel(subtree_ordinal) inside one plan envelope."), expected_constraints=str("Current package code verifies ordinal preservation only; shared-subplan planning is deferred."), references=_refs_core_operator())
+
+
+
+pub def core_scenarios() -> list[SubstraitConformanceScenario]:
+    """Return all currently defined read/query core scenarios."""
+    return [core_scenario(CoreScenarioKey.ReadNamedTable), core_scenario(CoreScenarioKey.ReadLocalFiles), core_scenario(CoreScenarioKey.ReadVirtualTable), core_scenario(CoreScenarioKey.FilterRows), core_scenario(CoreScenarioKey.ProjectComputedColumns), core_scenario(CoreScenarioKey.JoinRelVariants), core_scenario(CoreScenarioKey.CrossRelCartesian), core_scenario(CoreScenarioKey.AggregateGroupingSets), core_scenario(CoreScenarioKey.SortRelOrdering), core_scenario(CoreScenarioKey.FetchRelLimitOffset), core_scenario(CoreScenarioKey.SetRelOperations), core_scenario(CoreScenarioKey.ReferenceRelSharedSubplan)]

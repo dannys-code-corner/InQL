@@ -13,7 +13,8 @@ DataSet[T]
        └─ DataStream[T]  (streaming)
 ```
 
-The implementation here is intentionally backend-neutral: these APIs are the public surface.
+The relational operation surface here is backend-agnostic. Execution/materialization entrypoints that require runtime
+state (`LazyFrame.collect()`) intentionally route through Session-owned active-session binding.
 
 ## Type hierarchy
 
@@ -65,12 +66,16 @@ def generic_any(data: DataSet[T]) -> None: ...
 ```
 """
 
-# TODO:
-# 1. add more detailed docstrings (including examples) for each method in the trait impls.
-# 2. see about moving the LazyFrame methods to the higher level carriers (DataSet or BoundedDataSet)
 from rust::substrait::proto import Plan, Rel
-from substrait.plan import plan_from_root_relation
+from substrait.plan import (
+    empty_root_names,
+    named_table_columns,
+    plan_from_root_relation,
+    read_named_table_name,
+    root_rel,
+)
 from dataset.ops import filter_ds, join_ds, select_ds, group_by_ds, agg_ds, order_by_ds, limit_ds, explode_ds
+from session.types import SessionError, collect_with_active_session
 from prism import (
     PrismCursor,
     prism_cursor_apply_agg,
@@ -90,6 +95,7 @@ pub trait DataSet[T with Clone]:
 
     def filter(self, predicate: bool) -> Self: ...
 
+    # TODO(InQL RFC 004): Replace the temporary Self-only join surface with heterogeneous join typing plus an explicit output-schema contract.
     def join(self, other: Self, on: bool) -> Self: ...
 
     def select(self) -> Self: ...
@@ -110,47 +116,120 @@ pub trait BoundedDataSet[T with Clone] with DataSet[T]:
     pass
 
 
+pub model CarrierSchema:
+    """
+    Carrier schema view with declared (type-level), planned (plan-time), and resolved (materialized) columns.
+
+    Lazy carriers expose declared/planned columns only; `resolved_columns` remains empty until materialization.
+    Materialized carriers may populate `resolved_columns` from runtime payload metadata after collection.
+    """
+
+    pub declared_columns [description="Columns declared at the type/source boundary (for example model/registration schema)."]: list[str]
+    pub planned_columns [description="Columns inferred from the current logical plan before execution (plan-time view)."]: list[str]
+    pub resolved_columns [description="Columns observed from materialized runtime output after collect."]: list[str]
+
+
 pub class DataFrame[T with Clone] with BoundedDataSet:
-    pub _row_schema_marker: T
+    # Generic witness so runtime representation still carries T in the generated Rust type.
+    pub _type_witness: list[T]
+    # Opaque materialized payload produced by Session.collect(...) for localized results.
+    # The representation intentionally remains internal in this slice.
+    pub _materialized_payload: str
     pub _substrait_rel: Rel
 
+    def materialized_payload(self) -> str:
+        """Return the opaque materialized payload produced by collect."""
+        return str(self._materialized_payload)
+
+    def declared_columns(self) -> list[str]:
+        """Return declared schema columns inferred from the logical root relation."""
+        return _declared_columns_from_rel(self._substrait_rel)
+
+    def resolved_columns(self) -> list[str]:
+        """Return resolved output columns parsed from the materialized payload."""
+        return _resolved_columns_from_payload(self._materialized_payload)
+
+    def planned_columns(self) -> list[str]:
+        """Return plan-time output columns for this carrier (currently mirrors declared columns)."""
+        return self.declared_columns()
+
+    def columns(self) -> list[str]:
+        """Return resolved columns when available, otherwise plan-time columns."""
+        resolved = self.resolved_columns()
+        if len(resolved) > 0:
+            return resolved
+        return self.planned_columns()
+
+    def schema(self) -> CarrierSchema:
+        """Return one combined schema view containing declared, planned, and resolved columns."""
+        return CarrierSchema(declared_columns=self.declared_columns(), planned_columns=self.planned_columns(), resolved_columns=self.resolved_columns())
+
     def to_substrait_plan(self) -> Plan:
-        # TODO(#229): switch back to an empty root-name list once Incan preserves element type context for `[]`.
-        return plan_from_root_relation(self._substrait_rel, [str("id")])
+        """Rebuild a one-root Substrait plan from this frame's root relation."""
+        return plan_from_root_relation(self._substrait_rel, empty_root_names())
 
     def filter(self, predicate: bool) -> Self:
-        return DataFrame(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=filter_ds(self._substrait_rel, predicate))
+        """Return one new DataFrame with a filter stage appended and stale materialization cleared."""
+        return _data_frame_with_invalidated_payload[T](filter_ds(self._substrait_rel, predicate))
 
     def join(self, other: Self, on: bool) -> Self:
-        return DataFrame(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=join_ds(self._substrait_rel, other._substrait_rel, on))
+        """Return one new DataFrame with a join stage and stale materialization cleared."""
+        return _data_frame_with_invalidated_payload[T](join_ds(self._substrait_rel, other._substrait_rel, on))
 
     def select(self) -> Self:
-        return DataFrame(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=select_ds(self._substrait_rel))
+        """Return one new DataFrame with a projection stage and stale materialization cleared."""
+        return _data_frame_with_invalidated_payload[T](select_ds(self._substrait_rel))
 
     def group_by(self) -> Self:
-        return DataFrame(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=group_by_ds(self._substrait_rel))
+        """Return one new DataFrame with a grouping stage and stale materialization cleared."""
+        return _data_frame_with_invalidated_payload[T](group_by_ds(self._substrait_rel))
 
     def agg(self) -> Self:
-        return DataFrame(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=agg_ds(self._substrait_rel))
+        """Return one new DataFrame with an aggregation stage and stale materialization cleared."""
+        return _data_frame_with_invalidated_payload[T](agg_ds(self._substrait_rel))
 
     def order_by(self) -> Self:
-        return DataFrame(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=order_by_ds(self._substrait_rel))
+        """Return one new DataFrame with an ordering stage and stale materialization cleared."""
+        return _data_frame_with_invalidated_payload[T](order_by_ds(self._substrait_rel))
 
     def limit(self, n: int) -> Self:
-        return DataFrame(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=limit_ds(self._substrait_rel, n))
+        """Return one new DataFrame with a row-limit stage and stale materialization cleared."""
+        return _data_frame_with_invalidated_payload[T](limit_ds(self._substrait_rel, n))
 
     def explode(self) -> Self:
-        return DataFrame(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=explode_ds(self._substrait_rel))
+        """Return one new DataFrame with an explode/unnest stage and stale materialization cleared."""
+        return _data_frame_with_invalidated_payload[T](explode_ds(self._substrait_rel))
 
 
 pub class LazyFrame[T with Clone] with BoundedDataSet:
-    # TODO: needs docstring and examples for the public API and overall purpose of this type.
+    """
+    Lazy, immutable carrier over a Prism cursor.
+
+    Transform methods return new LazyFrame values and never mutate prior lineage. `collect()` intentionally depends on
+    Session active binding and is the bridge from deferred planning to materialized `DataFrame[T]`.
+    """
+
     pub _cursor: PrismCursor[T]
 
-    @staticmethod
-    def named_table(row_schema_marker: T, table_name: str) -> LazyFrame[T]:
-        """Create a deferred lazy carrier rooted at one logical named-table read."""
-        return LazyFrame(_cursor=prism_cursor_named_table(row_schema_marker, table_name))
+    def clone(self) -> Self:
+        """Return one shallow clone of this lazy carrier and its cursor lineage."""
+        return LazyFrame(_cursor=self._cursor.clone())
+
+    def declared_columns(self) -> list[str]:
+        """Return declared schema columns derived from the current logical plan root."""
+        return _declared_columns_from_rel(root_rel(self.to_substrait_plan()))
+
+    def planned_columns(self) -> list[str]:
+        """Return plan-time output columns for lazy carriers (currently mirrors declared columns)."""
+        return self.declared_columns()
+
+    def columns(self) -> list[str]:
+        """Return plan-time output columns for lazy carriers."""
+        return self.planned_columns()
+
+    def schema(self) -> CarrierSchema:
+        """Return lazy schema metadata (declared/planned columns only; resolved columns are unavailable pre-collect)."""
+        return CarrierSchema(declared_columns=self.declared_columns(), planned_columns=self.planned_columns(), resolved_columns=[])
 
     def to_substrait_plan(self) -> Plan:
         """Lower this lazy pipeline to a Substrait `Plan` at the boundary."""
@@ -188,6 +267,68 @@ pub class LazyFrame[T with Clone] with BoundedDataSet:
         """Return one new lazy carrier with an appended explode/unnest stage."""
         return LazyFrame(_cursor=prism_cursor_apply_explode(self._cursor))
 
+    def collect(self) -> Result[DataFrame[T], SessionError]:
+        """Collect through the currently active Session and return one materialized DataFrame."""
+        return collect_with_active_session[T](self.clone())
+
+
+pub def lazy_frame_named_table[T with Clone](table_name: str) -> LazyFrame[T]:
+    """Create one deferred lazy carrier rooted at one logical named-table read."""
+    return LazyFrame(_cursor=prism_cursor_named_table[T](table_name))
+
+
+def _empty_type_witness[T with Clone]() -> list[T]:
+    """Provide an empty generic witness list so runtime carries the type parameter."""
+    return []
+
+
+def _data_frame_with_invalidated_payload[T with Clone](rel: Rel) -> DataFrame[T]:
+    """Build one DataFrame whose logical relation changed and whose prior materialization is no longer valid."""
+    return DataFrame[T](_type_witness=_empty_type_witness[T](), _materialized_payload="", _substrait_rel=rel)
+
+
+def _declared_columns_from_rel(rel: Rel) -> list[str]:
+    """Resolve declared column names for named-table rooted relations."""
+    table_name = read_named_table_name(rel)
+    if len(table_name) == 0:
+        return []
+    return named_table_columns(table_name)
+
+
+def _resolved_columns_from_payload(payload: str) -> list[str]:
+    """
+    Resolve output column names from the materialized payload.
+
+    Materialized payload is a plain-text debug/export format.
+    We extract only the first header row after the `record_batches=` marker, which represents resolved output columns.
+    """
+    if len(payload) == 0:
+        return []
+    lines = payload.split(str("\n"))
+    mut seen_batches = false
+    for line in lines:
+        trimmed = line.strip()
+        if len(trimmed) == 0:
+            continue
+        # Ignore all metadata until record batch content starts.
+        if seen_batches == false:
+            if trimmed.starts_with(str("record_batches=")):
+                seen_batches = true
+            continue
+        # Column header rows are pipe-delimited table lines: `| col_a | col_b |`.
+        if trimmed.starts_with(str("|")) and trimmed.ends_with(str("|")):
+            mut columns: list[str] = []
+            segments = trimmed.split(str("|"))
+            # Pipe-delimited rows have empty edge segments; trim and ignore empties.
+            for segment in segments:
+                name = segment.strip()
+                if len(name) > 0:
+                    columns.append(name)
+            # First non-empty header row wins; later rows are data or secondary sections.
+            if len(columns) > 0:
+                return columns
+    return []
+
 
 # ---- UnboundedDataSet trait and concrete types ----
 pub trait UnboundedDataSet[T with Clone] with DataSet[T]:
@@ -199,29 +340,37 @@ pub class DataStream[T with Clone] with UnboundedDataSet:
     pub _substrait_rel: Rel
 
     def to_substrait_plan(self) -> Plan:
-        # TODO(#229): switch back to an empty root-name list once Incan preserves element type context for `[]`.
-        return plan_from_root_relation(self._substrait_rel, [str("id")])
+        """Rebuild a one-root Substrait plan from this stream relation."""
+        return plan_from_root_relation(self._substrait_rel, empty_root_names())
 
     def filter(self, predicate: bool) -> Self:
+        """Return one new DataStream with a filter stage."""
         return DataStream(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=filter_ds(self._substrait_rel, predicate))
 
     def join(self, other: Self, on: bool) -> Self:
+        """Return one new DataStream with a join stage against another stream."""
         return DataStream(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=join_ds(self._substrait_rel, other._substrait_rel, on))
 
     def select(self) -> Self:
+        """Return one new DataStream with a projection stage."""
         return DataStream(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=select_ds(self._substrait_rel))
 
     def group_by(self) -> Self:
+        """Return one new DataStream with a grouping stage."""
         return DataStream(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=group_by_ds(self._substrait_rel))
 
     def agg(self) -> Self:
+        """Return one new DataStream with an aggregation stage."""
         return DataStream(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=agg_ds(self._substrait_rel))
 
     def order_by(self) -> Self:
+        """Return one new DataStream with an ordering stage."""
         return DataStream(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=order_by_ds(self._substrait_rel))
 
     def limit(self, n: int) -> Self:
+        """Return one new DataStream with a row-limit stage."""
         return DataStream(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=limit_ds(self._substrait_rel, n))
 
     def explode(self) -> Self:
+        """Return one new DataStream with an explode/unnest stage."""
         return DataStream(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=explode_ds(self._substrait_rel))

@@ -9,15 +9,26 @@ from substrait.schema import (
 )
 
 def test_demo_customer_row_shape__field_order() -> None:
+    # -- Arrange --
     shape = demo_customer_row_shape()
-    assert_eq(shape.model_name, str("DemoCustomer"), "model name")
+
+    # -- Act --
     names = row_shape_field_names(shape)
+
+    # -- Assert --
+    assert_eq(shape.model_name, "DemoCustomer", "model name")
     assert_eq(len(names), 2, "column count")
-    assert_eq(names[0], str("id"), "first field is declaration order")
-    assert_eq(names[1], str("name"), "second field")
+    assert_eq(names[0], "id", "first field is declaration order")
+    assert_eq(names[1], "name", "second field")
 
 
 def test_row_shape_to_substrait_struct_type__encodes() -> None:
-    row_ty = row_shape_to_substrait_struct_type(demo_customer_row_shape())
+    # -- Arrange --
+    shape = demo_customer_row_shape()
+
+    # -- Act --
+    row_ty = row_shape_to_substrait_struct_type(shape)
     encoded = substrait_row_type_encoded_len(row_ty)
+
+    # -- Assert --
     assert_eq(encoded > 0, true, "protobuf encoding should be non-empty")
