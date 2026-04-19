@@ -8,6 +8,8 @@ defines execution; lowering and relational typing for aggregates live in compani
 FIXME: review this behavior once Incan's RFC 045 is implemented; we may want to migrate these to builtins preferably.
 """
 
+from dataset import DataFrame, LazyFrame
+
 pub def total(_x: int) -> int:
     """Sum aggregate (stub; engine / lowering supplies semantics)."""
     return 0
@@ -16,3 +18,40 @@ pub def total(_x: int) -> int:
 pub def count_rows(_x: int) -> int:
     """Count aggregate placeholder (stub)."""
     return 0
+
+
+pub def display[T with Clone](data: LazyFrame[T]) -> None:
+    """Collect one LazyFrame through the active Session and render a preview."""
+    match data.clone().collect():
+        Ok(df) => _render_data_frame(df)
+        Err(err) => 
+            println(f"InQL display failed: {err.error_message()}")
+
+
+
+def _is_schema_less_payload(payload: str) -> bool:
+    """Detect placeholder payload renders that contain no usable column preview."""
+    return payload == str("record_batches=1\n++\n++\n++")
+
+
+def _join_columns(columns: list[str]) -> str:
+    """Join column names for one compact display header line."""
+    return ", ".join(columns)
+
+
+def _render_data_frame[T with Clone](data: DataFrame[T]) -> None:
+    """Render one collected DataFrame preview with schema-aware fallback messaging."""
+    payload = data.materialized_payload()
+    columns = data.columns()
+    println("InQL display")
+    if len(columns) > 0:
+        println(f"columns: [{_join_columns(columns)}]")
+    if len(payload) == 0:
+        println("(empty)")
+        return
+    if _is_schema_less_payload(payload):
+        println("records materialized, but preview has no columns")
+        println("hint: read schema is currently unresolved at Substrait read-binding boundary")
+        println(payload)
+        return
+    println(payload)

@@ -1,0 +1,31 @@
+"""Session error model and diagnostics helpers."""
+
+pub model SessionError:
+    """Typed error envelope for Session-facing APIs."""
+
+    pub kind: str
+    pub message: str
+
+    def error_message(self) -> str:
+        """Return one stable `kind: message` string for diagnostics."""
+        return f"{self.kind}: {self.message}"
+
+
+pub def format_session_diagnostic(stage: str, err: SessionError) -> str:
+    """Render one stable Session diagnostic line for CLI-facing flows."""
+    return f"[Session::{stage}] {err.error_message()}"
+
+
+pub def report_session_error(stage: str, err: SessionError) -> None:
+    """Print one standardized Session diagnostic line."""
+    println(format_session_diagnostic(stage, err))
+
+
+pub def invalid_registration(message: str) -> SessionError:
+    """Create one stable `invalid_registration` Session error."""
+    return SessionError(kind=str("invalid_registration"), message=message)
+
+
+pub def invalid_sink(message: str) -> SessionError:
+    """Create one stable `invalid_sink` Session error."""
+    return SessionError(kind=str("invalid_sink"), message=message)

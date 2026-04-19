@@ -1,0 +1,41 @@
+"""Session domain newtypes and internal enums."""
+
+from session.errors import SessionError, invalid_registration, invalid_sink
+
+@derive(Clone)
+pub type LogicalName = newtype str:
+    """Validated logical table name used by Session registration and lookup paths."""
+
+    def from_underlying(value: str) -> Result[LogicalName, SessionError]:
+        """Validate and construct one logical table-name value."""
+        if len(value) == 0:
+            return Err(invalid_registration("logical_name must not be empty"))
+        return Ok(LogicalName(value))
+
+
+@derive(Clone)
+pub type SourceUri = newtype str:
+    """Validated source URI used by Session registration/read paths."""
+
+    def from_underlying(value: str) -> Result[SourceUri, SessionError]:
+        """Validate and construct one source URI value."""
+        if len(value) == 0:
+            return Err(invalid_registration("source uri must not be empty"))
+        return Ok(SourceUri(value))
+
+
+@derive(Clone)
+pub type SinkUri = newtype str:
+    """Validated sink URI used by Session write paths."""
+
+    def from_underlying(value: str) -> Result[SinkUri, SessionError]:
+        """Validate and construct one sink URI value."""
+        if len(value) == 0:
+            return Err(invalid_sink("sink uri must not be empty"))
+        return Ok(SinkUri(value))
+
+
+@derive(Clone)
+pub enum SinkKind:
+    Csv
+    Parquet

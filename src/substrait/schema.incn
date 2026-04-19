@@ -12,7 +12,16 @@ See RFC 002: field order must match `NamedStruct` / field-reference indices.
 
 from rust::prost import Message
 from rust::substrait::proto import NamedStruct, Type
-from rust::substrait::proto::type import I64, Kind, Nullability, String as SubstraitString, Struct
+from rust::substrait::proto::type import (
+    Boolean,
+    Fp64,
+    I64,
+    Kind,
+    Nullability,
+    PrecisionTimestamp,
+    String as SubstraitString,
+    Struct,
+)
 
 @derive(Clone)
 pub model DemoCustomer:
@@ -22,7 +31,10 @@ pub model DemoCustomer:
 
 @derive(Clone)
 pub enum SubstraitPrimitiveKind:
+    Bool
     I64
+    F64
+    Timestamp
     String
 
 
@@ -50,13 +62,25 @@ pub def row_shape_field_names(shape: RowShapeSpec) -> list[str]:
 
 
 def _type_from_primitive(kind: SubstraitPrimitiveKind, nullable: bool) -> Type:
+    """Lower one primitive kind + nullability flag into a Substrait `Type`."""
     mut n = Nullability.Required
     if nullable:
         n = Nullability.Nullable
     # `incan fmt` currently rewrites `match`/`case` into invalid Rust-style patterns; use branches.
+    if kind == SubstraitPrimitiveKind.Bool:
+        return Type(kind=Some(Kind.Bool(Boolean(type_variation_reference=0, nullability=n.into()))))
     if kind == SubstraitPrimitiveKind.I64:
         return Type(kind=Some(Kind.I64(I64(type_variation_reference=0, nullability=n.into()))))
+    if kind == SubstraitPrimitiveKind.F64:
+        return Type(kind=Some(Kind.Fp64(Fp64(type_variation_reference=0, nullability=n.into()))))
+    if kind == SubstraitPrimitiveKind.Timestamp:
+        return Type(kind=Some(Kind.PrecisionTimestamp(PrecisionTimestamp(type_variation_reference=0, nullability=n.into(), precision=6))))
     return Type(kind=Some(Kind.String(SubstraitString(type_variation_reference=0, nullability=n.into()))))
+
+
+def _row_shape_field_types(shape: RowShapeSpec) -> list[Type]:
+    """Lower one row shape into ordered Substrait field types."""
+    return [_type_from_primitive(col.kind, col.nullable).clone() for col in shape.columns]
 
 
 pub def row_shape_to_substrait_struct_type(shape: RowShapeSpec) -> Type:
@@ -67,19 +91,13 @@ pub def row_shape_to_substrait_struct_type(shape: RowShapeSpec) -> Type:
     `NamedStruct` boundary when wiring read roots (prost field `struct` is a Rust keyword and
     is awkward to populate from Incan literals today).
     """
-    mut types_collector: list[Type] = []
-    for col in shape.columns:
-        types_collector.append(_type_from_primitive(col.kind, col.nullable).clone())
-    struct_inner = Struct(types=types_collector, type_variation_reference=0, nullability=Nullability.Required.into())
+    struct_inner = Struct(types=_row_shape_field_types(shape), type_variation_reference=0, nullability=Nullability.Required.into())
     return Type(kind=Some(Kind.Struct(struct_inner)))
 
 
 pub def row_shape_to_named_struct(shape: RowShapeSpec) -> NamedStruct:
     """Build a NamedStruct from a row shape using DFS field order."""
-    mut types_collector: list[Type] = []
-    for col in shape.columns:
-        types_collector.append(_type_from_primitive(col.kind, col.nullable).clone())
-    struct_inner = Struct(types=types_collector, type_variation_reference=0, nullability=Nullability.Required.into())
+    struct_inner = Struct(types=_row_shape_field_types(shape), type_variation_reference=0, nullability=Nullability.Required.into())
     return NamedStruct(names=row_shape_field_names(shape), struct=Some(struct_inner))
 
 

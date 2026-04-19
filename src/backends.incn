@@ -1,0 +1,92 @@
+"""
+Backend configuration objects for RFC 004.
+
+The root `Session` API stays portable, while backend-specific configuration lives under `pub::inql.backends`.
+This module intentionally starts small: DataFusion is the first real backend configuration object and the only
+implemented backend in the current slice.
+"""
+
+@derive(Clone)
+pub class DataFusion:
+    """Minimal backend configuration object for the reference execution backend."""
+
+    pub enable_optimizer: bool
+
+    def clone(self) -> Self:
+        """Return one cloned DataFusion backend configuration."""
+        return DataFusion(enable_optimizer=self.enable_optimizer)
+
+
+@derive(Clone)
+pub enum BackendKind:
+    DataFusionEngine
+
+
+@derive(Clone)
+pub enum SourceKind:
+    Csv
+    Parquet
+    Arrow
+
+
+@derive(Clone)
+pub class TableSource:
+    """Portable source descriptor stored in Session registrations."""
+
+    pub source_kind: SourceKind
+    pub uri: str
+
+    def clone(self) -> Self:
+        """Return one cloned table source descriptor."""
+        return TableSource(source_kind=self.source_kind, uri=self.uri)
+
+
+@derive(Clone)
+pub class BackendSelection:
+    """Portable backend selection envelope stored by `Session` and its builder."""
+
+    pub kind: BackendKind
+    pub datafusion: DataFusion
+
+    def clone(self) -> Self:
+        """Return one cloned backend selection preserving engine-specific options."""
+        mut kind = BackendKind.DataFusionEngine
+        if self.kind == BackendKind.DataFusionEngine:
+            kind = BackendKind.DataFusionEngine
+        return BackendSelection(kind=kind, datafusion=self.datafusion)
+
+
+pub def default_backend_selection() -> BackendSelection:
+    """Return the default backend selection used by Session defaults/builders."""
+    return BackendSelection(kind=BackendKind.DataFusionEngine, datafusion=DataFusion(enable_optimizer=true))
+
+
+pub def backend_kind_name(selection: BackendSelection) -> str:
+    """Return one stable backend name for diagnostics and UX."""
+    if selection.kind == BackendKind.DataFusionEngine:
+        return str("datafusion")
+    return str("unknown")
+
+
+pub def source_kind_name(kind: SourceKind) -> str:
+    """Return one stable source-kind name for diagnostics and UX."""
+    if kind == SourceKind.Csv:
+        return "csv"
+    if kind == SourceKind.Parquet:
+        return "parquet"
+    return "arrow"
+
+
+pub def csv_source(uri: str) -> TableSource:
+    """Build one CSV table source descriptor."""
+    return TableSource(source_kind=SourceKind.Csv, uri=uri)
+
+
+pub def parquet_source(uri: str) -> TableSource:
+    """Build one Parquet table source descriptor."""
+    return TableSource(source_kind=SourceKind.Parquet, uri=uri)
+
+
+pub def arrow_source(uri: str) -> TableSource:
+    """Build one Arrow IPC table source descriptor."""
+    return TableSource(source_kind=SourceKind.Arrow, uri=uri)

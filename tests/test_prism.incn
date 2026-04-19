@@ -3,6 +3,9 @@
 from std.testing import assert_eq
 from prism import (
     PrismCursor,
+    prism_cursor_apply_filter,
+    prism_cursor_apply_limit,
+    prism_cursor_apply_select,
     prism_cursor_authored_node_count,
     prism_cursor_named_table,
     prism_cursor_rewrite_applied_rule_count,
@@ -24,9 +27,14 @@ model Order:
 
 
 def test_prism__branching_keeps_base_reachable_history_small() -> None:
-    base: PrismCursor[Order] = prism_cursor_named_table(Order(id=1), str("orders"))
+    # -- Arrange --
+    base: PrismCursor[Order] = prism_cursor_named_table[Order](str("orders"))
+
+    # -- Act --
     filtered: PrismCursor[Order] = base.filter(false)
     plan = filtered.to_substrait_plan()
+
+    # -- Assert --
     assert_eq(prism_cursors_share_store(base, filtered), true, "unary branching should share one append-only Prism store")
     assert_eq(prism_cursor_authored_node_count(base), 1, "base cursor should still only reach the original read node")
     assert_eq(prism_cursor_store_node_count(base), 2, "shared store should contain the appended filter node exactly once")
@@ -40,10 +48,15 @@ def test_prism__branching_keeps_base_reachable_history_small() -> None:
 
 
 def test_prism__independent_roots_get_distinct_store_ids() -> None:
-    left: PrismCursor[Order] = prism_cursor_named_table(Order(id=100), str("orders"))
-    right: PrismCursor[Order] = prism_cursor_named_table(Order(id=101), str("orders_archive"))
+    # -- Arrange --
+    left: PrismCursor[Order] = prism_cursor_named_table[Order](str("orders"))
+    right: PrismCursor[Order] = prism_cursor_named_table[Order](str("orders_archive"))
+
+    # -- Act --
     left_store_id = prism_cursor_store_id_value(left)
     right_store_id = prism_cursor_store_id_value(right)
+
+    # -- Assert --
     assert_eq(prism_cursors_share_store(left, right), false, "independent read roots should not share one store id")
     assert_eq(left_store_id >= 0, true, "store ids should be non-negative")
     assert_eq(right_store_id >= 0, true, "store ids should be non-negative")
@@ -51,11 +64,16 @@ def test_prism__independent_roots_get_distinct_store_ids() -> None:
 
 
 def test_prism__same_store_join_reuses_shared_history() -> None:
-    base: PrismCursor[Order] = prism_cursor_named_table(Order(id=2), str("orders"))
+    # -- Arrange --
+    base: PrismCursor[Order] = prism_cursor_named_table[Order](str("orders"))
     left: PrismCursor[Order] = base.filter(false)
     right: PrismCursor[Order] = base.select()
+
+    # -- Act --
     joined: PrismCursor[Order] = left.join(right.clone(), true)
     plan = joined.to_substrait_plan()
+
+    # -- Assert --
     assert_eq(prism_cursors_share_store(left, right), true, "branches from the same base should still share one store before the join")
     assert_eq(prism_cursor_authored_node_count(base), 1, "joining later should not mutate the base cursor's reachable history")
     assert_eq(prism_cursor_store_node_count(joined), 4, "same-store join should append one join node without duplicating the shared read root")
@@ -70,11 +88,16 @@ def test_prism__same_store_join_reuses_shared_history() -> None:
 
 
 def test_prism__same_store_join_with_longer_branches_is_still_one_append() -> None:
-    base: PrismCursor[Order] = prism_cursor_named_table(Order(id=22), str("orders"))
+    # -- Arrange --
+    base: PrismCursor[Order] = prism_cursor_named_table[Order](str("orders"))
     left: PrismCursor[Order] = base.filter(false).order_by()
     right: PrismCursor[Order] = base.select().limit(5)
+
+    # -- Act --
     joined: PrismCursor[Order] = left.join(right.clone(), true)
     plan = joined.to_substrait_plan()
+
+    # -- Assert --
     assert_eq(prism_cursors_share_store(left, right), true, "branches from one base should continue sharing a store as branch depth grows")
     assert_eq(prism_cursor_authored_node_count(base), 1, "deeper branch joins should still keep the base handle immutable")
     assert_eq(prism_cursor_store_node_count(joined), 6, "same-store join should still append one join node after deeper branch history")
@@ -86,10 +109,15 @@ def test_prism__same_store_join_with_longer_branches_is_still_one_append() -> No
 
 
 def test_prism__cross_store_join_adopts_reachable_subgraph() -> None:
-    left: PrismCursor[Order] = prism_cursor_named_table(Order(id=3), str("orders")).filter(false)
-    right: PrismCursor[Order] = prism_cursor_named_table(Order(id=4), str("orders_archive")).filter(false)
+    # -- Arrange --
+    left: PrismCursor[Order] = prism_cursor_named_table[Order](str("orders")).filter(false)
+    right: PrismCursor[Order] = prism_cursor_named_table[Order](str("orders_archive")).filter(false)
+
+    # -- Act --
     joined: PrismCursor[Order] = left.join(right.clone(), true)
     plan = joined.to_substrait_plan()
+
+    # -- Assert --
     assert_eq(prism_cursors_share_store(left, right), false, "independent roots should begin on distinct stores")
     assert_eq(prism_cursor_store_node_count(joined), 5, "cross-store join should adopt two reachable rhs nodes then append one join node")
     assert_eq(prism_cursor_authored_node_count(joined), 5, "joined cursor should reach both adopted branches plus the join")
@@ -100,13 +128,18 @@ def test_prism__cross_store_join_adopts_reachable_subgraph() -> None:
 
 
 def test_prism__cross_store_join_dedups_equivalent_reachable_rhs_nodes() -> None:
-    left: PrismCursor[Order] = prism_cursor_named_table(Order(id=30), str("orders")).filter(false)
-    right_base: PrismCursor[Order] = prism_cursor_named_table(Order(id=31), str("orders_archive"))
+    # -- Arrange --
+    left: PrismCursor[Order] = prism_cursor_named_table[Order](str("orders")).filter(false)
+    right_base: PrismCursor[Order] = prism_cursor_named_table[Order](str("orders_archive"))
     right_left: PrismCursor[Order] = right_base.filter(false)
     right_right: PrismCursor[Order] = right_base.filter(false)
+
+    # -- Act --
     right_joined: PrismCursor[Order] = right_left.join(right_right, true)
     joined: PrismCursor[Order] = left.join(right_joined.clone(), true)
     plan = joined.to_substrait_plan()
+
+    # -- Assert --
     assert_eq(prism_cursors_share_store(left, right_joined), false, "left and rhs join trees should still begin on distinct stores")
     assert_eq(prism_cursor_store_node_count(joined), 6, "cross-store adoption should dedup equivalent rhs filter branches instead of cloning both copies")
     assert_eq(prism_cursor_authored_node_count(joined), 6, "joined cursor should reach the left branch plus one deduped rhs branch-join subgraph")
@@ -116,13 +149,18 @@ def test_prism__cross_store_join_dedups_equivalent_reachable_rhs_nodes() -> None
 
 
 def test_prism__cross_store_join_dedups_equivalent_rhs_multistep_branches() -> None:
-    left: PrismCursor[Order] = prism_cursor_named_table(Order(id=40), str("orders")).filter(false)
-    right_base: PrismCursor[Order] = prism_cursor_named_table(Order(id=41), str("orders_archive"))
+    # -- Arrange --
+    left: PrismCursor[Order] = prism_cursor_named_table[Order](str("orders")).filter(false)
+    right_base: PrismCursor[Order] = prism_cursor_named_table[Order](str("orders_archive"))
     right_left: PrismCursor[Order] = right_base.filter(false).order_by()
     right_right: PrismCursor[Order] = right_base.filter(false).order_by()
+
+    # -- Act --
     right_joined: PrismCursor[Order] = right_left.join(right_right.clone(), true)
     joined: PrismCursor[Order] = left.join(right_joined.clone(), true)
     plan = joined.to_substrait_plan()
+
+    # -- Assert --
     assert_eq(prism_cursors_share_store(left, right_joined), false, "final join should still cross stores for independently rooted branches")
     assert_eq(prism_cursor_store_node_count(joined), 7, "cross-store adoption should dedup structurally equivalent multi-step rhs branches")
     assert_eq(prism_cursor_authored_node_count(joined), 7, "joined cursor should still reach exactly one adopted copy of each rhs branch shape")
@@ -133,12 +171,17 @@ def test_prism__cross_store_join_dedups_equivalent_rhs_multistep_branches() -> N
 
 
 def test_prism__cursor_native_nodes_cover_current_method_surface() -> None:
-    projected: PrismCursor[Order] = prism_cursor_named_table(Order(id=5), str("orders")).select()
-    grouped: PrismCursor[Order] = prism_cursor_named_table(Order(id=6), str("orders")).group_by()
+    # -- Arrange --
+    projected: PrismCursor[Order] = prism_cursor_named_table[Order](str("orders")).select()
+    grouped: PrismCursor[Order] = prism_cursor_named_table[Order](str("orders")).group_by()
+
+    # -- Act --
     aggregated: PrismCursor[Order] = grouped.agg()
-    ordered: PrismCursor[Order] = prism_cursor_named_table(Order(id=7), str("orders")).order_by()
-    limited: PrismCursor[Order] = prism_cursor_named_table(Order(id=8), str("orders")).limit(10)
-    exploded: PrismCursor[Order] = prism_cursor_named_table(Order(id=9), str("orders")).explode()
+    ordered: PrismCursor[Order] = prism_cursor_named_table[Order](str("orders")).order_by()
+    limited: PrismCursor[Order] = prism_cursor_named_table[Order](str("orders")).limit(10)
+    exploded: PrismCursor[Order] = prism_cursor_named_table[Order](str("orders")).explode()
+
+    # -- Assert --
     assert_eq(prism_cursor_tip_kind_name(projected), str("Project"), "select should append a native project node")
     assert_eq(prism_cursor_tip_kind_name(grouped), str("GroupBy"), "group_by should append a native group node")
     assert_eq(prism_cursor_tip_kind_name(aggregated), str("Aggregate"), "agg should append a native aggregate node")
@@ -148,8 +191,13 @@ def test_prism__cursor_native_nodes_cover_current_method_surface() -> None:
 
 
 def test_prism__rewrite_eliminates_filter_true_by_default() -> None:
-    cursor: PrismCursor[Order] = prism_cursor_named_table(Order(id=50), str("orders")).filter(true)
+    # -- Arrange --
+    cursor: PrismCursor[Order] = prism_cursor_named_table[Order](str("orders")).filter(true)
+
+    # -- Act --
     plan = cursor.to_substrait_plan()
+
+    # -- Assert --
     assert_eq(prism_cursor_authored_node_count(cursor), 2, "authored history should still keep the explicit filter node")
     assert_eq(prism_cursor_rewritten_node_count(cursor), 1, "rewrite should eliminate filter(true) from lowered shape")
     assert_eq(prism_cursor_rewritten_tip_kind_name(cursor), str("ReadNamedTable"), "rewritten tip should become the read root after eliminating filter(true)")
@@ -159,9 +207,14 @@ def test_prism__rewrite_eliminates_filter_true_by_default() -> None:
 
 
 def test_prism__rewrite_collapses_adjacent_limits_projects_and_order_by() -> None:
-    limited: PrismCursor[Order] = prism_cursor_named_table(Order(id=51), str("orders")).limit(10).limit(3)
-    projected: PrismCursor[Order] = prism_cursor_named_table(Order(id=52), str("orders")).select().select()
-    ordered: PrismCursor[Order] = prism_cursor_named_table(Order(id=53), str("orders")).order_by().order_by()
+    # -- Arrange --
+    limited: PrismCursor[Order] = prism_cursor_named_table[Order](str("orders")).limit(10).limit(3)
+    projected: PrismCursor[Order] = prism_cursor_named_table[Order](str("orders")).select().select()
+
+    # -- Act --
+    ordered: PrismCursor[Order] = prism_cursor_named_table[Order](str("orders")).order_by().order_by()
+
+    # -- Assert --
     assert_eq(prism_cursor_authored_node_count(limited), 3, "authored history should keep both limit nodes")
     assert_eq(prism_cursor_rewritten_node_count(limited), 2, "rewritten view should collapse adjacent limits to one node")
     assert_eq(prism_cursor_rewrite_applied_rule_name_at(limited, 0), str("collapse_adjacent_limit"), "limit rewrite trace should record adjacent limit collapse")
@@ -174,5 +227,26 @@ def test_prism__rewrite_collapses_adjacent_limits_projects_and_order_by() -> Non
 
 
 def test_prism__rewrite_explain_origin_mapping_matches_rewritten_nodes() -> None:
-    cursor: PrismCursor[Order] = prism_cursor_named_table(Order(id=54), str("orders")).filter(true).limit(5).limit(4)
-    assert_eq(prism_cursor_rewritten_node_count(cursor), prism_cursor_rewritten_origin_count(cursor), "rewritten origin mapping cardinality should match rewritten node cardinality")
+    # -- Arrange --
+    cursor: PrismCursor[Order] = prism_cursor_named_table[Order](str("orders")).filter(true).limit(5).limit(4)
+
+    # -- Act --
+    rewritten_nodes = prism_cursor_rewritten_node_count(cursor)
+    rewritten_origins = prism_cursor_rewritten_origin_count(cursor)
+
+    # -- Assert --
+    assert_eq(rewritten_nodes, rewritten_origins, "rewritten origin mapping cardinality should match rewritten node cardinality")
+
+
+def test_prism__cursor_methods_match_apply_helpers() -> None:
+    # -- Arrange --
+    base: PrismCursor[Order] = prism_cursor_named_table[Order](str("orders"))
+
+    # -- Act --
+    via_methods = base.filter(false).select().limit(3)
+    via_helpers = prism_cursor_apply_limit(prism_cursor_apply_select(prism_cursor_apply_filter(base, false)), 3)
+
+    # -- Assert --
+    assert_eq(prism_cursor_tip_kind_name(via_methods), prism_cursor_tip_kind_name(via_helpers), "method and helper paths should produce the same tip kind")
+    assert_eq(prism_cursor_authored_node_count(via_methods), prism_cursor_authored_node_count(via_helpers), "method and helper paths should produce equivalent authored history shape")
+    assert_eq(relation_kind_name(root_rel(via_methods.to_substrait_plan())), relation_kind_name(root_rel(via_helpers.to_substrait_plan())), "method and helper paths should lower to equivalent root relation kinds")

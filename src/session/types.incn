@@ -1,0 +1,339 @@
+"""Public Session API and execution-context types."""
+
+import std.async
+from rust::substrait::proto import Plan
+from rust::incan_stdlib::async::runtime import block_on
+from backends import (
+    BackendKind,
+    BackendSelection,
+    DataFusion,
+    TableSource,
+    backend_kind_name,
+    source_kind_name,
+    arrow_source,
+    csv_source,
+    default_backend_selection,
+    parquet_source,
+)
+from dataset import DataFrame, LazyFrame, lazy_frame_named_table
+pub from session.errors import SessionError, format_session_diagnostic, report_session_error
+from session.domain import LogicalName, SourceUri, SinkUri, SinkKind
+from session.csv_schema import infer_csv_schema_columns
+from session.active import (
+    ActiveRegistration,
+    ActiveSessionError,
+    ActiveSessionState,
+    clear_active_session_state,
+    get_active_session_state,
+    set_active_session_state,
+)
+from session.datafusion_backend import (
+    BackendError,
+    BackendRegistration,
+    datafusion_collect_payload_async,
+    datafusion_execute_async,
+    datafusion_write_csv_async,
+    datafusion_write_parquet_async,
+)
+from substrait.plan import register_named_table_schema, root_rel, read_named_table_name
+
+@derive(Clone)
+pub class SessionRegistration:
+    pub logical_name: str
+    pub source: TableSource
+
+    def clone(self) -> Self:
+        """Return one cloned Session registration entry."""
+        return SessionRegistration(logical_name=self.logical_name, source=self.source)
+
+
+pub class Session:
+    """Public execution-context entrypoint."""
+
+    pub _backend: BackendSelection
+    pub _registrations: list[SessionRegistration]
+
+    def clone(self) -> Self:
+        """Return one deep clone of Session state and registrations."""
+        return Session(_backend=self._backend.clone(), _registrations=self._registrations)
+
+    @staticmethod
+    def default() -> Session:
+        """Construct one default Session with DataFusion backend selection."""
+        return Session(_backend=default_backend_selection(), _registrations=[])
+
+    @staticmethod
+    def builder() -> SessionBuilder:
+        """Construct one SessionBuilder initialized with default backend selection."""
+        return SessionBuilder(_backend=default_backend_selection())
+
+    def backend_name(self) -> str:
+        """Return one stable backend name for this Session instance."""
+        return backend_kind_name(self._backend)
+
+    def datafusion_backend(self) -> DataFusion:
+        """Return the current DataFusion backend configuration."""
+        return self._backend.datafusion.clone()
+
+    def registration_count(self) -> int:
+        """Return the number of registered logical sources in this Session."""
+        return len(self._registrations)
+
+    def has_registration(self, logical_name: str) -> bool:
+        """Return whether a logical table name is already registered."""
+        match LogicalName.from_underlying(logical_name):
+            Ok(name) => 
+                return _find_registration_index(self._registrations, name.0) >= 0
+            Err(_) => 
+                return false
+
+
+    def registered_source_kind(self, logical_name: str) -> str:
+        """Return source kind for one registered name, or empty string when missing."""
+        match LogicalName.from_underlying(logical_name):
+            Ok(name) => 
+                index = _find_registration_index(self._registrations, name.0)
+                if index < 0:
+                    return str("")
+                return source_kind_name(self._registrations[index].source.source_kind)
+            Err(_) => 
+                return str("")
+
+
+    def register(mut self, logical_name: str, source: TableSource) -> Result[None, SessionError]:
+        """Register one logical name to a portable table source descriptor."""
+        name = LogicalName.from_underlying(logical_name)?
+        _ = SourceUri.from_underlying(source.uri)?
+        self._register_parsed(name, source)?
+        return Ok(None)
+
+    def _register_parsed(mut self, logical_name: LogicalName, source: TableSource) -> Result[None, SessionError]:
+        """Register one source after boundary values have been validated into typed wrappers."""
+        if _find_registration_index(self._registrations, logical_name.0) >= 0:
+            return Err(SessionError(kind=str("duplicate_registration"), message=f"table '{logical_name.0}' is already registered"))
+        self._registrations.append(SessionRegistration(logical_name=logical_name.0, source=source))
+        return Ok(None)
+
+    def read_csv[T with Clone](mut self, logical_name: str, uri: str) -> Result[LazyFrame[T], SessionError]:
+        """Convenience read path: register one CSV source then return one lazy named-table plan."""
+        name = LogicalName.from_underlying(logical_name)?
+        source_uri = SourceUri.from_underlying(uri)?
+        self._register_parsed(name, csv_source(source_uri.0))?
+        columns = infer_csv_schema_columns(source_uri.0)?
+        # TODO(InQL RFC 004): Formalize logical-name schema binding as an explicit catalog/snapshot model and surface overwrite diagnostics.
+        register_named_table_schema(name.0, columns)
+        return self.table[T](name.0)
+
+    def read_parquet[T with Clone](mut self, logical_name: str, uri: str) -> Result[LazyFrame[T], SessionError]:
+        """Convenience read path: register one Parquet source then return one lazy named-table plan."""
+        name = LogicalName.from_underlying(logical_name)?
+        source_uri = SourceUri.from_underlying(uri)?
+        self._register_parsed(name, parquet_source(source_uri.0))?
+        register_named_table_schema(name.0, [])
+        return self.table[T](name.0)
+
+    def read_arrow[T with Clone](mut self, logical_name: str, uri: str) -> Result[LazyFrame[T], SessionError]:
+        """Convenience read path: register one Arrow IPC source then return one lazy named-table plan."""
+        name = LogicalName.from_underlying(logical_name)?
+        source_uri = SourceUri.from_underlying(uri)?
+        self._register_parsed(name, arrow_source(source_uri.0))?
+        register_named_table_schema(name.0, [])
+        return self.table[T](name.0)
+
+    def table[T with Clone](self, logical_name: str) -> Result[LazyFrame[T], SessionError]:
+        """Return one lazy named-table carrier for a previously registered logical name."""
+        name = LogicalName.from_underlying(logical_name)?
+        if _find_registration_index(self._registrations, name.0) < 0:
+            return Err(SessionError(kind=str("unknown_table"), message=f"table '{name.0}' is not registered"))
+        return Ok(lazy_frame_named_table[T](name.0))
+
+    def activate(self) -> None:
+        """Set this Session as the current active Session used by LazyFrame.collect()."""
+        set_active_session_state(_active_state_from_session(self.clone()))
+
+    @staticmethod
+    def clear_active_session() -> None:
+        """Clear the active Session binding so LazyFrame.collect() fails with `no_active_session`."""
+        clear_active_session_state()
+
+    @staticmethod
+    def get_active_session() -> Result[Session, SessionError]:
+        """Return the currently active Session snapshot used by lazy collect/display paths."""
+        match get_active_session_state():
+            Ok(state) => 
+                return Ok(_session_from_active_state(state))
+            Err(err) => 
+                return Err(_session_error_from_active_error(err))
+
+
+    def execute[T with Clone](self, data: LazyFrame[T]) -> Result[LazyFrame[T], SessionError]:
+        """Validate and execute one lazy plan while preserving deferred carrier shape."""
+        _ensure_datafusion_backend(self._backend)?
+        plan = data.to_substrait_plan()
+        _validate_named_table_binding(self._registrations, plan)?
+
+        match block_on(datafusion_execute_async(_to_backend_registrations(self._registrations), plan)):
+            Ok(exec_result) => 
+                match exec_result:
+                    Ok(_) => 
+                        return Ok(data)
+                    Err(err) => 
+                        return Err(_session_error_from_backend_error(err))
+
+            Err(err) => 
+                return Err(SessionError(kind=str("runtime_init_error"), message=err.message()))
+
+
+    def collect[T with Clone](self, data: LazyFrame[T]) -> Result[DataFrame[T], SessionError]:
+        """Validate and execute one lazy plan, returning a materialized DataFrame payload."""
+        _ensure_datafusion_backend(self._backend)?
+        plan = data.to_substrait_plan()
+        _validate_named_table_binding(self._registrations, plan)?
+
+        match block_on(datafusion_collect_payload_async(_to_backend_registrations(self._registrations), plan)):
+            Ok(collect_result) => 
+                match collect_result:
+                    Ok(payload) => 
+                        return Ok(DataFrame[T](_type_witness=_empty_type_witness[T](), _materialized_payload=payload, _substrait_rel=root_rel(data.to_substrait_plan())))
+                    Err(err) => 
+                        return Err(_session_error_from_backend_error(err))
+
+            Err(err) => 
+                return Err(SessionError(kind=str("runtime_init_error"), message=err.message()))
+
+
+    def write_csv[T with Clone](self, data: LazyFrame[T], uri: str) -> Result[None, SessionError]:
+        """Execute one lazy plan and write result rows to a CSV sink URI."""
+        return self._write_plan_to_sink(data.to_substrait_plan(), uri, SinkKind.Csv)
+
+    def write_parquet[T with Clone](self, data: LazyFrame[T], uri: str) -> Result[None, SessionError]:
+        """Execute one lazy plan and write result rows to a Parquet sink URI."""
+        return self._write_plan_to_sink(data.to_substrait_plan(), uri, SinkKind.Parquet)
+
+    def write_csv_df[T with Clone](self, data: DataFrame[T], uri: str) -> Result[None, SessionError]:
+        """Write one materialized DataFrame through the Session CSV sink path."""
+        return self._write_plan_to_sink(data.to_substrait_plan(), uri, SinkKind.Csv)
+
+    def write_parquet_df[T with Clone](self, data: DataFrame[T], uri: str) -> Result[None, SessionError]:
+        """Write one materialized DataFrame through the Session Parquet sink path."""
+        return self._write_plan_to_sink(data.to_substrait_plan(), uri, SinkKind.Parquet)
+
+    def _write_plan_to_sink(self, plan: Plan, uri: str, sink_kind: SinkKind) -> Result[None, SessionError]:
+        """Run one validated plan through the selected sink writer and normalize runtime/backend errors."""
+        sink_uri = SinkUri.from_underlying(uri)?
+        _ensure_datafusion_backend(self._backend)?
+        _validate_named_table_binding(self._registrations, plan)?
+        registrations = _to_backend_registrations(self._registrations)
+
+        match sink_kind:
+            SinkKind.Csv => 
+                match block_on(datafusion_write_csv_async(registrations, plan, sink_uri.0)):
+                    Ok(write_result) => 
+                        return _write_result_from_backend_result(write_result)
+                    Err(err) => 
+                        return Err(SessionError(kind=str("runtime_init_error"), message=err.message()))
+
+            SinkKind.Parquet => 
+                match block_on(datafusion_write_parquet_async(registrations, plan, sink_uri.0)):
+                    Ok(write_result) => 
+                        return _write_result_from_backend_result(write_result)
+                    Err(err) => 
+                        return Err(SessionError(kind=str("runtime_init_error"), message=err.message()))
+
+
+
+
+pub class SessionBuilder:
+    """Builder for backend selection before Session construction."""
+
+    pub _backend: BackendSelection
+
+    def with_datafusion(self, backend: DataFusion) -> Self:
+        """Select DataFusion backend options for the Session being built."""
+        return SessionBuilder(_backend=BackendSelection(kind=BackendKind.DataFusionEngine, datafusion=backend.clone()))
+
+    def build(self) -> Session:
+        """Build one Session from the current builder backend selection."""
+        return Session(_backend=self._backend.clone(), _registrations=[])
+
+
+def _active_state_from_session(session: Session) -> ActiveSessionState:
+    """Convert public Session state into the lightweight active-session snapshot model."""
+    mut registrations: list[ActiveRegistration] = []
+    for registration in session._registrations:
+        registrations.append(ActiveRegistration(logical_name=registration.logical_name, source=registration.source.clone()))
+    return ActiveSessionState(backend=session._backend.clone(), registrations=registrations)
+
+
+def _session_from_active_state(state: ActiveSessionState) -> Session:
+    """Rehydrate a public Session from one active-session snapshot."""
+    mut registrations: list[SessionRegistration] = []
+    for registration in state.registrations:
+        registrations.append(SessionRegistration(logical_name=registration.logical_name, source=registration.source.clone()))
+    return Session(_backend=state.backend, _registrations=registrations)
+
+
+def _session_error_from_active_error(err: ActiveSessionError) -> SessionError:
+    """Translate active-session errors into public SessionError values."""
+    return SessionError(kind=err.kind, message=err.message)
+
+
+def _to_backend_registrations(registrations: list[SessionRegistration]) -> list[BackendRegistration]:
+    """Convert Session registrations into backend execution registration payloads."""
+    mut converted: list[BackendRegistration] = []
+    for registration in registrations:
+        converted.append(BackendRegistration(logical_name=registration.logical_name, source=registration.source.clone()))
+    return converted
+
+
+def _session_error_from_backend_error(err: BackendError) -> SessionError:
+    """Translate backend errors into public SessionError values."""
+    return SessionError(kind=err.kind, message=err.message)
+
+
+def _write_result_from_backend_result(write_result: Result[None, BackendError]) -> Result[None, SessionError]:
+    """Normalize one backend write result into the Session-facing write result contract."""
+    match write_result:
+        Ok(_) => 
+            return Ok(None)
+        Err(err) => 
+            return Err(_session_error_from_backend_error(err))
+
+
+
+def _ensure_datafusion_backend(selection: BackendSelection) -> Result[None, SessionError]:
+    """Guard backend dispatch: this slice only supports DataFusion execution."""
+    if selection.kind == BackendKind.DataFusionEngine:
+        return Ok(None)
+    return Err(SessionError(kind=str("unsupported_backend"), message=f"backend '{backend_kind_name(selection)}' is not implemented"))
+
+
+def _empty_type_witness[T with Clone]() -> list[T]:
+    """Provide an empty generic witness list so runtime carries the type parameter."""
+    return []
+
+
+pub def collect_with_active_session[T with Clone](data: LazyFrame[T]) -> Result[DataFrame[T], SessionError]:
+    """Helper used by LazyFrame.collect() to execute through the currently active Session."""
+    active = Session.get_active_session()?
+    return active.collect(data)
+
+
+def _validate_named_table_binding(registrations: list[SessionRegistration], plan: Plan) -> Result[None, SessionError]:
+    """Ensure a named-table root in the plan has a matching Session registration."""
+    table_name = read_named_table_name(root_rel(plan))
+    if len(table_name) == 0:
+        return Ok(None)
+    if _find_registration_index(registrations, table_name) < 0:
+        return Err(SessionError(kind=str("unknown_table"), message=f"table '{table_name}' is not registered"))
+    return Ok(None)
+
+
+def _find_registration_index(registrations: list[SessionRegistration], logical_name: str) -> int:
+    """Return index of a logical registration, or `-1` when not found."""
+    mut i = 0
+    while i < len(registrations):
+        if registrations[i].logical_name == logical_name:
+            return i
+        i = i + 1
+    return -1

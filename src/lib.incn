@@ -7,8 +7,11 @@ Consumers depend on this package via `[dependencies]` and import with `from pub:
 
 pub from dataset import BoundedDataSet, DataFrame, DataSet, DataStream, LazyFrame, UnboundedDataSet
 pub from dataset.ops import agg_ds, explode_ds, filter_ds, group_by_ds, join_ds, limit_ds, order_by_ds, select_ds
-pub from functions import count_rows, total
+pub from functions import count_rows, display, total
+pub from backends import BackendKind, DataFusion, TableSource, csv_source, parquet_source
 pub from metadata import inql_version
+pub from session.types import Session, SessionBuilder
+pub from session.errors import SessionError, format_session_diagnostic, report_session_error
 pub from substrait.schema import (
     DemoCustomer,
     RowColumnSpec,
@@ -57,7 +60,7 @@ pub from substrait.plan import (
     substrait_producer_name,
     substrait_release_tag,
 )
-pub from substrait.conformance import (
+pub from substrait.conformance_catalog import (
     ConformanceCapabilityTags,
     ConformancePortability,
     ConformanceProfileTag,
@@ -66,9 +69,12 @@ pub from substrait.conformance import (
     ConformanceStatus,
     CoreScenarioKey,
     SubstraitConformanceScenario,
-    core_scenario_emission_matches,
-    core_scenario_plan,
     core_scenario,
     core_scenarios,
+)
+pub from substrait.conformance_validate import (
+    relation_kind_name_from_conformance,
+    scenario_has_required_rel_kinds,
+    scenario_matches_key_invariants,
     scenario_matches_root_shape,
 )

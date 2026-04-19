@@ -42,6 +42,8 @@ def inspect_orders(orders: DataFrame[Order]) -> None:
 
 `DataFrame[T]` is always bounded — it's the product of collecting or executing a `LazyFrame`.
 
+Current collection and materialization flows are documented in [Execution context](execution_context.md).
+
 ### `LazyFrame[T]` — deferred plan
 
 Use `LazyFrame[T]` when you want to compose operations before execution:
@@ -117,6 +119,6 @@ def process_stream(events: DataStream[Event]) -> DataStream[Event]:
 
 ## What's next?
 
-- **Execution context**: How `DataSet` operations actually run (RFC 004)
+- **Execution context**: how deferred carriers bind, execute, collect, and write in practice: [Execution context](execution_context.md)
 - **Query DSL**: `query {}` blocks that produce plans (RFC 003)
 - **Substrait**: Portable logical plans (RFC 002)

@@ -1,20 +1,22 @@
 # Substrait conformance corpus (Reference)
 
-This page documents where InQL's Substrait conformance scenarios live and how they are represented. The normative Substrait contract still lives in [InQL RFC 002][rfc-002], with operator-level mappings in the [Substrait operator catalog][ref-operator-catalog].
+This page documents where InQL's Substrait conformance scenarios live and how they are represented. It is the current reference for the conformance corpus shape used by package code and tests.
 
-The corpus is the machine-readable validation layer for the RFC 002 v1 implementation profile ("v1 implementation profile (InQL code path)").
+The corpus is the machine-readable validation layer for the current InQL package implementation profile. For operator-level mappings, see the [Substrait operator catalog][ref-operator-catalog].
 
 ## Source of truth
 
 The canonical conformance corpus is implemented in InQL package code:
 
 - `src/substrait/conformance.incn`
+- `src/substrait/conformance_catalog.incn`
+- `src/substrait/conformance_validate.incn`
 
 The corpus uses typed models/enums (`SubstraitConformanceScenario`, `ConformanceStatus`, `ConformanceRel`, and related enums) for machine-readable contracts, and uses module/API docstrings for the human-readable contract.
 
 Canonical operation semantics flow through `src/dataset/ops.incn`, while proto-backed Substrait emission and plan inspection live in `src/substrait/plan.incn`.
 
-For the current package-level RFC 002 profile, conformance checks are intentionally split between:
+For the current package-level profile, conformance checks are intentionally split between:
 
 - real boundary facts that the package can prove now (relation kind, read kind, join variant, set operation, reference ordinal, extension URI presence)
 - richer planning semantics that remain deferred to future `query {}` lowering and Prism work
@@ -26,6 +28,7 @@ Each scenario is selected by `CoreScenarioKey` and materialized via `core_scenar
 - Machine-readable fields include strongly typed enums for status/profile/relation/portability fields.
 - Tag and reference collections are modeled as list-backed newtypes (`ConformanceCapabilityTags` and `ConformanceReferences`) rather than pipe-delimited strings.
 - Human-readable content remains in docs plus descriptive scenario text fields (`intent`, `required_rel_shape`, and `expected_constraints`).
+- Fixture plan construction is test-owned. Production conformance modules define contracts and validators.
 
 ## Scenario ID convention
 
@@ -39,7 +42,7 @@ The numeric suffix is immutable after publication. If requirements change incomp
 
 ## Current core coverage
 
-Core scenarios currently implemented in `src/substrait/conformance.incn`:
+Core scenarios currently implemented in `src/substrait/conformance_catalog.incn`:
 
 | Scenario ID                                            | Selector                                                   | Primary core `Rel` coverage |
 | ------------------------------------------------------ | ---------------------------------------------------------- | --------------------------- |
@@ -66,13 +69,15 @@ The same taxonomy remains in force for scenario declarations:
 
 ## Tooling expectation
 
-Downstream tooling should consume scenario functions and model fields from `src/substrait/conformance.incn` as the machine contract, rather than JSON sidecar files.
+Downstream tooling should consume scenario catalog and validator functions from `src/substrait/conformance*.incn` modules as the machine contract, rather than JSON sidecar files.
 
 Conformance validation for the v1 profile is expected to run against canonical operation functions in `src/dataset/ops.incn`, emitted proto-backed plans from `src/substrait/plan.incn`, and typed model/schema helpers where needed.
 
 The current `ProjectRel` and `AggregateRel` scenarios are boundary-shape scaffolds, not proof that full computed-column, window, grouping-set, or distinct semantics are already implemented in package code.
 
-<!-- Link references (single place for targets) -->
+Historical design context is captured in [InQL RFC 002][rfc-002], but this page is the source of truth for the current conformance corpus representation.
+
+<!-- References -->
 
 [rfc-002]: ../../rfcs/002_apache_substrait_integration.md
 [ref-operator-catalog]: ./operator_catalog.md

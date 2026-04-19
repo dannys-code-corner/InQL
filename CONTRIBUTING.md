@@ -41,6 +41,7 @@ Thank you for your interest in InQL — the typed relational layer for [Incan][i
 
    ```bash
    make fmt-check
+   make test-style
    make build
    make test
    ```
@@ -60,7 +61,33 @@ See [docs/architecture.md][architecture] for a concise map. In short:
 
 1. **Specify the change in an InQL RFC** under `docs/rfcs/` (or amend an existing RFC). New documents should start from [RFC template][rfc-template]; follow [Writing InQL RFCs][writing-rfcs] for workflow so naming, typing, and lowering rules stay coherent across `query {}`, carriers, and optional pipe-forward.
 2. **Implement** in the right place: library APIs here when they are ordinary Incan code; compiler or stdlib changes in the Incan repo as needed.
-3. **Keep the [README][readme] accurate** for anything a new user would notice.
+3. **Keep the [README][readme] and docs accurate** for anything a new user or contributor would notice.
+
+### Function docstrings
+
+- Every function or method with a body (`def ...`) in `.incn` files must include a docstring.
+- When modifying legacy code that lacks a docstring, add the missing docstring in the same change.
+- Prefer intent-level docstrings (what/why, invariants, boundary behavior), not line-by-line narration.
+
+### Test style (canonical)
+
+- Every `def test_*` in `tests/*.incn` must include explicit `Arrange`, `Act`, and `Assert` section markers:
+  - `# -- Arrange --`
+  - `# -- Act --`
+  - `# -- Assert --`
+- You may combine sections for concise cases (`# -- Act & Assert --`), but each test must still contain all three dimensions.
+- Compile-shape tests are not exempt; include an `Assert` section stating compile-shape intent.
+- Run `make test-style` locally (and note it is part of `make check` / `make ci`).
+
+### RFCs vs regular docs
+
+- RFCs are design records and normative proposals. They are not the primary place to document current package behavior.
+- Current API shape, usage, and implemented details belong in normal docs under `docs/`:
+  - `docs/language/reference/` for current contracts
+  - `docs/language/explanation/` for mental models and usage guidance
+  - `docs/architecture.md` for system boundaries
+  - `docs/release_notes/` for shipped/user-visible changes
+- If implementation diverges from an RFC, do not quietly rewrite the RFC into an implementation diary. Either fix the code, update ordinary docs and issues, or make a deliberate RFC amendment / follow-on RFC.
 
 ## Version bumps
 
@@ -108,7 +135,7 @@ When you open an issue, GitHub offers **templates** under [`.github/ISSUE_TEMPLA
 
 Open an issue on this repository for InQL-specific design or package questions; use the [Incan repository][incan-repo] for compiler and language issues that are not InQL-scoped.
 
-<!-- Link references (single place for targets) -->
+<!-- References -->
 
 [incan-repo]: https://github.com/dannys-code-corner/incan
 [incan-contributing]: https://github.com/dannys-code-corner/incan/blob/main/CONTRIBUTING.md

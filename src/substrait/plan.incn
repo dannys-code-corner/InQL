@@ -4,9 +4,9 @@ Proto-backed Substrait plan construction for InQL RFC 002.
 This module is the canonical emission boundary for Substrait plans. It uses the real `substrait::proto` types rather
 than a hand-rolled parallel plan model.
 
-TODO: (rfc-002) revisit this module's public surface once the proto-backed API stabilizes.
-      A thin wrapper class or classmethod-based entrypoint may read more cleanly than the current free-function-heavy
-      shape, as long as it remains a wrapper over real proto plans rather than a parallel semantic model.
+Design note: this module intentionally keeps a function-first API over real proto values.
+If the public surface is later reshaped, it should remain a thin wrapper over `substrait::proto` rather than
+introducing a parallel semantic plan model.
 """
 
 from rust::prost import Message
@@ -82,96 +82,174 @@ pub enum SubstraitSetOperation:
 # These keep the public RFC 002 surface compact by centralizing common proto defaults, relation wrapping, and temporary
 # compatibility shims.
 def _logical_shape(name: str) -> RowShapeSpec:
+    """Build one minimal placeholder logical row shape for helper-generated reads."""
     return RowShapeSpec(model_name=name, columns=[RowColumnSpec(name=str("id"), kind=SubstraitPrimitiveKind.I64, nullable=false)])
 
 
 def _default_named_struct(name: str) -> NamedStruct:
+    """Build one default named struct for helper-generated table reads."""
     return row_shape_to_named_struct(_logical_shape(name))
 
 
+def _unknown_named_struct() -> NamedStruct:
+    """Build an unknown named struct placeholder when schema binding is unavailable."""
+    return row_shape_to_named_struct(RowShapeSpec(model_name=str("__unknown__"), columns=[]))
+
+
+model NamedTableSchemaEntry:
+    table_name: str
+    columns: list[RowColumnSpec]
+
+
+static _named_table_schema_registry: list[NamedTableSchemaEntry] = []
+
+
+def _named_table_shape(table_name: str, columns: list[RowColumnSpec]) -> RowShapeSpec:
+    """Build one row-shape envelope for a named table schema registry entry."""
+    return RowShapeSpec(model_name=table_name, columns=columns)
+
+
+def _named_table_base_schema(table_name: str) -> NamedStruct:
+    """Resolve registered named-table schema into Substrait base_schema."""
+    mut found = false
+    mut matched: list[RowColumnSpec] = []
+    for entry in _named_table_schema_registry:
+        if entry.table_name == table_name:
+            found = true
+            matched = entry.columns
+    if found == false:
+        return _unknown_named_struct()
+    if len(matched) == 0:
+        return _unknown_named_struct()
+    return row_shape_to_named_struct(_named_table_shape(table_name, matched))
+
+
+pub def register_named_table_schema(table_name: str, columns: list[RowColumnSpec]) -> None:
+    """Register one logical named-table schema used to bind ReadRel base_schema."""
+    _named_table_schema_registry.append(NamedTableSchemaEntry(table_name=table_name, columns=columns))
+    return
+
+
+pub def named_table_columns(table_name: str) -> list[str]:
+    """Return registered columns for one named table, or empty when unknown."""
+    mut found = false
+    mut matched: list[RowColumnSpec] = []
+    for entry in _named_table_schema_registry:
+        if entry.table_name == table_name:
+            found = true
+            matched = entry.columns
+    if found:
+        mut names: list[str] = []
+        for column in matched:
+            names.append(column.name)
+        return names
+    return []
+
+
 def _default_release_tag() -> str:
+    """Return the default Substrait release tag advertised by this package."""
     return str("v0.63.0")
 
 
 def _default_producer() -> str:
+    """Return the default producer label embedded in emitted plans."""
     return str("inql-rfc002")
 
 
 def _default_version() -> Version:
+    """Return the default Substrait plan version envelope."""
     return Version(major_number=0, minor_number=63, patch_number=0, git_hash=str(""), producer=_default_producer())
 
 
 def _explode_extension_uri_value() -> str:
+    """Return the extension URI used for EXPLODE-like encoded relation markers."""
     return str("https://inql.io/extensions/v0.1/unnest.yaml#explode")
 
 
 def _default_extension_uris() -> list[str]:
+    """Return default extension URIs included in package-level plan envelopes."""
     return [_explode_extension_uri_value()]
 
 
 def _direct_common() -> RelCommon:
+    """Build a direct emit RelCommon payload shared by helper relation constructors."""
     return RelCommon(hint=None, advanced_extension=None, emit_kind=Some(EmitKind.Direct(Direct())))
 
 
 def _bool_expr(value: bool) -> Expression:
+    """Build one boolean literal expression."""
     return Expression(rex_type=Some(RexType.Literal(Literal(literal_type=Some(LiteralType.Boolean(value)), nullable=false, type_variation_reference=0))))
 
 
 def _i64_expr(value: int) -> Expression:
+    """Build one i64 literal expression."""
     return Expression(rex_type=Some(RexType.Literal(Literal(literal_type=Some(LiteralType.I64(value)), nullable=false, type_variation_reference=0))))
 
 
 def _string_expr(value: str) -> Expression:
+    """Build one nullable string literal expression."""
     return Expression(rex_type=Some(RexType.Literal(Literal(literal_type=Some(LiteralType.String(value.to_string())), nullable=true, type_variation_reference=0))))
 
 
 def _rel_read(read: ReadRel) -> Rel:
+    """Wrap ReadRel payload into one generic Rel union value."""
     return Rel(rel_type=Some(RelType.Read(Box.new(read))))
 
 
 def _rel_filter(filter: FilterRel) -> Rel:
+    """Wrap FilterRel payload into one generic Rel union value."""
     return Rel(rel_type=Some(RelType.Filter(Box.new(filter))))
 
 
 def _rel_project(project: ProjectRel) -> Rel:
+    """Wrap ProjectRel payload into one generic Rel union value."""
     return Rel(rel_type=Some(RelType.Project(Box.new(project))))
 
 
 def _rel_join(join: JoinRel) -> Rel:
+    """Wrap JoinRel payload into one generic Rel union value."""
     return Rel(rel_type=Some(RelType.Join(Box.new(join))))
 
 
 def _rel_cross(cross: CrossRel) -> Rel:
+    """Wrap CrossRel payload into one generic Rel union value."""
     return Rel(rel_type=Some(RelType.Cross(Box.new(cross))))
 
 
 def _rel_aggregate(aggregate: AggregateRel) -> Rel:
+    """Wrap AggregateRel payload into one generic Rel union value."""
     return Rel(rel_type=Some(RelType.Aggregate(Box.new(aggregate))))
 
 
 def _rel_sort(sort: SortRel) -> Rel:
+    """Wrap SortRel payload into one generic Rel union value."""
     return Rel(rel_type=Some(RelType.Sort(Box.new(sort))))
 
 
 def _rel_fetch(fetch: FetchRel) -> Rel:
+    """Wrap FetchRel payload into one generic Rel union value."""
     return Rel(rel_type=Some(RelType.Fetch(Box.new(fetch))))
 
 
 def _rel_set(set_rel: SetRel) -> Rel:
+    """Wrap SetRel payload into one generic Rel union value."""
     return Rel(rel_type=Some(RelType.Set(set_rel)))
 
 
 def _rel_reference(reference: ReferenceRel) -> Rel:
+    """Wrap ReferenceRel payload into one generic Rel union value."""
     return Rel(rel_type=Some(RelType.Reference(reference)))
 
 
 def _rel_extension_single(input: Rel, extension_uri: str) -> Rel:
+    """Wrap one input relation in an ExtensionSingleRel with the provided URI."""
     detail = Any(type_url=extension_uri, value=[])
     rel = ExtensionSingleRel(common=Some(_direct_common()), input=Some(Box.new(input)), detail=Some(detail))
     return Rel(rel_type=Some(RelType.ExtensionSingle(Box.new(rel))))
 
 
 def _set_operation_from_legacy_name(operation: str) -> SubstraitSetOperation:
+    """Map legacy set-operation names to typed Substrait set-operation enums."""
     if operation == str("Union"):
         return SubstraitSetOperation.UnionDistinct
     elif operation == str("UnionAll"):
@@ -182,6 +260,7 @@ def _set_operation_from_legacy_name(operation: str) -> SubstraitSetOperation:
 
 
 def _join_type_from_kind(kind: SubstraitJoinKind) -> RustI32:
+    """Map typed join-kind enum to Substrait protobuf JoinType discriminant."""
     match kind:
         SubstraitJoinKind.Inner => 
             return JoinType.Inner.into()
@@ -203,6 +282,7 @@ def _join_type_from_kind(kind: SubstraitJoinKind) -> RustI32:
 
 
 def _set_op_from_kind(operation: SubstraitSetOperation) -> RustI32:
+    """Map typed set-operation enum to Substrait protobuf SetOp discriminant."""
     match operation:
         SubstraitSetOperation.MinusPrimary => 
             return SetOp.MinusPrimary.into()
@@ -220,11 +300,19 @@ def _set_op_from_kind(operation: SubstraitSetOperation) -> RustI32:
 
 
 def _plan_root(input: Rel, names: list[str]) -> PlanRel:
+    """Wrap one input relation as a root PlanRel with output field names."""
     return PlanRel(rel_type=Some(PlanRelType.Root(RelRoot(input=Some(input), names=names))))
 
 
 def _plan_rel(input: Rel) -> PlanRel:
+    """Wrap one input relation as a non-root PlanRel."""
     return PlanRel(rel_type=Some(PlanRelType.Rel(input)))
+
+
+pub def empty_root_names() -> list[str]:
+    """Return an explicitly typed empty root-name list for plan roots."""
+    names: list[str] = []
+    return names
 
 
 pub def empty_plan() -> Plan:
@@ -259,37 +347,47 @@ pub def plan_from_root_relation(input: Rel, names: list[str]) -> Plan:
 
 pub def read_named_table_rel(table_name: str) -> Rel:
     """Construct a logical `ReadRel(NamedTable)` root for a registered table name."""
-    read = ReadRel(common=Some(_direct_common()), base_schema=Some(_default_named_struct(table_name)), filter=None, best_effort_filter=None, projection=None, advanced_extension=None, read_type=Some(ReadType.NamedTable(ReadNamedTable(names=[table_name], advanced_extension=None))))
+    read = ReadRel(common=Some(_direct_common()), base_schema=Some(_named_table_base_schema(table_name)), filter=None, best_effort_filter=None, projection=None, advanced_extension=None, read_type=Some(ReadType.NamedTable(ReadNamedTable(names=[table_name], advanced_extension=None))))
+    return _rel_read(read)
+
+
+pub def read_local_parquet_rel(uri: str) -> Rel:
+    """Construct a logical `ReadRel(LocalFiles)` for a Parquet-backed scan."""
+    file_item = FileOrFiles(partition_index=0, start=0, length=0, path_type=Some(PathType.UriFile(uri.to_string())), file_format=Some(FileFormat.Parquet(ParquetReadOptions())))
+    read = ReadRel(common=Some(_direct_common()), base_schema=Some(_unknown_named_struct()), filter=None, best_effort_filter=None, projection=None, advanced_extension=None, read_type=Some(ReadType.LocalFiles(LocalFiles(items=[file_item], advanced_extension=None))))
     return _rel_read(read)
 
 
 pub def read_local_files_rel(uri: str) -> Rel:
-    """Construct a logical `ReadRel(LocalFiles)` for a file-backed scan."""
-    file_item = FileOrFiles(partition_index=0, start=0, length=0, path_type=Some(PathType.UriFile(uri.to_string())), file_format=Some(FileFormat.Parquet(ParquetReadOptions())))
-    read = ReadRel(common=Some(_direct_common()), base_schema=Some(_default_named_struct(str("LocalFiles"))), filter=None, best_effort_filter=None, projection=None, advanced_extension=None, read_type=Some(ReadType.LocalFiles(LocalFiles(items=[file_item], advanced_extension=None))))
-    return _rel_read(read)
+    """Compatibility wrapper for the current Parquet-backed `LocalFiles` read helper."""
+    return read_local_parquet_rel(uri)
 
 
 pub def read_virtual_table_rel(table_name: str) -> Rel:
     """Construct a logical `ReadRel(VirtualTable)` with one placeholder inline row."""
     row = NestedStruct(fields=[_string_expr(table_name)])
-    read = ReadRel(common=Some(_direct_common()), base_schema=Some(_default_named_struct(table_name)), filter=None, best_effort_filter=None, projection=None, advanced_extension=None, read_type=Some(ReadType.VirtualTable(VirtualTable(values=[], expressions=[row]))))
+    read = ReadRel(common=Some(_direct_common()), base_schema=Some(_unknown_named_struct()), filter=None, best_effort_filter=None, projection=None, advanced_extension=None, read_type=Some(ReadType.VirtualTable(VirtualTable(values=[], expressions=[row]))))
     return _rel_read(read)
 
 
 pub def plan_from_named_table(table_name: str) -> Plan:
     """Build a minimal plan rooted at a named-table logical read."""
-    return plan_from_root_relation(read_named_table_rel(table_name), [str("id")])
+    return plan_from_root_relation(read_named_table_rel(table_name), empty_root_names())
+
+
+pub def plan_from_local_parquet(uri: str) -> Plan:
+    """Build a minimal plan rooted at a Parquet-backed local-files logical read."""
+    return plan_from_root_relation(read_local_parquet_rel(uri), empty_root_names())
 
 
 pub def plan_from_local_files(uri: str) -> Plan:
-    """Build a minimal plan rooted at a local-files logical read."""
-    return plan_from_root_relation(read_local_files_rel(uri), [str("id")])
+    """Compatibility wrapper for the current Parquet-backed local-files plan helper."""
+    return plan_from_local_parquet(uri)
 
 
 pub def plan_from_virtual_table(table_name: str) -> Plan:
     """Build a minimal plan rooted at a virtual-table logical read."""
-    return plan_from_root_relation(read_virtual_table_rel(table_name), [str("id")])
+    return plan_from_root_relation(read_virtual_table_rel(table_name), empty_root_names())
 
 
 pub def filter_rel(input: Rel, predicate: bool) -> Rel:
@@ -319,8 +417,8 @@ pub def cross_rel(left: Rel, right: Rel) -> Rel:
 
 pub def aggregate_rel(input: Rel, include_measure: bool) -> Rel:
     """Wrap a child relation in a shape-only `AggregateRel` scaffold using placeholder grouping metadata."""
-    mut groupings: list[Grouping] = [Grouping(grouping_expressions=[], expression_references=[0])]
-    mut grouping_exprs: list[Expression] = [_string_expr(str("__group_key__"))]
+    groupings: list[Grouping] = [Grouping(grouping_expressions=[], expression_references=[0])]
+    grouping_exprs: list[Expression] = [_string_expr(str("__group_key__"))]
     mut measures: list[Measure] = []
     if include_measure:
         measures = []
@@ -335,7 +433,7 @@ pub def sort_rel(input: Rel) -> Rel:
 
 pub def fetch_rel(input: Rel, offset: int, count: int) -> Rel:
     """Wrap a child relation in `FetchRel` for offset/count windowing."""
-    return _rel_fetch(FetchRel(common=Some(_direct_common()), input=Some(Box.new(input)), advanced_extension=None, offset_mode=Some(OffsetMode.Offset(offset)), count_mode=Some(CountMode.Count(count))))
+    return _rel_fetch(FetchRel(common=Some(_direct_common()), input=Some(Box.new(input)), advanced_extension=None, offset_mode=Some(OffsetMode.OffsetExpr(Box.new(_i64_expr(offset)))), count_mode=Some(CountMode.CountExpr(Box.new(_i64_expr(count))))))
 
 
 pub def set_rel(left: Rel, right: Rel, operation: str) -> Rel:
@@ -431,6 +529,23 @@ pub def read_kind_name(rel: Rel) -> str:
 
 
 
+pub def read_named_table_name(rel: Rel) -> str:
+    """Return the first named-table identifier for ReadRel(NamedTable), or empty when not applicable."""
+    match rel.rel_type:
+        Some(RelType.Read(read_rel)) => 
+            match read_rel.read_type:
+                Some(ReadType.NamedTable(named_table)) => 
+                    if len(named_table.names) == 0:
+                        return str("")
+                    return named_table.names[0]
+                _ => 
+                    return str("")
+
+        _ => 
+            return str("")
+
+
+
 pub def set_operation_name(rel: Rel) -> str:
     """Return the public Substrait set-operation label for one `SetRel` node."""
     match rel.rel_type:
@@ -469,6 +584,7 @@ pub def plan_encoded_len(plan: Plan) -> int:
 
 
 def _relation_children(rel: Rel) -> list[Rel]:
+    """Return direct child relations for one relation node."""
     match rel.rel_type:
         Some(RelType.Filter(filter)) => 
             match filter.input:
@@ -561,10 +677,12 @@ pub def rel_contains_kind(rel: Rel, expected_kind: str) -> bool:
 
 
 def _extension_urns_for_rel(rel: Rel) -> list[SimpleExtensionUrn]:
+    """Collect extension URNs required by one relation subtree."""
     return _collect_extension_urns(rel)
 
 
 def _collect_extension_urns(rel: Rel) -> list[SimpleExtensionUrn]:
+    """Recursively collect extension URNs from one relation subtree."""
     mut urns: list[SimpleExtensionUrn] = []
     match rel.rel_type.clone():
         Some(RelType.ExtensionSingle(extension)) => 

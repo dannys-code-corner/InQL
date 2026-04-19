@@ -26,12 +26,12 @@ The following table maps InQL plan capabilities to Substrait logical relations a
 | Literal or embedded rows                                      | `ReadRel` + `VirtualTable`                                                                                                                | core    |
 | Predicate pushdown into scan                                  | `ReadRel` filter fields and/or separate `FilterRel` — producer policy; **must** be documented per implementation                          | core    |
 | Row filter                                                    | `FilterRel`                                                                                                                               | core    |
-| Add or replace computed columns                               | `ProjectRel`; current package code provides a boundary scaffold, while richer computed/window semantics remain deferred                         | core    |
+| Add or replace computed columns                               | `ProjectRel`; current package code provides a boundary scaffold, while richer computed/window semantics remain deferred                   | core    |
 | Inner join                                                    | `JoinRel` (inner variant)                                                                                                                 | core    |
 | Left join                                                     | `JoinRel` (left outer variant)                                                                                                            | core    |
 | Semi, anti, single, mark join variants                        | `JoinRel` (respective variant; optional `post_join_filter`)                                                                               | core    |
 | Cross join                                                    | `CrossRel`                                                                                                                                | core    |
-| Group by / aggregates                                         | `AggregateRel`; current package code provides a boundary scaffold, while richer grouping/measure semantics remain deferred                   | core    |
+| Group by / aggregates                                         | `AggregateRel`; current package code provides a boundary scaffold, while richer grouping/measure semantics remain deferred                | core    |
 | Rollup / cube / grouping sets                                 | `AggregateRel` with multiple groupings                                                                                                    | core    |
 | Distinct rows                                                 | `AggregateRel` with grouping keys and no measures                                                                                         | core    |
 | Window / analytic functions                                   | `ProjectRel` with window expressions                                                                                                      | core    |
@@ -106,7 +106,7 @@ Watermarks, session windows, and stateful streaming operations are outside the s
 - Any use of streaming extensions in the normative Substrait output **must** be documented as non-portable to non-streaming consumers.
 - The operator catalog entry **must** state which consumers are known to handle the extension correctly.
 
-<!-- Link references (single place for targets) -->
+<!-- References -->
 
 [rfc-002]: ../../rfcs/002_apache_substrait_integration.md
 [ref-conformance-corpus]: ./conformance.md

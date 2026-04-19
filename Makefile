@@ -39,6 +39,11 @@ test: ## Run package tests (`incan test tests`)
 	@echo "\033[1mRunning InQL tests...\033[0m"
 	@$(INCAN) test $(INQL_TEST_DIR)
 
+.PHONY: test-style
+test-style: ## Validate test style markers (Arrange / Act / Assert) across `tests/*.incn`
+	@echo "\033[1mChecking test style markers...\033[0m"
+	@bash scripts/check_test_style.sh
+
 .PHONY: build-locked
 build-locked: ## Build with `--locked` (stricter; requires current `incan.lock`)
 	@echo "\033[1mBuilding InQL library (locked)...\033[0m"
@@ -81,19 +86,24 @@ fmt-check: ## Check formatting without writing (`incan fmt --check` per director
 # =============================================================================
 
 .PHONY: check
-check: fmt-check build test ## Format check, build, and test
+check: fmt-check test-style build test ## Format check, style gate, build, and test
 	@echo "\033[32m✓ check passed\033[0m"
 
 .PHONY: pre-commit
-pre-commit: fmt-check build test ## Fast gate before commit (same as `check`)
+pre-commit: fmt-check test-style build test ## Fast gate before commit (same as `check`)
 	@echo "\033[32m✓ pre-commit gate passed\033[0m"
 
 .PHONY: ci
-ci: fmt-check build test ## Same steps as GitHub Actions `inql` job
+ci: fmt-check test-style build test smoke-consumer ## Same steps as GitHub Actions `inql` job
 	@echo "\033[32m✓ ci gate passed\033[0m"
 
 .PHONY: verify
 verify: ci ## Alias for `ci`
+
+.PHONY: smoke-consumer
+smoke-consumer: ## Verify InQL works as a pub dependency from a fresh consumer project
+	@echo "\033[1mRunning pub-consumer smoke check...\033[0m"
+	@bash scripts/smoke_pub_consumer.sh
 
 # =============================================================================
 # Miscellaneous
