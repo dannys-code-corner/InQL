@@ -1,5 +1,9 @@
 """Shared Prism types that define the internal planning substrate contract."""
 
+from aggregate_builders import AggregateMeasure
+from filter_builders import FilterPredicate
+from projection_builders import ProjectionAssignment
+
 pub type PrismStoreId = newtype int
 
 
@@ -31,8 +35,12 @@ pub model PrismNode:
     pub kind: PrismNodeKind
     pub input_ids: list[int]
     pub named_table: str
-    pub predicate: bool
+    pub join_predicate: bool
+    pub filter_predicate: FilterPredicate
     pub limit_count: int
+    pub group_columns: list[str]
+    pub aggregate_measures: list[AggregateMeasure]
+    pub projection_assignments: list[ProjectionAssignment]
 
 
 @derive(Clone)

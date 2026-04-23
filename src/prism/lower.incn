@@ -1,16 +1,16 @@
 """Lowering from Prism optimized views into Substrait relations and plans."""
 
 from rust::substrait::proto import Plan, Rel
-from substrait.plan import (
-    aggregate_rel,
-    empty_root_names,
-    explode_extension_uri,
+from prism.output_columns import rewritten_output_columns
+from substrait.extensions import explode_extension_uri
+from substrait.plans import plan_from_root_relation
+from substrait.relations import (
+    aggregate_rel_of_columns,
     extension_single_rel,
     fetch_rel,
-    filter_rel,
+    filter_rel_of_columns,
     join_rel,
-    plan_from_root_relation,
-    project_rel,
+    project_rel_of_columns,
     read_named_table_rel,
     sort_rel,
 )
@@ -37,7 +37,7 @@ pub def prism_rel_to_plan(rel: Rel) -> Plan:
 
     Root names are intentionally empty here so generated plans preserve source schema names.
     """
-    return plan_from_root_relation(rel, empty_root_names())
+    return plan_from_root_relation(rel, [])
 
 
 def _lower_node(view: PrismOptimizedView, node_id: int) -> Rel:
@@ -47,15 +47,18 @@ def _lower_node(view: PrismOptimizedView, node_id: int) -> Rel:
         PrismNodeKind.ReadNamedTable => 
             return read_named_table_rel(node.named_table)
         PrismNodeKind.Filter => 
-            return filter_rel(_lower_node(view, node.input_ids[0]), node.predicate)
+            return filter_rel_of_columns(_lower_node(view, node.input_ids[0]), rewritten_output_columns(view, node.input_ids[0]), node.filter_predicate)
         PrismNodeKind.Join => 
-            return join_rel(_lower_node(view, node.input_ids[0]), _lower_node(view, node.input_ids[1]), node.predicate)
+            return join_rel(_lower_node(view, node.input_ids[0]), _lower_node(view, node.input_ids[1]), node.join_predicate)
         PrismNodeKind.Project => 
-            return project_rel(_lower_node(view, node.input_ids[0]))
+            return project_rel_of_columns(_lower_node(view, node.input_ids[0]), rewritten_output_columns(view, node.input_ids[0]), node.projection_assignments)
         PrismNodeKind.GroupBy => 
-            return aggregate_rel(_lower_node(view, node.input_ids[0]), false)
+            return aggregate_rel_of_columns(_lower_node(view, node.input_ids[0]), rewritten_output_columns(view, node.input_ids[0]), node.group_columns, [])
         PrismNodeKind.Aggregate => 
-            return aggregate_rel(_lower_node(view, node.input_ids[0]), true)
+            input_node = rewritten_node_at(view, node.input_ids[0])
+            if input_node.kind == PrismNodeKind.GroupBy:
+                return aggregate_rel_of_columns(_lower_node(view, input_node.input_ids[0]), rewritten_output_columns(view, input_node.input_ids[0]), input_node.group_columns, node.aggregate_measures)
+            return aggregate_rel_of_columns(_lower_node(view, node.input_ids[0]), rewritten_output_columns(view, node.input_ids[0]), [], node.aggregate_measures)
         PrismNodeKind.OrderBy => 
             return sort_rel(_lower_node(view, node.input_ids[0]))
         PrismNodeKind.Limit => 

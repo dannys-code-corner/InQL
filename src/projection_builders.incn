@@ -1,0 +1,119 @@
+"""
+Explicit projection-expression builder surface for the current InQL-only projection slice.
+
+These builders are the semantic target for future compiler sugar such as `.amount * 1.2` and query-block projection
+lowering. Today they provide a library-owned way to express derived-column intent without requiring parser or
+typechecker changes in the Incan compiler.
+"""
+
+import std.testing
+
+@derive(Clone)
+pub enum ColumnExprKind:
+    """Supported expression kinds for the current projection-builder surface."""
+
+    Column
+    IntLiteral
+    FloatLiteral
+    StringLiteral
+    BoolLiteral
+    Add
+    Multiply
+
+
+@derive(Clone)
+pub model ColumnExpr:
+    """Projection expression description carried through dataset, Prism, and Substrait boundaries."""
+
+    pub kind: ColumnExprKind
+    pub column_name: str
+    pub int_value: int
+    pub float_value: float
+    pub string_value: str
+    pub bool_value: bool
+    pub arguments: list[ColumnExpr]
+
+
+@derive(Clone)
+pub model ProjectionAssignment:
+    """One ordered add-or-replace projection assignment used by `with_column(...)` and merged project nodes."""
+
+    pub output_name: str
+    pub expr: ColumnExpr
+
+
+pub def col(name: str) -> ColumnExpr:
+    """Build one named column reference expression."""
+    return ColumnExpr(kind=ColumnExprKind.Column, column_name=name, int_value=0, float_value=0.0, string_value="", bool_value=false, arguments=[])
+
+
+pub def int_expr(value: int) -> ColumnExpr:
+    """Build one integer literal expression."""
+    return ColumnExpr(kind=ColumnExprKind.IntLiteral, column_name="", int_value=value, float_value=0.0, string_value="", bool_value=false, arguments=[])
+
+
+pub def float_expr(value: float) -> ColumnExpr:
+    """Build one float literal expression."""
+    return ColumnExpr(kind=ColumnExprKind.FloatLiteral, column_name="", int_value=0, float_value=value, string_value="", bool_value=false, arguments=[])
+
+
+pub def str_expr(value: str) -> ColumnExpr:
+    """Build one string literal expression."""
+    return ColumnExpr(kind=ColumnExprKind.StringLiteral, column_name="", int_value=0, float_value=0.0, string_value=value, bool_value=false, arguments=[])
+
+
+pub def bool_expr(value: bool) -> ColumnExpr:
+    """Build one boolean literal expression."""
+    return ColumnExpr(kind=ColumnExprKind.BoolLiteral, column_name="", int_value=0, float_value=0.0, string_value="", bool_value=value, arguments=[])
+
+
+pub def add(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
+    """Build one binary addition expression."""
+    return ColumnExpr(kind=ColumnExprKind.Add, column_name="", int_value=0, float_value=0.0, string_value="", bool_value=false, arguments=[left, right])
+
+
+pub def mul(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
+    """Build one binary multiply expression."""
+    return ColumnExpr(kind=ColumnExprKind.Multiply, column_name="", int_value=0, float_value=0.0, string_value="", bool_value=false, arguments=[left, right])
+
+
+pub def with_column_assignment(name: str, expr: ColumnExpr) -> ProjectionAssignment:
+    """Build one add-or-replace projection assignment."""
+    return ProjectionAssignment(output_name=name, expr=expr)
+
+
+pub def column_expr_name(expr: ColumnExpr) -> str:
+    """Return the referenced column name when the expression is a direct column reference, otherwise empty."""
+    if expr.kind == ColumnExprKind.Column:
+        return expr.column_name
+    return ""
+
+
+pub def require_column_expr_name(expr: ColumnExpr, context: str) -> str:
+    """Return one direct column name or fail with a clear message for unsupported expression shapes."""
+    assert expr.kind == ColumnExprKind.Column, f"{context} currently requires a direct col(\"name\") reference"
+    return expr.column_name
+
+
+pub def project_output_columns(input_columns: list[str], assignments: list[ProjectionAssignment]) -> list[str]:
+    """Apply ordered add-or-replace assignments to one input column list and return the projected output columns."""
+    mut output_columns: list[str] = []
+    output_columns.extend(input_columns)
+    for assignment in assignments:
+        existing_idx = _index_of_column(output_columns, assignment.output_name)
+        # TODO(#121): remove this explicit owned-string materialization once v0.3 fixes the borrowed-loop-item field
+        # path structurally instead of case by case.
+        output_name = str(assignment.output_name)
+        if existing_idx >= 0:
+            output_columns[existing_idx] = output_name
+        else:
+            output_columns.append(output_name)
+    return output_columns
+
+
+def _index_of_column(columns: list[str], name: str) -> int:
+    """Return the first matching column index for `name`, or `-1` when absent."""
+    for idx, column_name in enumerate(columns):
+        if column_name == name:
+            return idx
+    return -1

@@ -9,8 +9,8 @@ This section documents the current InQL package surface.
 
 ### Core carriers
 
-- [Dataset types (Reference)][dataset-reference]
-- [Dataset types (Explanation)][dataset-explanation]
+- [Dataset carriers (Reference)][dataset-reference]
+- [Dataset carriers (Explanation)][dataset-explanation]
 
 ### Execution and materialization
 
@@ -27,8 +27,8 @@ This section documents the current InQL package surface.
 <!-- References -->
 [reference]: reference/
 [explanation]: explanation/
-[dataset-reference]: reference/dataset_types.md
-[dataset-explanation]: explanation/dataset_types.md
+[dataset-reference]: reference/dataset_carriers.md
+[dataset-explanation]: explanation/dataset_carriers.md
 [execution-reference]: reference/execution_context.md
 [execution-explanation]: explanation/execution_context.md
 [substrait-read-root]: reference/substrait/read_root_binding_contract.md

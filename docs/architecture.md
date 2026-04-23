@@ -83,7 +83,7 @@ Carriers are expected to be:
 
 They should be understood as experiences over planning state, not as independent semantic systems.
 
-For current package behavior, see [Dataset types (Reference)][dataset-ref] and [Dataset types (Explanation)][dataset-expl].
+For current package behavior, see [Dataset carriers (Reference)][dataset-ref] and [Dataset carriers (Explanation)][dataset-expl].
 
 ### Prism
 
@@ -109,7 +109,7 @@ That means:
 - extension and gap handling are documented at the Substrait boundary
 - internal planning freedom is allowed, but emitted plans must follow RFC 002
 
-Substrait-facing package code lives primarily under [substrait/](../src/substrait/). For current boundary docs, start with [Substrait read-root and binding contract][substrait-read-root].
+Substrait-facing package code lives primarily under [substrait/](../src/substrait/). The current implementation is intentionally split into focused modules for relation building, plan assembly, schema registry, extension bookkeeping, expression lowering, and inspection. For current boundary docs, start with [Substrait read-root and binding contract][substrait-read-root].
 
 ### Session
 
@@ -151,7 +151,12 @@ This is enough to explain the package architecture while keeping current API beh
 | `src/dataset/mod.incn`           | Carrier types and trait surface                    |
 | `src/dataset/ops.incn`           | Canonical relational operator helpers              |
 | `src/prism/mod.incn`             | Internal Prism graph, cursor, and lowering logic   |
-| `src/substrait/plan.incn`        | RFC 002 proto-backed Substrait emission helpers    |
+| `src/substrait/relations.incn`   | Concrete `Rel` builders and relation lowering      |
+| `src/substrait/plans.incn`       | Top-level `Plan` assembly helpers                  |
+| `src/substrait/inspect.incn`     | Relation/plan inspection and output-column helpers |
+| `src/substrait/schema_registry.incn` | Named-table schema registration and lookup     |
+| `src/substrait/extensions.incn`  | Extension anchors, URIs, and declaration helpers   |
+| `src/substrait/expr_lowering.incn` | Builder-to-Substrait expression lowering         |
 | `src/substrait/conformance.incn` | Typed conformance facade over catalog + validators |
 | `src/substrait/schema.incn`      | Model/schema to Substrait type bridging            |
 | `tests/`                         | Package tests run through `incan test`             |
@@ -206,9 +211,9 @@ CI builds `incan` first, then runs the InQL package checks against that compiler
 If you want the clearest current story, read in this order:
 
 1. [Language overview][language-root]
-2. [Dataset types (Explanation)][dataset-expl]
+2. [Dataset carriers (Explanation)][dataset-expl]
 3. [Execution context (Explanation)][execution-expl]
-4. [Dataset types (Reference)][dataset-ref]
+4. [Dataset carriers (Reference)][dataset-ref]
 5. [Execution context (Reference)][execution-ref]
 6. RFCs for normative and historical design context
 
@@ -218,7 +223,7 @@ If you want the clearest current story, read in this order:
 | --------------------------- | ---------------------------------------------------------- |
 | Docs landing page           | [docs/README.md][docs-root]                                |
 | Language overview           | [docs/language/README.md][language-root]                   |
-| Dataset types               | [Reference][dataset-ref] · [Explanation][dataset-expl]     |
+| Dataset carriers            | [Reference][dataset-ref] · [Explanation][dataset-expl]     |
 | Execution context           | [Reference][execution-ref] · [Explanation][execution-expl] |
 | Substrait integration       | [Reference docs][substrait-read-root] · [RFC 002][rfc-002] |
 | Prism planning engine       | [RFC 007][rfc-007]                                         |
@@ -232,8 +237,8 @@ If you want the clearest current story, read in this order:
 [language-root]: language/README.md
 [inql-rfcs]: rfcs/README.md
 [inql-contributing]: ../CONTRIBUTING.md
-[dataset-ref]: language/reference/dataset_types.md
-[dataset-expl]: language/explanation/dataset_types.md
+[dataset-ref]: language/reference/dataset_carriers.md
+[dataset-expl]: language/explanation/dataset_carriers.md
 [execution-ref]: language/reference/execution_context.md
 [execution-expl]: language/explanation/execution_context.md
 [substrait-read-root]: language/reference/substrait/read_root_binding_contract.md

@@ -1,5 +1,8 @@
 """Append-only Prism store allocation, storage, reachability, and cross-store adoption."""
 
+from aggregate_builders import AggregateMeasure
+from filter_builders import FilterLiteralKind, FilterPredicate, FilterPredicateKind
+from projection_builders import ColumnExpr, ProjectionAssignment
 from prism.types import PrismNode, PrismNodeKind, PrismStoreAdoption, PrismStoreId
 
 model PrismStoredNode:
@@ -26,14 +29,14 @@ pub def allocate_prism_store_id() -> PrismStoreId:
     return PrismStoreId(next_id)
 
 
-pub def append_node(store_id: PrismStoreId, kind: PrismNodeKind, input_ids: list[int], named_table: str, predicate: bool, limit_count: int) -> int:
+pub def append_node(store_id: PrismStoreId, kind: PrismNodeKind, input_ids: list[int], named_table: str, join_predicate: bool, filter_predicate: FilterPredicate, limit_count: int, group_columns: list[str], aggregate_measures: list[AggregateMeasure], projection_assignments: list[ProjectionAssignment]) -> int:
     """
     Append one immutable node to the target store.
 
     Node ids are store-local and monotonic. Appending never mutates earlier nodes.
     """
     next_id = _latest_store_next_node_id(store_id)
-    appended = PrismNode(node_id=next_id, kind=kind, input_ids=input_ids, named_table=named_table, predicate=predicate, limit_count=limit_count)
+    appended = PrismNode(node_id=next_id, kind=kind, input_ids=input_ids, named_table=named_table, join_predicate=join_predicate, filter_predicate=filter_predicate, limit_count=limit_count, group_columns=group_columns, aggregate_measures=aggregate_measures, projection_assignments=projection_assignments)
     prism_stored_nodes.append(PrismStoredNode(store_id_raw=store_id.0, node=appended))
     prism_store_node_counts.append(PrismStoreNodeCount(store_id_raw=store_id.0, next_node_id=next_id + 1))
     return next_id
@@ -66,11 +69,17 @@ pub def adopt_cursor_subgraph(target_store_id: PrismStoreId, source_store_id: Pr
         if reused_adopted_id >= 0:
             id_map[source_node_id] = reused_adopted_id
         else:
-            adopted_id = append_node(target_store_id, source_node.kind, remapped_input_ids, source_node.named_table, source_node.predicate, source_node.limit_count)
-            target_store_nodes.append(PrismNode(node_id=adopted_id, kind=source_node.kind, input_ids=remapped_input_ids, named_table=source_node.named_table, predicate=source_node.predicate, limit_count=source_node.limit_count))
+            adopted_group_columns = [column for column in source_node.group_columns]
+            adopted_measures = [measure for measure in source_node.aggregate_measures]
+            adopted_assignments = [assignment for assignment in source_node.projection_assignments]
+            target_group_columns = [column for column in source_node.group_columns]
+            target_measures = [measure for measure in source_node.aggregate_measures]
+            target_assignments = [assignment for assignment in source_node.projection_assignments]
+            adopted_id = append_node(target_store_id, source_node.kind, remapped_input_ids, source_node.named_table, source_node.join_predicate, source_node.filter_predicate.clone(), source_node.limit_count, adopted_group_columns, adopted_measures, adopted_assignments)
+            target_store_nodes.append(PrismNode(node_id=adopted_id, kind=source_node.kind, input_ids=remapped_input_ids, named_table=source_node.named_table, join_predicate=source_node.join_predicate, filter_predicate=source_node.filter_predicate.clone(), limit_count=source_node.limit_count, group_columns=target_group_columns, aggregate_measures=target_measures, projection_assignments=target_assignments))
             id_map[source_node_id] = adopted_id
             adopted_node_ids.append(adopted_id)
-            adopted_node_count = adopted_node_count + 1
+            adopted_node_count += 1
     # The source tip is guaranteed reachable, so its remapped target-store id is the adopted tip for the caller.
     return PrismStoreAdoption(adopted_tip_id=id_map[tip_id], adopted_node_count=adopted_node_count)
 
@@ -84,15 +93,13 @@ pub def store_nodes(store_id: PrismStoreId) -> list[PrismNode]:
 pub def reachable_node_ids(store_id: PrismStoreId, tip_id: int) -> list[int]:
     """Return reachable authored node ids in store order for one tip."""
     store_nodes_for_id = store_nodes(store_id)
-    mut visited: list[bool] = []
-    for _node in store_nodes_for_id:
-        visited.append(false)
+    mut visited: list[bool] = [false for _node in store_nodes_for_id]
     mut pending: list[int] = [tip_id]
     mut cursor = 0
     # Walk backward through inputs from the tip so later lowering/rewrite steps only see the live authored slice.
     while cursor < len(pending):
         node_id = pending[cursor]
-        cursor = cursor + 1
+        cursor += 1
         if visited[node_id]:
             continue
         visited[node_id] = true
@@ -132,11 +139,75 @@ def _nodes_structurally_equal(candidate: PrismNode, source_node: PrismNode, rema
         return false
     if candidate.named_table != source_node.named_table:
         return false
-    if candidate.predicate != source_node.predicate:
+    if candidate.join_predicate != source_node.join_predicate:
+        return false
+    if not _filter_predicates_structurally_equal(candidate.filter_predicate.clone(), source_node.filter_predicate.clone()):
         return false
     if candidate.limit_count != source_node.limit_count:
         return false
+    if candidate.group_columns != source_node.group_columns:
+        return false
+    if len(candidate.aggregate_measures) != len(source_node.aggregate_measures):
+        return false
+    for idx in range(len(candidate.aggregate_measures)):
+        if candidate.aggregate_measures[idx].kind != source_node.aggregate_measures[idx].kind:
+            return false
+        if candidate.aggregate_measures[idx].column_name != source_node.aggregate_measures[idx].column_name:
+            return false
+    if not _projection_assignments_structurally_equal(candidate.projection_assignments, source_node.projection_assignments):
+        return false
     return candidate.input_ids == remapped_input_ids
+
+
+def _filter_predicates_structurally_equal(left: FilterPredicate, right: FilterPredicate) -> bool:
+    """Return whether two filter predicates are structurally equivalent."""
+    if left.kind != right.kind:
+        return false
+    if left.column_name != right.column_name:
+        return false
+    if left.literal.kind != right.literal.kind:
+        return false
+    if left.literal.kind == FilterLiteralKind.Int:
+        return left.literal.int_value == right.literal.int_value
+    if left.literal.kind == FilterLiteralKind.String:
+        return left.literal.string_value == right.literal.string_value
+    if left.literal.kind == FilterLiteralKind.Bool:
+        return left.literal.bool_value == right.literal.bool_value
+    return true
+
+
+def _projection_assignments_structurally_equal(left: list[ProjectionAssignment], right: list[ProjectionAssignment]) -> bool:
+    """Return whether two ordered projection-assignment lists are structurally equivalent."""
+    if len(left) != len(right):
+        return false
+    for idx in range(len(left)):
+        if left[idx].output_name != right[idx].output_name:
+            return false
+        if not _column_exprs_structurally_equal(left[idx].expr, right[idx].expr):
+            return false
+    return true
+
+
+def _column_exprs_structurally_equal(left: ColumnExpr, right: ColumnExpr) -> bool:
+    """Return whether two projection expressions are structurally equivalent."""
+    if left.kind != right.kind:
+        return false
+    if left.column_name != right.column_name:
+        return false
+    if left.int_value != right.int_value:
+        return false
+    if left.float_value != right.float_value:
+        return false
+    if left.string_value != right.string_value:
+        return false
+    if left.bool_value != right.bool_value:
+        return false
+    if len(left.arguments) != len(right.arguments):
+        return false
+    for idx in range(len(left.arguments)):
+        if not _column_exprs_structurally_equal(left.arguments[idx], right.arguments[idx]):
+            return false
+    return true
 
 
 def _latest_store_next_node_id(store_id: PrismStoreId) -> int:

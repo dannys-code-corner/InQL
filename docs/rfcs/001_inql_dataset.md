@@ -73,6 +73,17 @@ def high_value_orders(orders: LazyFrame[Order]) -> LazyFrame[Order]:
     return orders.filter(.amount > 100)
 ```
 
+Authors can derive computed columns through `with_column(...)`:
+
+```incan
+from pub::inql import LazyFrame
+from pub::inql.functions import col, int_expr, mul
+from models import Order
+
+def enrich_orders(orders: LazyFrame[Order]) -> LazyFrame[Order]:
+    return orders.with_column("amount_x2", mul(col("amount"), int_expr(2)))
+```
+
 Because `DataStream[T]` shares the same operation API, streaming code looks identical — only the type signature changes:
 
 ```incan
@@ -166,22 +177,26 @@ For `UnboundedDataSet[T]`, the governing rule is semantic rather than ad hoc: op
 
 The InQL library **must** expose the following instance methods on `DataSet[T]` (exact signatures may live in companion library docs; semantics **must** match this table and stay consistent with any normative lowering rules for the same logical operators elsewhere in InQL). Method names are illustrative; implementations **may** use equivalent spellings if the compiler maps them consistently.
 
-| Method         | Role                                                                                                        |
-| -------------- | ----------------------------------------------------------------------------------------------------------- |
-| **`filter`**   | Restrict rows by a boolean relational expression (relational argument positions per InQL RFC 000).          |
-| **`join`**     | Combine with another `DataSet[U]` on a join condition; named relations for `relation.column`                |
-| **`select`**   | Project columns and expressions; output row type becomes a new schema `U` the typechecker can track.        |
-| **`group_by`** | Define grouping keys for aggregation; keys are relational expressions.                                      |
-| **`agg`**      | Apply aggregate functions over groups (often chained after `group_by`); produces grouped/aggregated schema. |
-| **`order_by`** | Define sort keys and directions.                                                                            |
-| **`limit`**    | Cap the number of rows (after sort when both apply).                                                        |
-| **`explode`**  | Expand a nested list column into rows (or equivalent).                                                      |
+| Method            | Role                                                                                                                                                                                    |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`filter`**      | Restrict rows by an explicit predicate builder in the current package slice (for example `eq(col("status"), str_lit("open"))`), with future sugar lowering to the same semantic target. |
+| **`join`**        | Combine with another `DataSet[U]` on a join condition; named relations for `relation.column`                                                                                            |
+| **`select`**      | Project columns and expressions; output row type becomes a new schema `U` the typechecker can track.                                                                                    |
+| **`with_column`** | Add or replace one projected column by name using an explicit projection builder expression.                                                                                            |
+| **`group_by`**    | Define grouping keys for aggregation; keys are relational expressions.                                                                                                                  |
+| **`agg`**         | Apply aggregate functions over groups (often chained after `group_by`); produces grouped/aggregated schema.                                                                             |
+| **`order_by`**    | Define sort keys and directions.                                                                                                                                                        |
+| **`limit`**       | Cap the number of rows (after sort when both apply).                                                                                                                                    |
+| **`explode`**     | Expand a nested list column into rows (or equivalent).                                                                                                                                  |
 
 Additional requirements:
 
 - Operations **must** preserve or update `T` (or output model `U`) in a way the typechecker can verify.
 - Operations that are statically invalid on `UnboundedDataSet[T]` (e.g. unbounded-state operations) **must** produce compile-time errors, not runtime failures.
-- Aggregate helpers used with `.agg(...)` are imported library symbols (for example from `pub::inql.functions`), not ambient builtins.
+- Aggregate helpers used with `.agg(...)` are imported library symbols (from `pub::inql.functions`), not ambient builtins.
+- The minimum required aggregate-helper surface for the current package slice is `col`, `sum`, and `count`.
+- The current InQL-only implementation uses `col(...)` builders as the semantic target that later `.column` sugar and query-block lowering should compile to.
+- The current InQL-only projection implementation uses `with_column(name, expr)` plus projection builders such as `add(...)`, `mul(...)`, and `int_expr(...)` as the semantic target that later projection sugar should compile to.
 - This RFC defines the minimum required aggregate-function import model for `.agg(...)`; it is not an exhaustive catalog of all present or future InQL functions. Additional functions **may** be added later through additive library evolution or follow-up RFCs, provided they do not change the semantics of the required set defined by the InQL RFC suite.
 
 ### Execution backend boundary

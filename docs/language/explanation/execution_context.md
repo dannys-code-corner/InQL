@@ -43,6 +43,8 @@ Use `collect(...)` when you want local data:
 
 - it runs the same backend path
 - it materializes a `DataFrame[T]`
+- it records structured materialization metadata such as resolved columns and row count
+- it may also retain preview text for display/debugging
 
 This is the boundary where deferred relational work becomes local data in hand.
 
@@ -72,12 +74,14 @@ This is a current package ergonomics choice, not a statement that all future con
 
 ```incan
 from pub::inql import Session
+from pub::inql.functions import col, gt, int_expr, int_lit, mul
 from models import Order
 
 session = Session.default()
 
 orders = session.read_csv[Order]("orders", "orders.csv")?
-filtered = orders.filter(true).limit(10)
+enriched = orders.with_column("amount_x2", mul(col("amount"), int_expr(2)))
+filtered = enriched.filter(gt(col("amount"), int_lit(100))).limit(10)
 
 session.activate()
 preview = filtered.collect()?
@@ -87,9 +91,12 @@ session.write_csv(filtered, "orders_out.csv")?
 This pattern is intentionally simple:
 
 - read returns deferred work
+- projection/filter/aggregate transforms stay declarative
 - transforms stay deferred
 - collect materializes when needed
 - writes remain explicit on the session
+
+For the exact method surface, see [Dataset methods (Reference)](../reference/dataset_methods.md).
 
 ## Current limitation
 
@@ -97,5 +104,11 @@ This pattern is intentionally simple:
 
 - `LazyFrame[T]` = deferred
 - `DataFrame[T]` = local materialized
+
+Today that materialized carrier exposes structured collection metadata first:
+
+- resolved columns
+- row count
+- preview text
 
 For exact API shape, see [Execution context (Reference)](../reference/execution_context.md).

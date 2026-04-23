@@ -1,0 +1,69 @@
+"""End-to-end Session filter execution tests over the DataFusion backend."""
+
+from std.testing import assert_eq
+from functions import col, eq, gt, int_lit, str_lit
+from session import Session
+
+@derive(Clone)
+model OrderLine:
+    order_id: int
+    line_id: int
+    sku: str
+    qty: int
+    unit_price: str
+    currency: str
+    status: str
+    created_at: str
+
+
+const ORDER_LINES_CSV_FIXTURE: str = "tests/fixtures/order_lines.csv"
+
+
+def test_session_filters__collect_executes_gt_predicate() -> None:
+    """collect should execute builder-backed gt filters through the DataFusion path."""
+    # -- Arrange --
+    mut session = Session.default()
+
+    # -- Act & Assert --
+    match session.read_csv[OrderLine]("order_lines", ORDER_LINES_CSV_FIXTURE):
+        Ok(lazy) => 
+            filtered = lazy.filter(gt(col("qty"), int_lit(2)))
+            match session.collect(filtered):
+                Ok(df) => 
+                    payload = df.preview_text()
+                    assert_eq(df.row_count(), 2, "qty > 2 should materialize two matching rows")
+                    assert payload.contains("SKU-LAMP-11"), "qty > 2 should keep the row with qty 4"
+                    assert payload.contains("SKU-MAT-07"), "qty > 2 should keep the row with qty 3"
+                    assert payload.contains("SKU-CHAIR-01") is false, "qty > 2 should exclude rows with qty 2"
+                Err(err) => 
+                    assert err.kind == "__unexpected__", err.error_message()
+
+        Err(err) => 
+            assert err.kind == "__unexpected__", err.error_message()
+
+
+
+def test_session_filters__collect_executes_eq_predicate() -> None:
+    """collect should execute builder-backed equality filters through the DataFusion path."""
+    # -- Arrange --
+    mut session = Session.default()
+
+    # -- Act & Assert --
+    match session.read_csv[OrderLine]("order_lines", ORDER_LINES_CSV_FIXTURE):
+        Ok(lazy) => 
+            filtered = lazy.filter(eq(col("status"), str_lit("open")))
+            match session.collect(filtered):
+                Ok(df) => 
+                    payload = df.preview_text()
+                    assert_eq(df.row_count(), 3, "status == open should materialize the three open rows")
+                    assert payload.contains("SKU-CHAIR-01"), "status == open should keep open rows"
+                    assert payload.contains("SKU-DESK-02"), "status == open should keep all open rows"
+                    assert payload.contains("SKU-MAT-07"), "status == open should keep the third open row"
+                    assert payload.contains("SKU-LAMP-11") is false, "status == open should exclude closed rows"
+                    assert payload.contains("SKU-MONITOR-24") is false, "status == open should exclude cancelled rows"
+                Err(err) => 
+                    assert err.kind == "__unexpected__", err.error_message()
+
+        Err(err) => 
+            assert err.kind == "__unexpected__", err.error_message()
+

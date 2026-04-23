@@ -5,7 +5,7 @@ from rust::std::path import Path
 from backends import DataFusion, csv_source, parquet_source
 from dataset import lazy_frame_named_table
 from session import Session
-from substrait.plan import read_kind_name, root_rel
+from substrait.inspect import read_kind_name, root_rel
 
 @derive(Clone)
 model Order:
@@ -13,12 +13,12 @@ model Order:
 
 
 # --- Constants, test fixtures, helper functions ---
-const TESTS_DIR: str = "../../../tests/"
+const TESTS_DIR: str = "tests/"
 const FIXTURE_DIR: str = TESTS_DIR + "fixtures/"
-const ORDERS_CSV_FIXTURE: str = FIXTURE_DIR + "/orders.csv"
-const ORDERS_PARQUET_FIXTURE: str = FIXTURE_DIR + "/orders.parquet"
-const ORDERS_ARROW_FIXTURE: str = FIXTURE_DIR + "/orders.arrow"
 const TARGET_DIR: str = TESTS_DIR + "target/"
+const ORDERS_CSV_FIXTURE: str = FIXTURE_DIR + "orders.csv"
+const ORDERS_PARQUET_FIXTURE: str = FIXTURE_DIR + "orders.parquet"
+const ORDERS_ARROW_FIXTURE: str = FIXTURE_DIR + "orders.arrow"
 
 
 def _target_uri(name: str) -> str:
@@ -242,7 +242,7 @@ def test_session__execute_runs_plan_and_preserves_carrier_shape() -> None:
 
 
 def test_session__collect_returns_materialized_dataframe() -> None:
-    """collect should return a DataFrame with materialized payload and resolved output schema information."""
+    """collect should return a DataFrame with structured materialization metadata and preview text."""
     # -- Arrange --
     mut session = Session.default()
 
@@ -252,13 +252,14 @@ def test_session__collect_returns_materialized_dataframe() -> None:
             match session.collect(lazy):
                 Ok(df) => 
                     assert read_kind_name(root_rel(df.to_substrait_plan())) == "NamedTable", "collect should return a typed DataFrame carrier"
-                    assert len(df.materialized_payload()) > 0, "collect should populate a non-empty opaque materialized payload"
+                    assert len(df.preview_text()) > 0, "collect should populate a non-empty preview render for display/debug paths"
+                    assert df.row_count() > 0, "collect should record structural row-count metadata"
                     declared_cols = df.declared_columns()
                     planned_cols = df.planned_columns()
                     resolved_cols = df.resolved_columns()
                     assert len(declared_cols) > 0, "collect should preserve declared schema columns"
                     assert len(planned_cols) == len(declared_cols), "DataFrame planned_columns() should currently mirror declared columns"
-                    assert len(resolved_cols) > 0, "collect should expose resolved columns from materialized payload"
+                    assert len(resolved_cols) > 0, "collect should expose resolved columns from structured materialization metadata"
                     assert len(df.columns()) == len(resolved_cols), "DataFrame columns() should prefer resolved columns when available"
                     assert resolved_cols[0] == "id", "resolved columns should preserve output column order"
                     schema = df.schema()
@@ -362,10 +363,11 @@ def test_session__read_transform_collect_write_csv_end_to_end() -> None:
     # -- Act & Assert --
     match session.read_csv[Order]("orders", ORDERS_CSV_FIXTURE):
         Ok(lazy) => 
-            transformed = lazy.filter(true).limit(2)
+            transformed = lazy.limit(2)
             match session.collect(transformed.clone()):
                 Ok(df) => 
-                    assert len(df.materialized_payload()) > 0, "collect should materialize before downstream sink operations"
+                    assert len(df.preview_text()) > 0, "collect should materialize preview text before downstream sink operations"
+                    assert df.row_count() > 0, "collect should record row-count metadata before downstream sink operations"
                     match session.write_csv(transformed, output_uri):
                         Ok(_) => 
                             assert Path.new(output_uri).exists() is true, "write_csv should still succeed on the Session path after collect"

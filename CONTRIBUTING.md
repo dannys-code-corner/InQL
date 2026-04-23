@@ -69,6 +69,18 @@ See [docs/architecture.md][architecture] for a concise map. In short:
 - When modifying legacy code that lacks a docstring, add the missing docstring in the same change.
 - Prefer intent-level docstrings (what/why, invariants, boundary behavior), not line-by-line narration.
 
+### Comments and readability
+
+- In this repository, comments are part of the contributor-facing readability contract.
+- Do not assume the usual "remove comments that restate the code" heuristic applies cleanly here. Incan/InQL is still a new language surface for most readers, so short explanatory comments often pull real weight even when they partially echo the code.
+- Keep or add concise comments that explain:
+  - what phase or boundary a block belongs to
+  - what shape of data is being parsed or transformed
+  - why a small control-flow trick or parsing assumption exists
+  - what a reader unfamiliar with the syntax is supposed to notice
+- Be especially careful in public API modules, planning/lowering code, Substrait boundaries, schema/payload parsing, and Rust interop edges.
+- Remove comments when they are stale, misleading, or truly noisy — not merely because the code is "obvious" to an experienced maintainer.
+
 ### Test style (canonical)
 
 - Every `def test_*` in `tests/*.incn` must include explicit `Arrange`, `Act`, and `Assert` section markers:

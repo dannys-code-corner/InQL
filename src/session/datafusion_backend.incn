@@ -2,6 +2,7 @@
 
 import std.async
 from rust::prost import Message
+from rust::std::primitive import i64 as RustI64, usize as RustUsize
 from rust::substrait::proto import Plan
 from rust::datafusion::execution::context import SessionContext
 from rust::datafusion::execution::options import ArrowReadOptions
@@ -10,6 +11,8 @@ from rust::datafusion::dataframe import DataFrameWriteOptions
 from rust::datafusion_substrait::substrait::proto import Plan as ConsumerPlan
 from rust::datafusion_substrait::logical_plan::consumer import from_substrait_plan
 from backends import SourceKind, TableSource
+from dataset.materialization import DataFrameMaterialization
+from substrait.inspect import root_names
 
 @derive(Clone)
 pub class BackendRegistration:
@@ -35,11 +38,7 @@ pub async def datafusion_execute_async(registrations: list[BackendRegistration],
     """Execute one Substrait plan via DataFusion and discard collected rows."""
     ctx = SessionContext.new()
     consumer_plan = _consumer_plan_from_current_plan(plan)?
-    register_result = match await _register_sources(ctx, registrations):
-        Ok(_) => Ok(None)
-        Err(err) => Err(err)
-
-    register_result?
+    await _register_sources(ctx, registrations)?
 
     state = ctx.state()
     match await from_substrait_plan(state, consumer_plan):
@@ -58,15 +57,12 @@ pub async def datafusion_execute_async(registrations: list[BackendRegistration],
 
 
 
-pub async def datafusion_collect_payload_async(registrations: list[BackendRegistration], plan: Plan) -> Result[str, BackendError]:
-    """Execute one Substrait plan via DataFusion and return rendered payload text."""
+pub async def datafusion_collect_materialization_async(registrations: list[BackendRegistration], plan: Plan) -> Result[DataFrameMaterialization, BackendError]:
+    """Execute one Substrait plan via DataFusion and return structured DataFrame materialization."""
     ctx = SessionContext.new()
+    resolved_columns = root_names(plan.clone())
     consumer_plan = _consumer_plan_from_current_plan(plan)?
-    register_result = match await _register_sources(ctx, registrations):
-        Ok(_) => Ok("")
-        Err(err) => Err(err)
-
-    register_result?
+    await _register_sources(ctx, registrations)?
 
     state = ctx.state()
     match await from_substrait_plan(state, consumer_plan):
@@ -74,8 +70,10 @@ pub async def datafusion_collect_payload_async(registrations: list[BackendRegist
             Ok(df) => match await df.clone().collect():
                 Ok(batches) => match await df.to_string():
                     Ok(rendered) => 
-                        nl = "\n"
-                        return Ok(f"record_batches={len(batches)}{nl}{rendered}")
+                        mut row_count = 0
+                        for batch in batches:
+                            row_count += _rust_usize_to_int(batch.num_rows())
+                        return Ok(DataFrameMaterialization(resolved_columns=resolved_columns, row_count=row_count, preview_text=rendered))
                     Err(err) => 
                         return Err(_backend_error("backend_execution_error", err.to_string()))
 
@@ -94,11 +92,7 @@ pub async def datafusion_write_csv_async(registrations: list[BackendRegistration
     """Execute one plan and write result rows to a CSV sink URI via DataFusion."""
     ctx = SessionContext.new()
     consumer_plan = _consumer_plan_from_current_plan(plan)?
-    register_result = match await _register_sources(ctx, registrations):
-        Ok(_) => Ok(None)
-        Err(err) => Err(err)
-
-    register_result?
+    await _register_sources(ctx, registrations)?
 
     state = ctx.state()
     match await from_substrait_plan(state, consumer_plan):
@@ -121,11 +115,7 @@ pub async def datafusion_write_parquet_async(registrations: list[BackendRegistra
     """Execute one plan and write result rows to a Parquet sink URI via DataFusion."""
     ctx = SessionContext.new()
     consumer_plan = _consumer_plan_from_current_plan(plan)?
-    register_result = match await _register_sources(ctx, registrations):
-        Ok(_) => Ok(None)
-        Err(err) => Err(err)
-
-    register_result?
+    await _register_sources(ctx, registrations)?
 
     state = ctx.state()
     match await from_substrait_plan(state, consumer_plan):
@@ -146,15 +136,8 @@ pub async def datafusion_write_parquet_async(registrations: list[BackendRegistra
 
 async def _register_sources(ctx: SessionContext, registrations: list[BackendRegistration]) -> Result[None, BackendError]:
     """Register all logical sources on the DataFusion context before execution."""
-    mut i = 0
-    while i < len(registrations):
-        registration = registrations[i]
-        register_one_result = match await _register_one(ctx, registration.logical_name, registration.source):
-            Ok(_) => Ok(None)
-            Err(err) => Err(err)
-
-        register_one_result?
-        i = i + 1
+    for registration in registrations:
+        await _register_one(ctx, registration.logical_name, registration.source)?
     return Ok(None)
 
 
@@ -193,4 +176,14 @@ def _consumer_plan_from_current_plan(plan: Plan) -> Result[ConsumerPlan, Backend
             return Ok(decoded)
         Err(err) => 
             return Err(_backend_error("backend_planning_error", err.to_string()))
+
+
+
+def _rust_usize_to_int(value: RustUsize) -> int:
+    """Convert one Rust `usize` count into Incan `int` through a checked `i64` boundary."""
+    match RustI64.try_from(value):
+        Ok(converted) => 
+            return converted.into()
+        Err(_) => 
+            return 0
 

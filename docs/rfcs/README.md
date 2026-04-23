@@ -18,10 +18,9 @@ InQL uses its **own** RFC series (starting at 000), independent of the [Incan la
 | [009][rfc-009] | Draft       | Session format handler registry (plugin-style source format registration)                         |     |
 | [010][rfc-010] | Draft       | CSV dialect and interpretation contract                                                           |     |
 | [011][rfc-011] | Draft       | Source discovery and parse-unit expansion                                                         |     |
+| [012][rfc-012] | Draft       | Unified scalar expression surface                                                                 |     |
 
 <!-- TODO: #7: auto populate this table (like how we do in incan) -->
-
-**Order:** [RFC 000][rfc-000] is the foundational language specification. [RFC 001][rfc-001] defines the dataset type hierarchy. [RFC 002][rfc-002] defines the Substrait interchange contract. [RFC 003][rfc-003] defines the `query {}` surface that lowers to Substrait per RFC 002 over carriers from RFC 001. [RFC 004][rfc-004] completes the end-to-end story: session, read, execute, write. [RFC 005][rfc-005] specifies optional pipe-forward syntax outside the RFC 000–004 milestone and currently blocked on Incan RFC 040. [RFC 006][rfc-006] tracks promotion of unnest/explode from gap to core Substrait lowering, blocked on upstream Substrait standardization. [RFC 007][rfc-007] defines Prism as InQL's internal logical planning and optimization engine, sitting beneath carriers and upstream of Substrait emission and session execution. [RFC 008][rfc-008] defines the minimum optimizer boundary needed to keep Prism-owned logical work distinct from `Session`-owned physical planning, runtime statistics, and adaptive execution behavior. [RFC 009][rfc-009] defines the north-star handler model for session-owned source-format registration. [RFC 010][rfc-010] defines the north-star CSV dialect and interpretation contract owned by the `csv` format dispatch path. [RFC 011][rfc-011] separates source discovery and parse-unit expansion from format parsing so path meaning does not get reinvented per format.
 
 **v0.1 scope:** RFCs 000–004 plus RFC 007. When those foundational RFCs are resolved (Draft → Planned → Implemented), InQL v0.1 is complete: authors can read data, write typed queries, lower through Prism to Substrait, execute through DataFusion, and write results.
 
@@ -43,4 +42,5 @@ New RFCs should follow [TEMPLATE.md] (aligned with Incan’s RFC structure, adap
 [rfc-009]: 009_session_format_handler_registry.md
 [rfc-010]: 010_csv_ingestion_contract.md
 [rfc-011]: 011_source_discovery_contract.md
+[rfc-012]: 012_unified_scalar_expression_surface.md
 [incan-rfcs]: https://github.com/dannys-code-corner/incan/tree/main/workspaces/docs-site/docs/RFCs

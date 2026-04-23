@@ -1,0 +1,95 @@
+"""Shared Prism output-column inference for authored and rewritten node views."""
+
+from prism.store import node_at
+from prism.rewrite import rewritten_node_at
+from prism.types import PrismNodeKind, PrismOptimizedView, PrismStoreId
+from projection_builders import project_output_columns
+from substrait.inspect import aggregate_measure_output_names
+from substrait.schema_registry import named_table_columns
+
+def _is_passthrough_output_kind(kind: PrismNodeKind) -> bool:
+    """Return whether a Prism node preserves its input columns unchanged."""
+    return (kind == PrismNodeKind.Filter or kind == PrismNodeKind.OrderBy or kind == PrismNodeKind.Limit or kind == PrismNodeKind.Explode)
+
+
+pub def authored_output_columns(store_id: PrismStoreId, tip_id: int) -> list[str]:
+    """Resolve authored output columns for one store-local Prism tip."""
+    node = node_at(store_id, tip_id)
+    if node.kind == PrismNodeKind.ReadNamedTable:
+        return named_table_columns(node.named_table)
+    if _is_passthrough_output_kind(node.kind):
+        return authored_output_columns(store_id, node.input_ids[0])
+    if node.kind == PrismNodeKind.Project:
+        return project_output_columns(authored_output_columns(store_id, node.input_ids[0]), node.projection_assignments)
+    if node.kind == PrismNodeKind.Join:
+        # Join output columns preserve the conventional left-then-right relation order.
+        # We keep both sides verbatim here; duplicate names are part of the current output shape and are resolved later
+        # by higher-level schema/authoring choices rather than being collapsed at this inference layer.
+        lhs_columns = authored_output_columns(store_id, node.input_ids[0])
+        rhs_columns = authored_output_columns(store_id, node.input_ids[1])
+        mut columns: list[str] = []
+        columns.extend(lhs_columns)
+        columns.extend(rhs_columns)
+        return columns
+    if node.kind == PrismNodeKind.GroupBy:
+        return [column for column in node.group_columns]
+    if node.kind == PrismNodeKind.Aggregate:
+        # Aggregate output preserves grouping-prefix columns first,
+        # then appends one output column per aggregate measure in declaration order.
+        grouping_prefix_columns = _authored_aggregate_prefix_columns(store_id, node.input_ids[0])
+        measure_output_names = aggregate_measure_output_names(node.aggregate_measures)
+        mut columns: list[str] = grouping_prefix_columns
+        columns.extend(measure_output_names)
+        return columns
+    return []
+
+
+pub def rewritten_output_columns(view: PrismOptimizedView, node_id: int) -> list[str]:
+    """Resolve rewritten-view output columns for one compacted Prism node."""
+    node = rewritten_node_at(view, node_id)
+    if node.kind == PrismNodeKind.ReadNamedTable:
+        return named_table_columns(node.named_table)
+    if _is_passthrough_output_kind(node.kind):
+        return rewritten_output_columns(view, node.input_ids[0])
+    if node.kind == PrismNodeKind.Project:
+        return project_output_columns(rewritten_output_columns(view, node.input_ids[0]), node.projection_assignments)
+    if node.kind == PrismNodeKind.Join:
+        # Rewritten views keep the same left-then-right join column order as authored views
+        # so output-column inference stays stable across Prism rewrite passes.
+        lhs_columns = rewritten_output_columns(view, node.input_ids[0])
+        rhs_columns = rewritten_output_columns(view, node.input_ids[1])
+        mut columns: list[str] = []
+        columns.extend(lhs_columns)
+        columns.extend(rhs_columns)
+        return columns
+    if node.kind == PrismNodeKind.GroupBy:
+        return [column for column in node.group_columns]
+    if node.kind == PrismNodeKind.Aggregate:
+        # Rewritten aggregate nodes follow the same output contract as authored nodes:
+        # grouping-prefix columns first, aggregate measure outputs after that.
+        grouping_prefix_columns = _rewritten_aggregate_prefix_columns(view, node.input_ids[0])
+        measure_output_names = aggregate_measure_output_names(node.aggregate_measures)
+        mut columns: list[str] = grouping_prefix_columns
+        columns.extend(measure_output_names)
+        return columns
+    return []
+
+
+def _authored_aggregate_prefix_columns(store_id: PrismStoreId, tip_id: int) -> list[str]:
+    """Return grouping-prefix columns that survive into one authored aggregate node output."""
+    input_node = node_at(store_id, tip_id)
+    if input_node.kind == PrismNodeKind.GroupBy:
+        return [column for column in input_node.group_columns]
+    if input_node.kind == PrismNodeKind.Aggregate:
+        return _authored_aggregate_prefix_columns(store_id, input_node.input_ids[0])
+    return []
+
+
+def _rewritten_aggregate_prefix_columns(view: PrismOptimizedView, node_id: int) -> list[str]:
+    """Return grouping-prefix columns that survive into one rewritten aggregate node output."""
+    input_node = rewritten_node_at(view, node_id)
+    if input_node.kind == PrismNodeKind.GroupBy:
+        return [column for column in input_node.group_columns]
+    if input_node.kind == PrismNodeKind.Aggregate:
+        return _rewritten_aggregate_prefix_columns(view, input_node.input_ids[0])
+    return []

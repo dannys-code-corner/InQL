@@ -14,7 +14,7 @@ The canonical conformance corpus is implemented in InQL package code:
 
 The corpus uses typed models/enums (`SubstraitConformanceScenario`, `ConformanceStatus`, `ConformanceRel`, and related enums) for machine-readable contracts, and uses module/API docstrings for the human-readable contract.
 
-Canonical operation semantics flow through `src/dataset/ops.incn`, while proto-backed Substrait emission and plan inspection live in `src/substrait/plan.incn`.
+Canonical operation semantics flow through `src/dataset/ops.incn`, while proto-backed Substrait relation building, plan assembly, and plan inspection now live in the focused `src/substrait/*.incn` helper modules.
 
 For the current package-level profile, conformance checks are intentionally split between:
 
@@ -71,7 +71,7 @@ The same taxonomy remains in force for scenario declarations:
 
 Downstream tooling should consume scenario catalog and validator functions from `src/substrait/conformance*.incn` modules as the machine contract, rather than JSON sidecar files.
 
-Conformance validation for the v1 profile is expected to run against canonical operation functions in `src/dataset/ops.incn`, emitted proto-backed plans from `src/substrait/plan.incn`, and typed model/schema helpers where needed.
+Conformance validation for the v1 profile is expected to run against canonical operation functions in `src/dataset/ops.incn`, emitted proto-backed plans from the current `src/substrait/*.incn` helper surface, and typed model/schema helpers where needed.
 
 The current `ProjectRel` and `AggregateRel` scenarios are boundary-shape scaffolds, not proof that full computed-column, window, grouping-set, or distinct semantics are already implemented in package code.
 

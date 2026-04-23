@@ -1,42 +1,53 @@
 """Tests for RFC 002 proto-backed Substrait emission and conformance alignment."""
 
 from std.testing import assert_eq
-from substrait.plan import (
-    SubstraitJoinKind,
-    SubstraitSetOperation,
-    aggregate_rel,
-    cross_rel,
-    explode_extension_uri,
-    extension_single_rel,
-    fetch_rel,
-    filter_rel,
-    join_rel_of_kind,
-    plan_has_extension_urn,
+from aggregate_builders import AggregateMeasure, AggregateKind
+from functions import add, always_true, col, int_expr, mul
+from projection_builders import with_column_assignment
+from substrait.extensions import explode_extension_uri, registered_substrait_extension_uris
+from substrait.inspect import (
     plan_contains_relation_kind,
+    plan_has_extension_urn,
+    read_kind_name,
+    reference_subtree_ordinal,
+    relation_kind_name,
+    relation_output_columns,
+    root_names,
+    root_rel,
+    set_operation_name,
+)
+from substrait.plans import (
     plan_encoded_len,
     plan_from_local_files,
     plan_from_local_parquet,
     plan_from_named_table,
     plan_from_root_relation,
     plan_from_virtual_table,
+    substrait_producer_name,
+    substrait_release_tag,
+)
+from substrait.relations import (
+    SubstraitJoinKind,
+    SubstraitSetOperation,
+    aggregate_rel,
+    cross_rel,
+    extension_single_rel,
+    fetch_rel,
+    filter_rel,
+    join_rel_of_kind,
     project_rel,
-    read_kind_name,
+    project_rel_of_columns,
     read_local_files_rel,
     read_local_parquet_rel,
     read_named_table_rel,
     read_virtual_table_rel,
     reference_rel,
-    reference_subtree_ordinal,
-    relation_kind_name,
-    registered_substrait_extension_uris,
-    root_rel,
     set_rel,
-    set_operation_name,
     set_rel_of_kind,
     sort_rel,
-    substrait_producer_name,
-    substrait_release_tag,
 )
+from substrait.schema_registry import register_named_table_schema
+from substrait.schema import RowColumnSpec, SubstraitPrimitiveKind
 from substrait.conformance import (
     ConformanceCapabilityTags,
     ConformancePortability,
@@ -100,6 +111,10 @@ def _fixture_virtual_table_name() -> str:
     return "__virtual_rows"
 
 
+def _register_orders_schema() -> None:
+    register_named_table_schema("orders", [RowColumnSpec(name="id", kind=SubstraitPrimitiveKind.I64, nullable=false)])
+
+
 def test_plan__named_table_root_kind() -> None:
     # -- Arrange --
     plan = plan_from_named_table("orders")
@@ -159,7 +174,7 @@ def test_plan__local_files_helpers_are_explicitly_parquet_backed() -> None:
 def test_plan__combinators_compose_deterministically() -> None:
     # -- Arrange --
     base = read_named_table_rel("orders")
-    with_filter = filter_rel(base, true)
+    with_filter = filter_rel(base, always_true())
     with_sort = sort_rel(with_filter)
     with_fetch = fetch_rel(with_sort, 0, 10)
 
@@ -172,6 +187,44 @@ def test_plan__combinators_compose_deterministically() -> None:
     assert_eq(plan_contains_relation_kind(plan, "FilterRel"), true, "recursive traversal should find nested filter")
     assert_eq(plan_contains_relation_kind(plan, "SortRel"), true, "recursive traversal should find nested sort")
     assert_eq(plan_contains_relation_kind(plan, "FetchRel"), true, "recursive traversal should find fetch root")
+
+
+def test_plan__project_rel_supports_projection_expression_payloads() -> None:
+    # -- Arrange --
+    base = read_named_table_rel("orders")
+    projected = project_rel_of_columns(base, ["id"], [with_column_assignment("double_id", mul(col("id"), int_expr(2))), with_column_assignment("id_plus_one", add(col("id"), int_expr(1)))])
+
+    # -- Act --
+    plan = plan_from_root_relation(projected, ["id", "double_id", "id_plus_one"])
+    # -- Assert --
+    assert_eq(relation_kind_name(projected), "ProjectRel", "projection builder lowering should emit ProjectRel roots")
+    assert_eq(plan_encoded_len(plan) > 0, true, "projection builder lowering should still encode into a valid plan")
+    assert_eq(plan_contains_relation_kind(plan, "ProjectRel"), true, "encoded plan should retain the projected root relation kind")
+    assert_eq(plan_has_extension_urn(plan, registered_substrait_extension_uris()[0]), true, "scalar function plans should register the shared function extension URN")
+    root_output_names = root_names(plan)
+    assert_eq(len(root_output_names), 3, "project root should publish one output name per projected column")
+    assert_eq(root_output_names[0], "id", "project root should preserve passthrough column names")
+    assert_eq(root_output_names[1], "double_id", "project root should preserve derived aliases")
+    assert_eq(root_output_names[2], "id_plus_one", "project root should preserve all derived aliases")
+
+
+def test_plan__aggregate_rel_surfaces_group_and_measure_output_columns() -> None:
+    # -- Arrange --
+    _register_orders_schema()
+    base = read_named_table_rel("orders")
+    aggregated = aggregate_rel(base, ["id"], [AggregateMeasure(kind=AggregateKind.Sum, column_name="id"), AggregateMeasure(kind=AggregateKind.Count, column_name="")])
+    plan = plan_from_root_relation(aggregated, ["id", "sum_id", "count"])
+
+    # -- Act --
+    output_columns = relation_output_columns(aggregated)
+
+    # -- Assert --
+    assert_eq(relation_kind_name(aggregated), "AggregateRel", "aggregate lowering should emit AggregateRel")
+    assert_eq(plan_has_extension_urn(plan, registered_substrait_extension_uris()[0]), true, "aggregate function plans should register the shared function extension URN")
+    assert_eq(len(output_columns), 3, "aggregate output columns should include group key plus measure outputs")
+    assert_eq(output_columns[0], "id", "group key should remain the first aggregate output column")
+    assert_eq(output_columns[1], "sum_id", "sum measure output columns should use the stable prefixed name")
+    assert_eq(output_columns[2], "count", "count measure output columns should use the stable count name")
 
 
 def test_plan__set_rel_uses_operation_enum() -> None:
@@ -265,7 +318,7 @@ def test_conformance__core_scenarios_validate_emission_output() -> None:
             CoreScenarioKey.ReadVirtualTable => 
                 plan = plan_from_virtual_table(_fixture_virtual_table_name())
             CoreScenarioKey.FilterRows => 
-                plan = plan_from_root_relation(filter_rel(read_named_table_rel(_fixture_table_main()), true), [_fixture_col_primary()])
+                plan = plan_from_root_relation(filter_rel(read_named_table_rel(_fixture_table_main()), always_true()), [_fixture_col_primary()])
             CoreScenarioKey.ProjectComputedColumns => 
                 plan = plan_from_root_relation(project_rel(read_named_table_rel(_fixture_table_main())), [_fixture_col_primary()])
             CoreScenarioKey.JoinRelVariants => 
@@ -273,7 +326,7 @@ def test_conformance__core_scenarios_validate_emission_output() -> None:
             CoreScenarioKey.CrossRelCartesian => 
                 plan = plan_from_root_relation(cross_rel(read_named_table_rel(_fixture_table_left()), read_named_table_rel(_fixture_table_right())), [_fixture_col_primary()])
             CoreScenarioKey.AggregateGroupingSets => 
-                plan = plan_from_root_relation(aggregate_rel(read_named_table_rel(_fixture_table_main()), true), [_fixture_col_primary()])
+                plan = plan_from_root_relation(aggregate_rel(read_named_table_rel(_fixture_table_main()), [_fixture_col_primary()], [AggregateMeasure(kind=AggregateKind.Count, column_name="")]), [_fixture_col_primary()])
             CoreScenarioKey.SortRelOrdering => 
                 plan = plan_from_root_relation(sort_rel(read_named_table_rel(_fixture_table_main())), [_fixture_col_primary()])
             CoreScenarioKey.FetchRelLimitOffset => 

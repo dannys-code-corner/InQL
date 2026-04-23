@@ -16,9 +16,9 @@ Use the docs tree like this:
 ### Learn the current package surface
 
 1. [Language overview][language-overview]
-2. [Dataset types (Explanation)][dataset-explanation]
+2. [Dataset carriers (Explanation)][dataset-explanation]
 3. [Execution context (Explanation)][execution-explanation]
-4. [Dataset types (Reference)][dataset-reference]
+4. [Dataset carriers (Reference)][dataset-reference]
 5. [Execution context (Reference)][execution-reference]
 
 ### Understand the system design
@@ -42,9 +42,9 @@ Use the docs tree like this:
 [release-notes]: release_notes/
 [contributing]: contributing/
 [language-overview]: language/README.md
-[dataset-explanation]: language/explanation/dataset_types.md
+[dataset-explanation]: language/explanation/dataset_carriers.md
 [execution-explanation]: language/explanation/execution_context.md
-[dataset-reference]: language/reference/dataset_types.md
+[dataset-reference]: language/reference/dataset_carriers.md
 [execution-reference]: language/reference/execution_context.md
 [rfcs-index]: rfcs/README.md
 [writing-rfcs]: contributing/writing_rfcs.md
