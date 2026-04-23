@@ -1,6 +1,6 @@
 """Example: Session read -> transform -> write CSV using LazyFrame."""
 
-from functions import display
+from functions import col, display, eq, int_lit
 from session import Session, SessionError, report_session_error
 
 @derive(Clone)
@@ -26,7 +26,7 @@ def _read_transform_write(mut session: Session, input_uri: str, output_uri: str)
     session.activate()
 
     # Keep transform simple and schema-safe for the current fixture.
-    transformed = orders.filter(true).limit(2)
+    transformed = orders.filter(eq(col("id"), int_lit(1))).limit(2)
     session.write_csv(transformed, output_uri)?
     display(transformed)
     return Ok(None)

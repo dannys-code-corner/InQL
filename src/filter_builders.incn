@@ -1,0 +1,81 @@
+"""
+Explicit filter builder surface for the current InQL-only predicate slice.
+
+These builders are the semantic target for future compiler sugar such as `.amount > 100` and query-block predicate
+lowering. Today they provide a library-owned way to express real filter intent without requiring parser or typechecker
+changes in the Incan compiler.
+"""
+
+from projection_builders import ColumnExpr, require_column_expr_name
+
+@derive(Clone)
+pub enum FilterLiteralKind:
+    """Supported literal kinds for the current filter-builder surface."""
+
+    Int
+    String
+    Bool
+
+
+@derive(Clone)
+pub model FilterLiteral:
+    """Literal value captured by one filter predicate."""
+
+    pub kind: FilterLiteralKind
+    pub int_value: int
+    pub string_value: str
+    pub bool_value: bool
+
+
+@derive(Clone)
+pub enum FilterPredicateKind:
+    """Supported predicate kinds for the current filter-builder surface."""
+
+    AlwaysTrue
+    AlwaysFalse
+    Eq
+    Gt
+
+
+@derive(Clone)
+pub model FilterPredicate:
+    """Filter predicate description carried through dataset, Prism, and Substrait boundaries."""
+
+    pub kind: FilterPredicateKind
+    pub column_name: str
+    pub literal: FilterLiteral
+
+
+pub def int_lit(value: int) -> FilterLiteral:
+    """Build one integer literal for filter expressions."""
+    return FilterLiteral(kind=FilterLiteralKind.Int, int_value=value, string_value=str(""), bool_value=false)
+
+
+pub def str_lit(value: str) -> FilterLiteral:
+    """Build one string literal for filter expressions."""
+    return FilterLiteral(kind=FilterLiteralKind.String, int_value=0, string_value=value, bool_value=false)
+
+
+pub def bool_lit(value: bool) -> FilterLiteral:
+    """Build one boolean literal for filter expressions."""
+    return FilterLiteral(kind=FilterLiteralKind.Bool, int_value=0, string_value=str(""), bool_value=value)
+
+
+pub def always_true() -> FilterPredicate:
+    """Build one no-op filter predicate that canonical rewrite can eliminate."""
+    return FilterPredicate(kind=FilterPredicateKind.AlwaysTrue, column_name=str(""), literal=bool_lit(true))
+
+
+pub def always_false() -> FilterPredicate:
+    """Build one filter predicate that rejects every row."""
+    return FilterPredicate(kind=FilterPredicateKind.AlwaysFalse, column_name=str(""), literal=bool_lit(false))
+
+
+pub def eq(column: ColumnExpr, literal: FilterLiteral) -> FilterPredicate:
+    """Build one equality predicate over a named column and literal."""
+    return FilterPredicate(kind=FilterPredicateKind.Eq, column_name=require_column_expr_name(column, str("eq(...)")), literal=literal)
+
+
+pub def gt(column: ColumnExpr, literal: FilterLiteral) -> FilterPredicate:
+    """Build one greater-than predicate over a named column and literal."""
+    return FilterPredicate(kind=FilterPredicateKind.Gt, column_name=require_column_expr_name(column, str("gt(...)")), literal=literal)

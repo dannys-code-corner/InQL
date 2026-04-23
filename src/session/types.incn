@@ -30,12 +30,13 @@ from session.active import (
 from session.datafusion_backend import (
     BackendError,
     BackendRegistration,
-    datafusion_collect_payload_async,
+    datafusion_collect_materialization_async,
     datafusion_execute_async,
     datafusion_write_csv_async,
     datafusion_write_parquet_async,
 )
-from substrait.plan import register_named_table_schema, root_rel, read_named_table_name
+from substrait.schema_registry import register_named_table_schema
+from substrait.inspect import root_rel, read_named_table_name
 
 @derive(Clone)
 pub class SessionRegistration:
@@ -94,10 +95,10 @@ pub class Session:
             Ok(name) => 
                 index = _find_registration_index(self._registrations, name.0)
                 if index < 0:
-                    return str("")
+                    return ""
                 return source_kind_name(self._registrations[index].source.source_kind)
             Err(_) => 
-                return str("")
+                return ""
 
 
     def register(mut self, logical_name: str, source: TableSource) -> Result[None, SessionError]:
@@ -110,7 +111,7 @@ pub class Session:
     def _register_parsed(mut self, logical_name: LogicalName, source: TableSource) -> Result[None, SessionError]:
         """Register one source after boundary values have been validated into typed wrappers."""
         if _find_registration_index(self._registrations, logical_name.0) >= 0:
-            return Err(SessionError(kind=str("duplicate_registration"), message=f"table '{logical_name.0}' is already registered"))
+            return Err(SessionError(kind="duplicate_registration", message=f"table '{logical_name.0}' is already registered"))
         self._registrations.append(SessionRegistration(logical_name=logical_name.0, source=source))
         return Ok(None)
 
@@ -144,7 +145,7 @@ pub class Session:
         """Return one lazy named-table carrier for a previously registered logical name."""
         name = LogicalName.from_underlying(logical_name)?
         if _find_registration_index(self._registrations, name.0) < 0:
-            return Err(SessionError(kind=str("unknown_table"), message=f"table '{name.0}' is not registered"))
+            return Err(SessionError(kind="unknown_table", message=f"table '{name.0}' is not registered"))
         return Ok(lazy_frame_named_table[T](name.0))
 
     def activate(self) -> None:
@@ -181,25 +182,25 @@ pub class Session:
                         return Err(_session_error_from_backend_error(err))
 
             Err(err) => 
-                return Err(SessionError(kind=str("runtime_init_error"), message=err.message()))
+                return Err(SessionError(kind="runtime_init_error", message=err.message()))
 
 
     def collect[T with Clone](self, data: LazyFrame[T]) -> Result[DataFrame[T], SessionError]:
-        """Validate and execute one lazy plan, returning a materialized DataFrame payload."""
+        """Validate and execute one lazy plan, returning a structured materialized DataFrame."""
         _ensure_datafusion_backend(self._backend)?
         plan = data.to_substrait_plan()
         _validate_named_table_binding(self._registrations, plan)?
 
-        match block_on(datafusion_collect_payload_async(_to_backend_registrations(self._registrations), plan)):
+        match block_on(datafusion_collect_materialization_async(_to_backend_registrations(self._registrations), plan)):
             Ok(collect_result) => 
                 match collect_result:
-                    Ok(payload) => 
-                        return Ok(DataFrame[T](_type_witness=_empty_type_witness[T](), _materialized_payload=payload, _substrait_rel=root_rel(data.to_substrait_plan())))
+                    Ok(materialization) => 
+                        return Ok(DataFrame[T](_type_witness=_empty_type_witness[T](), _materialization=materialization, _substrait_rel=root_rel(data.to_substrait_plan())))
                     Err(err) => 
                         return Err(_session_error_from_backend_error(err))
 
             Err(err) => 
-                return Err(SessionError(kind=str("runtime_init_error"), message=err.message()))
+                return Err(SessionError(kind="runtime_init_error", message=err.message()))
 
 
     def write_csv[T with Clone](self, data: LazyFrame[T], uri: str) -> Result[None, SessionError]:
@@ -231,14 +232,14 @@ pub class Session:
                     Ok(write_result) => 
                         return _write_result_from_backend_result(write_result)
                     Err(err) => 
-                        return Err(SessionError(kind=str("runtime_init_error"), message=err.message()))
+                        return Err(SessionError(kind="runtime_init_error", message=err.message()))
 
             SinkKind.Parquet => 
                 match block_on(datafusion_write_parquet_async(registrations, plan, sink_uri.0)):
                     Ok(write_result) => 
                         return _write_result_from_backend_result(write_result)
                     Err(err) => 
-                        return Err(SessionError(kind=str("runtime_init_error"), message=err.message()))
+                        return Err(SessionError(kind="runtime_init_error", message=err.message()))
 
 
 
@@ -259,17 +260,13 @@ pub class SessionBuilder:
 
 def _active_state_from_session(session: Session) -> ActiveSessionState:
     """Convert public Session state into the lightweight active-session snapshot model."""
-    mut registrations: list[ActiveRegistration] = []
-    for registration in session._registrations:
-        registrations.append(ActiveRegistration(logical_name=registration.logical_name, source=registration.source.clone()))
+    registrations = [ActiveRegistration(logical_name=registration.logical_name, source=registration.source.clone()) for registration in session._registrations]
     return ActiveSessionState(backend=session._backend.clone(), registrations=registrations)
 
 
 def _session_from_active_state(state: ActiveSessionState) -> Session:
     """Rehydrate a public Session from one active-session snapshot."""
-    mut registrations: list[SessionRegistration] = []
-    for registration in state.registrations:
-        registrations.append(SessionRegistration(logical_name=registration.logical_name, source=registration.source.clone()))
+    registrations = [SessionRegistration(logical_name=registration.logical_name, source=registration.source.clone()) for registration in state.registrations]
     return Session(_backend=state.backend, _registrations=registrations)
 
 
@@ -280,10 +277,7 @@ def _session_error_from_active_error(err: ActiveSessionError) -> SessionError:
 
 def _to_backend_registrations(registrations: list[SessionRegistration]) -> list[BackendRegistration]:
     """Convert Session registrations into backend execution registration payloads."""
-    mut converted: list[BackendRegistration] = []
-    for registration in registrations:
-        converted.append(BackendRegistration(logical_name=registration.logical_name, source=registration.source.clone()))
-    return converted
+    return [BackendRegistration(logical_name=registration.logical_name, source=registration.source.clone()) for registration in registrations]
 
 
 def _session_error_from_backend_error(err: BackendError) -> SessionError:
@@ -305,7 +299,7 @@ def _ensure_datafusion_backend(selection: BackendSelection) -> Result[None, Sess
     """Guard backend dispatch: this slice only supports DataFusion execution."""
     if selection.kind == BackendKind.DataFusionEngine:
         return Ok(None)
-    return Err(SessionError(kind=str("unsupported_backend"), message=f"backend '{backend_kind_name(selection)}' is not implemented"))
+    return Err(SessionError(kind="unsupported_backend", message=f"backend '{backend_kind_name(selection)}' is not implemented"))
 
 
 def _empty_type_witness[T with Clone]() -> list[T]:
@@ -325,7 +319,7 @@ def _validate_named_table_binding(registrations: list[SessionRegistration], plan
     if len(table_name) == 0:
         return Ok(None)
     if _find_registration_index(registrations, table_name) < 0:
-        return Err(SessionError(kind=str("unknown_table"), message=f"table '{table_name}' is not registered"))
+        return Err(SessionError(kind="unknown_table", message=f"table '{table_name}' is not registered"))
     return Ok(None)
 
 
@@ -335,5 +329,5 @@ def _find_registration_index(registrations: list[SessionRegistration], logical_n
     while i < len(registrations):
         if registrations[i].logical_name == logical_name:
             return i
-        i = i + 1
+        i += 1
     return -1

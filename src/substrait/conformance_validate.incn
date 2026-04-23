@@ -17,15 +17,15 @@ every relational operation InQL may eventually support.
 """
 
 from rust::substrait::proto import Plan
-from substrait.plan import (
+from substrait.inspect import (
     plan_contains_relation_kind,
-    plan_encoded_len,
     read_kind_name,
     reference_subtree_ordinal,
     relation_kind_name,
     root_rel,
     set_operation_name,
 )
+from substrait.plans import plan_encoded_len
 from substrait.conformance_catalog import ConformanceRel, CoreScenarioKey, SubstraitConformanceScenario
 
 def _capability_tags_contain(scenario: SubstraitConformanceScenario, expected: str) -> bool:
@@ -40,31 +40,31 @@ pub def relation_kind_name_from_conformance(rel: ConformanceRel) -> str:
     """Map one conformance relation enum to the public Substrait relation-kind label."""
     match rel:
         ConformanceRel.Read => 
-            return str("ReadRel")
+            return "ReadRel"
         ConformanceRel.Filter => 
-            return str("FilterRel")
+            return "FilterRel"
         ConformanceRel.Project => 
-            return str("ProjectRel")
+            return "ProjectRel"
         ConformanceRel.Join => 
-            return str("JoinRel")
+            return "JoinRel"
         ConformanceRel.Cross => 
-            return str("CrossRel")
+            return "CrossRel"
         ConformanceRel.Aggregate => 
-            return str("AggregateRel")
+            return "AggregateRel"
         ConformanceRel.Sort => 
-            return str("SortRel")
+            return "SortRel"
         ConformanceRel.Fetch => 
-            return str("FetchRel")
+            return "FetchRel"
         ConformanceRel.Set => 
-            return str("SetRel")
+            return "SetRel"
         ConformanceRel.Reference => 
-            return str("ReferenceRel")
+            return "ReferenceRel"
         ConformanceRel.ExtensionSingle => 
-            return str("ExtensionSingleRel")
+            return "ExtensionSingleRel"
         ConformanceRel.ExtensionLeaf => 
-            return str("ExtensionLeafRel")
+            return "ExtensionLeafRel"
         _ => 
-            return str("UnknownRel")
+            return "UnknownRel"
 
 
 
@@ -76,14 +76,14 @@ def _root_matches_declared_read_kind(scenario: SubstraitConformanceScenario, pla
     literals.
     """
     root = root_rel(plan)
-    if relation_kind_name(root) != str("ReadRel"):
+    if relation_kind_name(root) != "ReadRel":
         return false
-    if _capability_tags_contain(scenario, str("named-table")):
-        return read_kind_name(root) == str("NamedTable")
-    if _capability_tags_contain(scenario, str("local-files")):
-        return read_kind_name(root) == str("LocalFiles")
-    if _capability_tags_contain(scenario, str("virtual-table")):
-        return read_kind_name(root) == str("VirtualTable")
+    if _capability_tags_contain(scenario, "named-table"):
+        return read_kind_name(root) == "NamedTable"
+    if _capability_tags_contain(scenario, "local-files"):
+        return read_kind_name(root) == "LocalFiles"
+    if _capability_tags_contain(scenario, "virtual-table"):
+        return read_kind_name(root) == "VirtualTable"
     return true
 
 
@@ -110,7 +110,7 @@ pub def scenario_has_required_rel_kinds(scenario: SubstraitConformanceScenario, 
     """
     for expected_ref in scenario.required_rels:
         kind = relation_kind_name_from_conformance(expected_ref)
-        if plan_contains_relation_kind(plan, kind) is false:
+        if not plan_contains_relation_kind(plan, kind):
             return false
     return true
 
@@ -124,7 +124,7 @@ pub def scenario_matches_key_invariants(key: CoreScenarioKey, plan: Plan) -> boo
     root = root_rel(plan)
     match key:
         CoreScenarioKey.SetRelOperations => 
-            return set_operation_name(root) == str("UnionDistinct")
+            return set_operation_name(root) == "UnionDistinct"
         CoreScenarioKey.ReferenceRelSharedSubplan => 
             return reference_subtree_ordinal(root) == 7
         _ => 

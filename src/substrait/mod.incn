@@ -1,11 +1,67 @@
 """
-This module contains the Substrait implementation for InQL.
-It uses the Substrait crate to be able to parse and serialize Substrait plans.
+Substrait support for InQL.
 
- https://docs.rs/substrait/latest/substrait/
+The implementation is split into focused owner modules:
 
-Protobuf serialization and deserialization are provided via prost in the proto module.
+- `substrait.schema_registry` for named-table schema binding
+- `substrait.expr_lowering` for builder-to-expression lowering
+- `substrait.extensions` for extension anchors and declaration collection
+- `substrait.relations` for concrete `Rel` construction
+- `substrait.plans` for top-level `Plan` assembly
+- `substrait.inspect` for relation/plan introspection and output-column inference
 """
 
 from rust::prost import Message
 from rust::substrait::proto import Plan
+pub from substrait.schema_registry import named_table_columns, register_named_table_schema
+pub from substrait.relations import (
+    SubstraitJoinKind,
+    SubstraitSetOperation,
+    aggregate_rel,
+    aggregate_rel_of_columns,
+    cross_rel,
+    extension_single_rel,
+    fetch_rel,
+    filter_rel,
+    filter_rel_of_columns,
+    join_rel,
+    join_rel_of_kind,
+    project_rel,
+    project_rel_of_columns,
+    read_local_files_rel,
+    read_local_parquet_rel,
+    read_named_table_rel,
+    read_virtual_table_rel,
+    reference_rel,
+    set_rel,
+    set_rel_of_kind,
+    sort_rel,
+)
+pub from substrait.plans import (
+    empty_plan,
+    plan_encoded_len,
+    plan_from_local_files,
+    plan_from_local_parquet,
+    plan_from_named_table,
+    plan_from_root_relation,
+    plan_from_virtual_table,
+    substrait_producer_name,
+    substrait_release_tag,
+)
+pub from substrait.inspect import (
+    aggregate_group_columns,
+    aggregate_measure_output_names,
+    plan_contains_relation_kind,
+    plan_has_extension_urn,
+    read_kind_name,
+    read_named_table_name,
+    reference_subtree_ordinal,
+    relation_kind_name,
+    relation_output_columns,
+    rel_contains_kind,
+    root_names,
+    root_rel,
+    set_operation_name,
+    source_named_table_name,
+)
+pub from substrait.extensions import explode_extension_uri, registered_substrait_extension_uris

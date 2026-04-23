@@ -3,19 +3,15 @@
 from std.testing import assert_eq
 from metadata import inql_version
 from dataset import DataSet, BoundedDataSet, UnboundedDataSet, DataFrame, LazyFrame, DataStream, lazy_frame_named_table
+from dataset.materialization import DataFrameMaterialization
 from dataset.ops import filter_ds, join_ds
-from functions import count_rows, total
-from substrait.plan import (
-    explode_extension_uri,
-    plan_contains_relation_kind,
-    plan_encoded_len,
-    plan_from_named_table,
-    plan_from_root_relation,
-    plan_has_extension_urn,
-    read_named_table_rel,
-    relation_kind_name,
-    root_rel,
-)
+from functions import always_false, always_true, col, count, int_expr, mul, sum
+from substrait.extensions import explode_extension_uri
+from substrait.inspect import plan_contains_relation_kind, plan_has_extension_urn, relation_kind_name, root_rel
+from substrait.plans import plan_encoded_len, plan_from_named_table, plan_from_root_relation
+from substrait.relations import read_named_table_rel
+from substrait.schema_registry import register_named_table_schema
+from substrait.schema import RowColumnSpec, SubstraitPrimitiveKind
 
 @derive(Clone)
 model Order:
@@ -80,6 +76,15 @@ def _order_witness() -> list[Order]:
     return [Order(id=0)]
 
 
+def _preview_materialization(columns: list[str], row_count: int, preview_text: str) -> DataFrameMaterialization:
+    """Build one structured materialization fixture for direct DataFrame tests."""
+    return DataFrameMaterialization(resolved_columns=columns, row_count=row_count, preview_text=preview_text)
+
+
+def _register_projection_test_schema(table_name: str) -> None:
+    register_named_table_schema(table_name, [RowColumnSpec(name="id", kind=SubstraitPrimitiveKind.I64, nullable=false)])
+
+
 def _compile_hierarchy_assignability(order_frame: DataFrame[Order], order_lazy: LazyFrame[Order], event_stream: DataStream[Event]) -> None:
     """Compile-time shape checks for concrete -> trait -> supertrait assignments."""
     sink0 = _upcast_bounded_to_data_set(_upcast_data_frame_to_bounded(order_frame))
@@ -92,25 +97,23 @@ def _compile_hierarchy_assignability(order_frame: DataFrame[Order], order_lazy: 
 
 def test_smoke__dataset_types_are_published() -> None:
     """RFC 001: carrier types and aggregate helpers are importable."""
-    # TODO(InQL #23): Replace placeholder aggregate assertions once real helper semantics are implemented.
     # -- Arrange --
-    value = 42
-    rows = 7
+    amount = col("amount")
 
     # -- Act --
-    total_result = total(value)
-    count_result = count_rows(rows)
+    sum_result = sum(amount)
+    count_result = count()
 
     # -- Assert --
-    assert_eq(total_result, 0, "total is currently a placeholder helper returning 0")
-    assert_eq(count_result, 0, "count_rows is currently a placeholder helper returning 0")
+    assert_eq(sum_result.column_name, "amount", "sum should preserve the selected input column name")
+    assert_eq(count_result.column_name, "", "count should remain a zero-argument aggregate helper")
 
 
 def test_type_contracts__signature_tiers_compile() -> None:
     """RFC 001: DataSet / BoundedDataSet / UnboundedDataSet accept concrete carriers."""
     # -- Arrange --
     row = Order(id=1)
-    df: DataFrame[Order] = DataFrame[Order](_type_witness=_order_witness(), _materialized_payload="", _substrait_rel=read_named_table_rel("orders"))
+    df: DataFrame[Order] = DataFrame[Order](_type_witness=_order_witness(), _materialization=DataFrameMaterialization.empty(), _substrait_rel=read_named_table_rel("orders"))
     ev = Event(id=2)
     st: DataStream[Event] = DataStream(_row_schema_marker=ev, _substrait_rel=read_named_table_rel("events"))
 
@@ -131,7 +134,7 @@ def test_type_contracts__signature_tiers_compile() -> None:
 def test_type_contracts__concrete_carriers_compile() -> None:
     """RFC 001: concrete carriers flow through generic helper signatures."""
     # -- Arrange --
-    df: DataFrame[Order] = DataFrame[Order](_type_witness=_order_witness(), _materialized_payload="", _substrait_rel=read_named_table_rel("orders"))
+    df: DataFrame[Order] = DataFrame[Order](_type_witness=_order_witness(), _materialization=DataFrameMaterialization.empty(), _substrait_rel=read_named_table_rel("orders"))
     lf: LazyFrame[Order] = lazy_frame_named_table[Order]("orders")
     ev = Event(id=4)
     st: DataStream[Event] = DataStream(_row_schema_marker=ev, _substrait_rel=read_named_table_rel("events"))
@@ -150,7 +153,7 @@ def test_type_contracts__concrete_carriers_compile() -> None:
 def test_hierarchy__concrete_and_supertrait_assignability() -> None:
     """RFC 001: concrete -> bounded/unbounded trait -> DataSet chains compile."""
     # -- Arrange --
-    df: DataFrame[Order] = DataFrame[Order](_type_witness=_order_witness(), _materialized_payload="", _substrait_rel=read_named_table_rel("orders"))
+    df: DataFrame[Order] = DataFrame[Order](_type_witness=_order_witness(), _materialization=DataFrameMaterialization.empty(), _substrait_rel=read_named_table_rel("orders"))
     lf: LazyFrame[Order] = lazy_frame_named_table[Order]("orders")
     ev = Event(id=6)
     st: DataStream[Event] = DataStream(_row_schema_marker=ev, _substrait_rel=read_named_table_rel("events"))
@@ -167,7 +170,7 @@ def test_hierarchy__concrete_and_supertrait_assignability() -> None:
 def test_type_contracts__concrete_and_trait_types_match_generic_arguments() -> None:
     """Generic parameter T matches for DataFrame/LazyFrame/DataStream carriers."""
     # -- Arrange --
-    df: DataFrame[Order] = DataFrame[Order](_type_witness=_order_witness(), _materialized_payload="", _substrait_rel=read_named_table_rel("orders"))
+    df: DataFrame[Order] = DataFrame[Order](_type_witness=_order_witness(), _materialization=DataFrameMaterialization.empty(), _substrait_rel=read_named_table_rel("orders"))
     lf: LazyFrame[Order] = lazy_frame_named_table[Order]("orders")
     ev = Event(id=8)
     st: DataStream[Event] = DataStream(_row_schema_marker=ev, _substrait_rel=read_named_table_rel("events"))
@@ -198,11 +201,11 @@ def test_version__inql_version_is_published() -> None:
 def test_dataset_ops__method_wrapper_matches_canonical_function() -> None:
     """Method wrappers should preserve canonical dataset_ops semantics."""
     # -- Arrange --
-    base_df = DataFrame[Order](_type_witness=_order_witness(), _materialized_payload="", _substrait_rel=read_named_table_rel("orders"))
+    base_df = DataFrame[Order](_type_witness=_order_witness(), _materialization=DataFrameMaterialization.empty(), _substrait_rel=read_named_table_rel("orders"))
 
     # -- Act --
-    via_function = filter_ds(read_named_table_rel("orders"), true)
-    via_method = base_df.filter(true)
+    via_function = filter_ds(read_named_table_rel("orders"), always_true())
+    via_method = base_df.filter(always_true())
 
     # -- Assert --
     assert_eq(relation_kind_name(via_function), "FilterRel", "canonical function should produce FilterRel root")
@@ -213,20 +216,21 @@ def test_dataset_ops__method_wrapper_matches_canonical_function() -> None:
 def test_dataset_ops__data_frame_transforms_invalidate_stale_materialization() -> None:
     """DataFrame transforms should not retain payload-derived schema once the logical relation changes."""
     # -- Arrange --
-    base_df = DataFrame[Order](_type_witness=_order_witness(), _materialized_payload="record_batches=1\n| id |\n| 1 |", _substrait_rel=read_named_table_rel("orders"))
+    base_df = DataFrame[Order](_type_witness=_order_witness(), _materialization=_preview_materialization(["id"], 1, "| id |\n| 1 |"), _substrait_rel=read_named_table_rel("orders"))
 
     # -- Act --
-    transformed = base_df.filter(true)
+    transformed = base_df.filter(always_true())
 
     # -- Assert --
-    assert_eq(transformed.materialized_payload(), "", "transformed DataFrame should clear stale payload")
-    assert_eq(len(transformed.resolved_columns()), 0, "transformed DataFrame should clear resolved columns derived from stale payload")
+    assert_eq(transformed.preview_text(), "", "transformed DataFrame should clear stale preview text")
+    assert_eq(transformed.row_count(), 0, "transformed DataFrame should clear stale collected row-count metadata")
+    assert_eq(len(transformed.resolved_columns()), 0, "transformed DataFrame should clear resolved columns derived from stale materialization")
     assert_eq(relation_kind_name(root_rel(transformed.to_substrait_plan())), "FilterRel", "transformed DataFrame should still preserve the updated logical relation")
 
 
 def test_dataset_ops__all_carriers_emit_real_plans() -> None:
     # -- Arrange --
-    df = DataFrame[Order](_type_witness=_order_witness(), _materialized_payload="", _substrait_rel=read_named_table_rel("orders"))
+    df = DataFrame[Order](_type_witness=_order_witness(), _materialization=DataFrameMaterialization.empty(), _substrait_rel=read_named_table_rel("orders"))
     lf = lazy_frame_named_table[Order]("orders")
     st = DataStream(_row_schema_marker=Event(id=12), _substrait_rel=read_named_table_rel("events"))
 
@@ -241,9 +245,30 @@ def test_dataset_ops__all_carriers_emit_real_plans() -> None:
     assert_eq(plan_encoded_len(st_plan) > 0, true, "DataStream should emit a real plan")
 
 
+def test_dataset_ops__with_column_updates_lazy_planned_columns_with_add_or_replace_semantics() -> None:
+    """with_column should append new names and replace existing names in place at lazy plan time."""
+    # -- Arrange --
+    _register_projection_test_schema("orders_projection")
+    base = lazy_frame_named_table[Order]("orders_projection")
+
+    # -- Act --
+    augmented = base.with_column("double_id", mul(col("id"), int_expr(2)))
+    replaced = augmented.with_column("id", int_expr(0))
+
+    # -- Assert --
+    augmented_cols = augmented.planned_columns()
+    replaced_cols = replaced.planned_columns()
+    assert_eq(len(augmented_cols), 2, "with_column should append one new projected output column")
+    assert_eq(augmented_cols[0], "id", "existing source columns should stay ahead of appended projections")
+    assert_eq(augmented_cols[1], "double_id", "with_column should append the requested output name")
+    assert_eq(len(replaced_cols), 2, "replacing an existing name should preserve output column count")
+    assert_eq(replaced_cols[0], "id", "replacing an existing name should preserve that slot's ordinal position")
+    assert_eq(replaced_cols[1], "double_id", "later projected columns should keep their relative order after replacement")
+
+
 def test_dataset_ops__api_lowered_boundary_facts_stay_stable() -> None:
     # -- Arrange --
-    left = DataFrame[Order](_type_witness=_order_witness(), _materialized_payload="", _substrait_rel=read_named_table_rel("orders"))
+    left = DataFrame[Order](_type_witness=_order_witness(), _materialization=DataFrameMaterialization.empty(), _substrait_rel=read_named_table_rel("orders"))
     joined_plan = plan_from_root_relation(join_ds(read_named_table_rel("orders"), read_named_table_rel("orders_archive"), true), ["id"])
 
     # -- Act --
@@ -259,7 +284,7 @@ def test_lazy_frame__immutable_branching_and_origin_mapping_hold() -> None:
     base = lazy_frame_named_table[Order]("orders")
 
     # -- Act --
-    filtered: LazyFrame[Order] = base.filter(false)
+    filtered: LazyFrame[Order] = base.filter(always_false())
 
     # -- Assert --
     assert_eq(plan_encoded_len(base.to_substrait_plan()) > 0, true, "base lazy carrier should still emit a real proto-backed plan")
@@ -269,8 +294,8 @@ def test_lazy_frame__immutable_branching_and_origin_mapping_hold() -> None:
 
 def test_lazy_frame__independent_roots_can_join_and_lower() -> None:
     # -- Arrange --
-    left: LazyFrame[Order] = lazy_frame_named_table[Order]("orders").filter(false)
-    right: LazyFrame[Order] = lazy_frame_named_table[Order]("orders_archive").filter(false)
+    left: LazyFrame[Order] = lazy_frame_named_table[Order]("orders").filter(always_false())
+    right: LazyFrame[Order] = lazy_frame_named_table[Order]("orders_archive").filter(always_false())
 
     # -- Act --
     joined: LazyFrame[Order] = left.join(right, true)
@@ -285,10 +310,10 @@ def test_lazy_frame__independent_roots_can_join_and_lower() -> None:
 def test_lazy_frame__native_prism_ops_preserve_current_boundary_shapes() -> None:
     # -- Arrange --
     projected = lazy_frame_named_table[Order]("orders").select()
-    grouped = lazy_frame_named_table[Order]("orders").group_by()
+    grouped = lazy_frame_named_table[Order]("orders").group_by([col("id")])
 
     # -- Act --
-    aggregated = grouped.agg()
+    aggregated = grouped.agg([count()])
     ordered = lazy_frame_named_table[Order]("orders").order_by()
     limited = lazy_frame_named_table[Order]("orders").limit(10)
     exploded = lazy_frame_named_table[Order]("orders").explode()
@@ -304,11 +329,11 @@ def test_lazy_frame__native_prism_ops_preserve_current_boundary_shapes() -> None
 
 def test_lazy_frame__deeper_independent_roots_still_lower_with_stable_shapes() -> None:
     # -- Arrange --
-    left: LazyFrame[Order] = lazy_frame_named_table[Order]("orders").filter(false)
+    left: LazyFrame[Order] = lazy_frame_named_table[Order]("orders").filter(always_false())
     right_base: LazyFrame[Order] = lazy_frame_named_table[Order]("orders_archive")
 
     # -- Act --
-    right_joined: LazyFrame[Order] = right_base.filter(false).order_by().join(right_base.filter(false).order_by(), true)
+    right_joined: LazyFrame[Order] = right_base.filter(always_false()).order_by().join(right_base.filter(always_false()).order_by(), true)
     joined: LazyFrame[Order] = left.join(right_joined, true)
     plan = joined.to_substrait_plan()
 
@@ -321,7 +346,7 @@ def test_lazy_frame__deeper_independent_roots_still_lower_with_stable_shapes() -
 
 def test_lazy_frame__canonical_rewrite_removes_filter_true_and_preserves_boundary_validity() -> None:
     # -- Arrange --
-    simplified = lazy_frame_named_table[Order]("orders").filter(true)
+    simplified = lazy_frame_named_table[Order]("orders").filter(always_true())
 
     # -- Act --
     plan = simplified.to_substrait_plan()
@@ -334,7 +359,7 @@ def test_lazy_frame__canonical_rewrite_removes_filter_true_and_preserves_boundar
 
 def test_lazy_frame__canonical_rewrite_keeps_extension_boundary_for_explode() -> None:
     # -- Arrange --
-    exploded = lazy_frame_named_table[Order]("orders").filter(true).explode()
+    exploded = lazy_frame_named_table[Order]("orders").filter(always_true()).explode()
 
     # -- Act --
     plan = exploded.to_substrait_plan()

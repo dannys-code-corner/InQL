@@ -102,6 +102,20 @@ Requires `incan` on `PATH`, or `make build INCAN=/path/to/incan`. CI builds Inca
 - For language semantics that are not yet specified, **anchor design in RFCs** rather than inventing silent behavior.
 - **Docstrings are required**: every function or method with a body (`def ...`) must include a docstring. When touching legacy code that lacks one, add it in the same change.
 
+### Comments and explanatory prose in code
+
+- Treat comments in this repo as part of the readability surface, not just implementation debris.
+- This matters more here than in a mature mainstream language codebase because Incan/InQL syntax, planning boundaries, and lowering shapes are still unfamiliar to many readers.
+- Do **not** apply a simplistic "remove comments that restate the code" rule. Comments that orient the reader, explain data-shape assumptions, or clarify which phase/boundary a block belongs to are valuable even when they partially restate the code.
+- Be especially willing to keep or add short explanatory comments in:
+  - public API modules
+  - parser/planner/lowering and Substrait boundary code
+  - payload/schema parsing code
+  - Rust interop boundaries
+  - places where the Incan surface itself may be unfamiliar to readers
+- Remove comments only when they are genuinely noisy, stale, or misleading. If a comment is helping a new contributor understand what they are looking at, it is doing useful work.
+- When refactoring touched code, preserve useful inline explanations unless you are replacing them with better ones in the same change.
+
 ### Test style contract
 
 - Every `def test_*` function in `tests/*.incn` must include explicit section markers:

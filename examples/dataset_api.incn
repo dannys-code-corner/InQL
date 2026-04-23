@@ -1,33 +1,37 @@
 """
 Example: DataSet[T] operation API patterns (RFC 001).
 
-This file is intentionally compile-safe today: it preserves the type signatures and documents the intended method-chain
-shapes without requiring query-expression parsing.
+This file stays compile-safe today, but it now uses the parts of the method-chain surface that are already real:
+
+- builder-based filters via `eq(...)`, `gt(...)`, `int_lit(...)`, and `str_lit(...)`
+- builder-based projection via `with_column(...)`, `add(...)`, `mul(...)`, and `int_expr(...)`
+- builder-based grouping and aggregation via `col(...)`, `sum(...)`, and `count()`
+
+Query-expression sugar such as `.amount > 100` and rich `select/order_by` expressions still depend on later compiler
+work, so those remain documented as intended shapes rather than executable examples.
 """
 
+from functions import add, col, count, eq, gt, int_expr, int_lit, mul, str_lit, sum
 from dataset import DataSet, BoundedDataSet, DataFrame, LazyFrame
 from models import Order, Customer
 
 def filter_high_value_orders(orders: LazyFrame[Order]) -> LazyFrame[Order]:
-    # Intended shape: orders.filter(.amount > 100)
-    return orders
+    return orders.filter(gt(col("amount"), int_lit(100)))
 
 
 def filter_active_orders(orders: LazyFrame[Order]) -> LazyFrame[Order]:
-    # Intended shape: orders.filter(.status == "active")
-    return orders
+    return orders.filter(eq(col("status"), str_lit("active")))
 
 
 def filter_combined(orders: LazyFrame[Order]) -> LazyFrame[Order]:
-    # Intended shape: orders.filter(...).filter(...)
-    return orders
+    return orders.filter(gt(col("amount"), int_lit(100))).filter(eq(col("status"), str_lit("active")))
 
 
 def join_orders_with_customers(orders: LazyFrame[Order], customers: LazyFrame[Customer]) -> LazyFrame[Order]:
     # Trait join uses `other: Self`; heterogeneous Order/Customer join is a logical/RFC 003 concern.
     # Same-schema illustration: orders.join(orders, True) when both are LazyFrame[Order].
     _ = customers
-    return orders
+    return orders.join(orders, true)
 
 
 def select_basic_fields(orders: LazyFrame[Order]) -> LazyFrame[Order]:
@@ -35,19 +39,20 @@ def select_basic_fields(orders: LazyFrame[Order]) -> LazyFrame[Order]:
     return orders
 
 
-def select_with_expression(orders: LazyFrame[Order]) -> LazyFrame[Order]:
-    # Intended shape: orders.select(.id, .amount * 1.1 as total_with_tax)
-    return orders
+def derive_double_amount(orders: LazyFrame[Order]) -> LazyFrame[Order]:
+    return orders.with_column("amount_x2", mul(col("amount"), int_expr(2)))
+
+
+def derive_amount_plus_one(orders: LazyFrame[Order]) -> LazyFrame[Order]:
+    return orders.with_column("amount_plus_one", add(col("amount"), int_expr(1)))
 
 
 def group_by_customer_sum_amount(orders: LazyFrame[Order]) -> LazyFrame[Order]:
-    # Intended shape: orders.group_by(.customer_id).agg(total(.amount))
-    return orders
+    return orders.group_by([col("customer_id")]).agg([sum(col("amount"))])
 
 
 def group_by_multiple_keys(orders: LazyFrame[Order]) -> LazyFrame[Order]:
-    # Intended shape: orders.group_by(.customer_id, .status).agg(total(.amount))
-    return orders
+    return orders.group_by([col("customer_id"), col("status")]).agg([sum(col("amount")), count()])
 
 
 def order_by_amount_desc(orders: LazyFrame[Order]) -> LazyFrame[Order]:
@@ -56,8 +61,8 @@ def order_by_amount_desc(orders: LazyFrame[Order]) -> LazyFrame[Order]:
 
 
 def order_by_limit_top_10(orders: LazyFrame[Order]) -> LazyFrame[Order]:
-    # Intended shape: orders.order_by(.amount.desc()).limit(10)
-    return orders
+    # Today only the `limit(...)` half is executable without richer order expressions.
+    return orders.limit(10)
 
 
 def process_orders_batch(orders: DataFrame[Order]) -> DataFrame[Order]:

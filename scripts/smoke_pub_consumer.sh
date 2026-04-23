@@ -25,7 +25,7 @@ main = "src/main.incn"
 EOF
 
 cat > "$PROJECT_DIR/src/main.incn" <<'EOF'
-from pub::inql import Session, SessionError
+from pub::inql import Session, SessionError, always_true
 
 @derive(Clone)
 model Order:
@@ -35,7 +35,7 @@ model Order:
 def main() -> Result[None, SessionError]:
     mut session = Session.default()
     orders = session.read_csv[Order]("orders", "tests/fixtures/orders.csv")?
-    transformed = orders.filter(true).limit(1)
+    transformed = orders.filter(always_true()).limit(1)
     session.collect(transformed)?
     return Ok(None)
 EOF

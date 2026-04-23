@@ -1,0 +1,30 @@
+"""Example: Session read -> with_column -> collect/display -> write CSV using a real fixture."""
+
+from functions import col, display, int_expr, mul
+from session import Session, SessionError, report_session_error
+
+@derive(Clone)
+pub model AggregateOrder:
+    pub customer_id: str
+    pub amount: int
+
+
+def main() -> None:
+    mut session = Session.default()
+    input_uri = "tests/fixtures/aggregate_orders.csv"
+    output_uri = "tests/target/session_with_column_out.csv"
+
+    match _read_transform_write(session, input_uri, output_uri):
+        Ok(_) => print("Wrote CSV to: " + output_uri)
+        Err(err) => report_session_error("example.session_with_column_csv", err)
+
+
+
+def _read_transform_write(mut session: Session, input_uri: str, output_uri: str) -> Result[None, SessionError]:
+    orders = session.read_csv[AggregateOrder]("aggregate_orders", input_uri)?
+    session.activate()
+    # add a column with double the amount, using a simple multiply expression over the "amount" column and an integer literal
+    projected = orders.with_column("double_amount", mul(col("amount"), int_expr(2)))
+    display(projected)
+    session.write_csv(projected, output_uri)?
+    return Ok(None)

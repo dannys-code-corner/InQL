@@ -1,0 +1,75 @@
+"""
+Top-level Substrait plan assembly helpers for InQL.
+
+This module owns `Plan` envelopes, package-level producer/version metadata, and the entrypoints that wrap root
+relations into complete proto-backed plans.
+"""
+
+from rust::prost import Message
+from rust::substrait::proto import Plan, PlanRel, Rel, RelRoot, Version
+from rust::substrait::proto::plan_rel import RelType as PlanRelType
+from substrait.extensions import extension_urns_for_rel, plan_extensions_for_rel
+from substrait.relations import (
+    read_local_files_rel,
+    read_local_parquet_rel,
+    read_named_table_rel,
+    read_virtual_table_rel,
+)
+
+const DEFAULT_SUBSTRAIT_RELEASE_TAG: str = "v0.63.0"
+const DEFAULT_SUBSTRAIT_PRODUCER_NAME: str = "inql-rfc002"
+
+
+def _default_version() -> Version:
+    """Return the default Substrait plan version envelope."""
+    return Version(major_number=0, minor_number=63, patch_number=0, git_hash="", producer=DEFAULT_SUBSTRAIT_PRODUCER_NAME)
+
+
+def _plan_root(input: Rel, names: list[str]) -> PlanRel:
+    """Wrap one input relation as a root PlanRel with output field names."""
+    return PlanRel(rel_type=Some(PlanRelType.Root(RelRoot(input=Some(input), names=names))))
+
+
+pub def empty_plan() -> Plan:
+    """Return an empty proto-backed Substrait plan with the RFC 002 default version."""
+    return Plan(version=Some(_default_version()), extension_urns=[], extensions=[], relations=[], advanced_extensions=None, expected_type_urls=[], parameter_bindings=[], type_aliases=[])
+
+
+pub def substrait_release_tag() -> str:
+    """Return the current RFC 002 Substrait release tag exported by the package boundary."""
+    return DEFAULT_SUBSTRAIT_RELEASE_TAG
+
+
+pub def substrait_producer_name() -> str:
+    """Return the current RFC 002 producer label exported by the package boundary."""
+    return DEFAULT_SUBSTRAIT_PRODUCER_NAME
+
+
+pub def plan_from_root_relation(input: Rel, names: list[str]) -> Plan:
+    """Wrap one root relation in a complete Substrait `Plan` envelope."""
+    return Plan(version=Some(_default_version()), extension_urns=extension_urns_for_rel(input), extensions=plan_extensions_for_rel(input), relations=[_plan_root(input, names)], advanced_extensions=None, expected_type_urls=[], parameter_bindings=[], type_aliases=[])
+
+
+pub def plan_from_named_table(table_name: str) -> Plan:
+    """Build a minimal plan rooted at a named-table logical read."""
+    return plan_from_root_relation(read_named_table_rel(table_name), [])
+
+
+pub def plan_from_local_parquet(uri: str) -> Plan:
+    """Build a minimal plan rooted at a Parquet-backed local-files logical read."""
+    return plan_from_root_relation(read_local_parquet_rel(uri), [])
+
+
+pub def plan_from_local_files(uri: str) -> Plan:
+    """Compatibility wrapper for the current Parquet-backed local-files plan helper."""
+    return plan_from_root_relation(read_local_files_rel(uri), [])
+
+
+pub def plan_from_virtual_table(table_name: str) -> Plan:
+    """Build a minimal plan rooted at a virtual-table logical read."""
+    return plan_from_root_relation(read_virtual_table_rel(table_name), [])
+
+
+pub def plan_encoded_len(plan: Plan) -> int:
+    """Return the encoded protobuf byte length of a plan."""
+    return len(plan.encode_to_vec())

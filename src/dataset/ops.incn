@@ -1,36 +1,44 @@
 """
 Canonical dataset-operation seam over concrete relation builders.
 
-These helpers keep carrier-level operation names (`filter`, `join`, `group_by`, ...) distinct from the exact
-Substrait builder functions used underneath. The current implementation is intentionally thin, but this module is the
-place where dataset-layer operation intent can diverge from raw relation-construction details without pushing that
-coupling into carrier types directly.
+These helpers keep carrier-level operation names (`filter`, `join`, `group_by`, ...) distinct from the exact Substrait
+builder functions used underneath. Projection now flows through explicit input-column lists so carrier-level schema
+views stay aligned with the lowered relation tree.
 """
 
 from rust::substrait::proto import Rel
-from substrait.plan import (
-    aggregate_rel,
-    explode_extension_uri,
+from aggregate_builders import AggregateMeasure
+from filter_builders import FilterPredicate
+from projection_builders import ColumnExpr, ProjectionAssignment, require_column_expr_name, with_column_assignment
+from substrait.extensions import explode_extension_uri
+from substrait.inspect import relation_output_columns
+from substrait.relations import (
+    aggregate_rel_of_columns,
     extension_single_rel,
     fetch_rel,
-    filter_rel,
+    filter_rel_of_columns,
     join_rel,
-    project_rel,
+    project_rel_of_columns,
     sort_rel,
 )
 
-pub def filter_ds(rel: Rel, predicate: bool) -> Rel:
+pub def filter_ds(rel: Rel, predicate: FilterPredicate) -> Rel:
     """
     Apply dataset-level filter intent to one relation.
 
     Args:
         rel: Input relation to filter.
-        predicate: Placeholder filter condition for the current package slice.
+        predicate: Filter predicate for the current package slice.
 
     Returns:
         A relation shaped as a filter over the input relation.
     """
-    return filter_rel(rel, predicate)
+    return filter_ds_of_columns(rel, relation_output_columns(rel.clone()), predicate)
+
+
+pub def filter_ds_of_columns(rel: Rel, input_columns: list[str], predicate: FilterPredicate) -> Rel:
+    """Apply dataset-level filter intent using explicit input-column names."""
+    return filter_rel_of_columns(rel, input_columns, predicate)
 
 
 pub def join_ds(left_rel: Rel, right_rel: Rel, on: bool) -> Rel:
@@ -50,18 +58,33 @@ pub def join_ds(left_rel: Rel, right_rel: Rel, on: bool) -> Rel:
 
 pub def select_ds(rel: Rel) -> Rel:
     """
-    Apply dataset-level projection intent to one relation.
+    Apply dataset-level identity projection intent to one relation.
 
     Args:
         rel: Input relation to project.
 
     Returns:
-        A relation shaped as a projection over the input relation.
+        A relation shaped as an identity projection over the input relation.
     """
-    return project_rel(rel)
+    return select_ds_of_columns(rel, relation_output_columns(rel.clone()))
 
 
-pub def group_by_ds(rel: Rel) -> Rel:
+pub def select_ds_of_columns(rel: Rel, input_columns: list[str]) -> Rel:
+    """Apply dataset-level identity projection intent using explicit input-column names."""
+    return project_rel_of_columns(rel, input_columns, [])
+
+
+pub def with_column_ds(rel: Rel, input_columns: list[str], name: str, expr: ColumnExpr) -> Rel:
+    """Apply dataset-level add-or-replace derived-column intent using explicit input-column names."""
+    return project_rel_of_columns(rel, input_columns, [with_column_assignment(name, expr)])
+
+
+pub def project_ds_of_columns(rel: Rel, input_columns: list[str], assignments: list[ProjectionAssignment]) -> Rel:
+    """Apply dataset-level ordered projection assignments using explicit input-column names."""
+    return project_rel_of_columns(rel, input_columns, assignments)
+
+
+pub def group_by_ds(rel: Rel, columns: list[ColumnExpr]) -> Rel:
     """
     Apply dataset-level grouping intent to one relation.
 
@@ -71,10 +94,16 @@ pub def group_by_ds(rel: Rel) -> Rel:
     Returns:
         A relation shaped as the grouping form of aggregate over the input relation.
     """
-    return aggregate_rel(rel, false)
+    return group_by_ds_of_columns(rel, relation_output_columns(rel.clone()), columns)
 
 
-pub def agg_ds(rel: Rel) -> Rel:
+pub def group_by_ds_of_columns(rel: Rel, input_columns: list[str], columns: list[ColumnExpr]) -> Rel:
+    """Apply dataset-level grouping intent using explicit input-column names."""
+    column_names = [require_column_expr_name(column, str("group_by(...)")) for column in columns]
+    return aggregate_rel_of_columns(rel, input_columns, column_names, [])
+
+
+pub def agg_ds(rel: Rel, measures: list[AggregateMeasure]) -> Rel:
     """
     Apply dataset-level aggregation intent to one relation.
 
@@ -84,7 +113,12 @@ pub def agg_ds(rel: Rel) -> Rel:
     Returns:
         A relation shaped as the aggregating form of aggregate over the input relation.
     """
-    return aggregate_rel(rel, true)
+    return agg_ds_of_columns(rel, relation_output_columns(rel.clone()), measures)
+
+
+pub def agg_ds_of_columns(rel: Rel, input_columns: list[str], measures: list[AggregateMeasure]) -> Rel:
+    """Apply dataset-level aggregation intent using explicit input-column names."""
+    return aggregate_rel_of_columns(rel, input_columns, [], measures)
 
 
 pub def order_by_ds(rel: Rel) -> Rel:

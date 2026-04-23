@@ -7,7 +7,28 @@ Consumers depend on this package via `[dependencies]` and import with `from pub:
 
 pub from dataset import BoundedDataSet, DataFrame, DataSet, DataStream, LazyFrame, UnboundedDataSet
 pub from dataset.ops import agg_ds, explode_ds, filter_ds, group_by_ds, join_ds, limit_ds, order_by_ds, select_ds
-pub from functions import count_rows, display, total
+pub from aggregate_builders import AggregateKind, AggregateMeasure
+pub from filter_builders import FilterLiteral, FilterLiteralKind, FilterPredicate, FilterPredicateKind
+pub from projection_builders import ColumnExpr, ColumnExprKind, ProjectionAssignment
+pub from functions import (
+    add,
+    always_false,
+    always_true,
+    bool_expr,
+    bool_lit,
+    col,
+    count,
+    display,
+    eq,
+    float_expr,
+    gt,
+    int_expr,
+    int_lit,
+    mul,
+    str_expr,
+    str_lit,
+    sum,
+)
 pub from backends import BackendKind, DataFusion, TableSource, csv_source, parquet_source
 pub from metadata import inql_version
 pub from session.types import Session, SessionBuilder
@@ -23,43 +44,46 @@ pub from substrait.schema import (
     row_shape_to_substrait_struct_type,
     substrait_row_type_encoded_len,
 )
-pub from substrait.plan import (
+pub from substrait.relations import (
     SubstraitJoinKind,
     SubstraitSetOperation,
     aggregate_rel,
     cross_rel,
-    empty_plan,
-    explode_extension_uri,
     extension_single_rel,
     fetch_rel,
     filter_rel,
     join_rel,
     join_rel_of_kind,
-    plan_contains_relation_kind,
+    project_rel,
+    read_local_files_rel,
+    read_named_table_rel,
+    read_virtual_table_rel,
+    reference_rel,
+    set_rel,
+    set_rel_of_kind,
+    sort_rel,
+)
+pub from substrait.plans import (
+    empty_plan,
     plan_encoded_len,
-    plan_has_extension_urn,
     plan_from_local_files,
     plan_from_named_table,
     plan_from_root_relation,
     plan_from_virtual_table,
-    project_rel,
-    read_kind_name,
-    read_local_files_rel,
-    read_named_table_rel,
-    read_virtual_table_rel,
-    reference_subtree_ordinal,
-    relation_kind_name,
-    rel_contains_kind,
-    reference_rel,
-    root_rel,
-    registered_substrait_extension_uris,
-    set_rel,
-    set_operation_name,
-    set_rel_of_kind,
-    sort_rel,
     substrait_producer_name,
     substrait_release_tag,
 )
+pub from substrait.inspect import (
+    plan_contains_relation_kind,
+    plan_has_extension_urn,
+    read_kind_name,
+    reference_subtree_ordinal,
+    relation_kind_name,
+    rel_contains_kind,
+    root_rel,
+    set_operation_name,
+)
+pub from substrait.extensions import explode_extension_uri, registered_substrait_extension_uris
 pub from substrait.conformance_catalog import (
     ConformanceCapabilityTags,
     ConformancePortability,

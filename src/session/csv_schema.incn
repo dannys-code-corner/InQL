@@ -6,6 +6,10 @@ from substrait.schema import RowColumnSpec, SubstraitPrimitiveKind
 
 pub def infer_csv_schema_columns(uri: str) -> Result[list[RowColumnSpec], SessionError]:
     """Read one CSV file and infer schema columns (name, nullability, primitive kind) from header + rows."""
+    # TODO(InQL RFC 010): This is still an intentionally high-level CSV inference pass.
+    # It only looks at header presence, empty cells, and coarse primitive-kind merging.
+    # Revisit this once the fuller CSV ingestion contract lands so dialect rules, quoting/escaping,
+    # richer typing, and stricter schema/header policies stop living behind this lightweight helper.
     match read_to_string(uri):
         Ok(content) => 
             normalized = str(content).replace(str("\r"), str(""))
@@ -36,7 +40,7 @@ pub def infer_csv_schema_columns(uri: str) -> Result[list[RowColumnSpec], Sessio
                         nullable[col_idx] = true
                         continue
                     value_kind = _infer_primitive_kind(value)
-                    if inferred_seeded[col_idx] == false:
+                    if not inferred_seeded[col_idx]:
                         inferred[col_idx] = value_kind
                         inferred_seeded[col_idx] = true
                     else:
@@ -44,7 +48,7 @@ pub def infer_csv_schema_columns(uri: str) -> Result[list[RowColumnSpec], Sessio
             mut specs: list[RowColumnSpec] = []
             for spec_idx in range(len(columns)):
                 mut kind = inferred[spec_idx]
-                if inferred_seeded[spec_idx] == false:
+                if not inferred_seeded[spec_idx]:
                     kind = SubstraitPrimitiveKind.String
                 specs.append(RowColumnSpec(name=columns[spec_idx], kind=kind, nullable=nullable[spec_idx]))
             return Ok(specs)

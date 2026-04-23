@@ -66,7 +66,11 @@ If no active session exists when a convenience API needs one, the operation fail
 
 - `LazyFrame[T]` is the deferred carrier for bounded work.
 - `DataFrame[T]` is the materialized local carrier.
-- Current materialization stores an opaque payload internally; row-level user APIs remain follow-on work.
+- Current `collect(...)` materialization stores structured metadata plus preview text:
+  - resolved output columns
+  - row count
+  - preview text for display/debugging
+- Row-level user APIs remain follow-on work; preview text is not the canonical schema contract.
 
 ## Current backend note
 
@@ -75,6 +79,6 @@ DataFusion is the only implemented execution backend today. The public builder/c
 ## Related docs
 
 - For the conceptual model behind this surface, see [Execution context (Explanation)](../explanation/execution_context.md)
-- For carrier semantics, see [Dataset types (Reference)](dataset_types.md)
+- For carrier semantics, see [Dataset carriers (Reference)](dataset_carriers.md)
 
 [rfc-004]: ../../rfcs/004_inql_execution_context.md

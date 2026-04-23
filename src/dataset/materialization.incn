@@ -1,0 +1,14 @@
+"""Structured DataFrame materialization contract for collected bounded results."""
+
+@derive(Clone)
+pub model DataFrameMaterialization:
+    """Structured result of `Session.collect(...)` used by collected DataFrame carriers."""
+
+    pub resolved_columns: list[str]
+    pub row_count: int
+    pub preview_text: str
+
+    @classmethod
+    def empty() -> Self:
+        """Return one empty materialization record used before collect or after logical invalidation."""
+        return DataFrameMaterialization(resolved_columns=[], row_count=0, preview_text="")

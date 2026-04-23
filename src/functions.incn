@@ -1,23 +1,112 @@
 """
-Aggregate helpers for `.agg(...)` (RFC 001).
+Explicit builder helpers for the current InQL-only relational surface.
 
-These symbols **must** be imported by authors (for example `from pub::inql.functions import total`); they are not ambient
-builtins. Names avoid `sum` / `count` clashes with Incan/stdlib builtins. Bodies are neutral stubs until InQL RFC 004
-defines execution; lowering and relational typing for aggregates live in companion RFCs.
-
-FIXME: review this behavior once Incan's RFC 045 is implemented; we may want to migrate these to builtins preferably.
+These symbols **must** be imported by authors. The current package slice uses explicit builder functions as the
+semantic target for future compiler sugar and query-block lowering.
 """
 
+from aggregate_builders import AggregateMeasure, count as count_builder, sum as sum_builder
+from filter_builders import (
+    FilterLiteral,
+    FilterPredicate,
+    bool_lit as bool_lit_builder,
+    always_false as always_false_builder,
+    always_true as always_true_builder,
+    eq as eq_builder,
+    gt as gt_builder,
+    int_lit as int_lit_builder,
+    str_lit as str_lit_builder,
+)
+from projection_builders import (
+    ColumnExpr,
+    add as add_builder,
+    bool_expr as bool_expr_builder,
+    col as col_builder,
+    float_expr as float_expr_builder,
+    int_expr as int_expr_builder,
+    mul as mul_builder,
+    str_expr as str_expr_builder,
+)
 from dataset import DataFrame, LazyFrame
 
-pub def total(_x: int) -> int:
-    """Sum aggregate (stub; engine / lowering supplies semantics)."""
-    return 0
+pub def col(name: str) -> ColumnExpr:
+    """Build one named column reference expression."""
+    return col_builder(name)
 
 
-pub def count_rows(_x: int) -> int:
-    """Count aggregate placeholder (stub)."""
-    return 0
+pub def sum(expr: ColumnExpr) -> AggregateMeasure:
+    """Build one `sum` aggregate measure over a named column reference."""
+    return sum_builder(expr)
+
+
+pub def count() -> AggregateMeasure:
+    """Build one zero-argument `count` aggregate measure."""
+    return count_builder()
+
+
+pub def int_expr(value: int) -> ColumnExpr:
+    """Build one integer literal expression for projection builders."""
+    return int_expr_builder(value)
+
+
+pub def float_expr(value: float) -> ColumnExpr:
+    """Build one float literal expression for projection builders."""
+    return float_expr_builder(value)
+
+
+pub def str_expr(value: str) -> ColumnExpr:
+    """Build one string literal expression for projection builders."""
+    return str_expr_builder(value)
+
+
+pub def bool_expr(value: bool) -> ColumnExpr:
+    """Build one boolean literal expression for projection builders."""
+    return bool_expr_builder(value)
+
+
+pub def add(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
+    """Build one binary addition projection expression."""
+    return add_builder(left, right)
+
+
+pub def mul(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
+    """Build one binary multiply projection expression."""
+    return mul_builder(left, right)
+
+
+pub def int_lit(value: int) -> FilterLiteral:
+    """Build one integer literal for filter expressions."""
+    return int_lit_builder(value)
+
+
+pub def str_lit(value: str) -> FilterLiteral:
+    """Build one string literal for filter expressions."""
+    return str_lit_builder(value)
+
+
+pub def bool_lit(value: bool) -> FilterLiteral:
+    """Build one boolean literal for filter expressions."""
+    return bool_lit_builder(value)
+
+
+pub def always_true() -> FilterPredicate:
+    """Build one filter predicate that canonical rewrite can eliminate."""
+    return always_true_builder()
+
+
+pub def always_false() -> FilterPredicate:
+    """Build one filter predicate that rejects every row."""
+    return always_false_builder()
+
+
+pub def eq(column: ColumnExpr, literal: FilterLiteral) -> FilterPredicate:
+    """Build one equality predicate over a named column and literal."""
+    return eq_builder(column, literal)
+
+
+pub def gt(column: ColumnExpr, literal: FilterLiteral) -> FilterPredicate:
+    """Build one greater-than predicate over a named column and literal."""
+    return gt_builder(column, literal)
 
 
 pub def display[T with Clone](data: LazyFrame[T]) -> None:
@@ -29,29 +118,20 @@ pub def display[T with Clone](data: LazyFrame[T]) -> None:
 
 
 
-def _is_schema_less_payload(payload: str) -> bool:
-    """Detect placeholder payload renders that contain no usable column preview."""
-    return payload == str("record_batches=1\n++\n++\n++")
-
-
 def _join_columns(columns: list[str]) -> str:
     """Join column names for one compact display header line."""
     return ", ".join(columns)
 
 
 def _render_data_frame[T with Clone](data: DataFrame[T]) -> None:
-    """Render one collected DataFrame preview with schema-aware fallback messaging."""
-    payload = data.materialized_payload()
+    """Render one collected DataFrame preview using structured materialization metadata."""
+    preview = data.preview_text()
     columns = data.columns()
     println("InQL display")
     if len(columns) > 0:
         println(f"columns: [{_join_columns(columns)}]")
-    if len(payload) == 0:
+    println(f"rows: {data.row_count()}")
+    if len(preview) == 0:
         println("(empty)")
         return
-    if _is_schema_less_payload(payload):
-        println("records materialized, but preview has no columns")
-        println("hint: read schema is currently unresolved at Substrait read-binding boundary")
-        println(payload)
-        return
-    println(payload)
+    println(preview)

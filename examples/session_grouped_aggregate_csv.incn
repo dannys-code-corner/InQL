@@ -1,0 +1,30 @@
+"""Example: Session grouped aggregate over one CSV fixture using real builder-based aggregation."""
+
+from functions import col, count, display, sum
+from session import Session, SessionError, report_session_error
+
+@derive(Clone)
+pub model AggregateOrder:
+    pub customer_id: str
+    pub amount: int
+
+
+def main() -> None:
+    mut session = Session.default()
+    input_uri = "tests/fixtures/aggregate_orders.csv"
+    output_uri = "tests/target/session_grouped_aggregate_out.csv"
+
+    match _group_collect_write(session, input_uri, output_uri):
+        Ok(_) => println(f"Wrote grouped aggregate CSV to: {output_uri}")
+        Err(err) => report_session_error("example.session_grouped_aggregate_csv", err)
+
+
+
+def _group_collect_write(mut session: Session, input_uri: str, output_uri: str) -> Result[None, SessionError]:
+    orders = session.read_csv[AggregateOrder]("aggregate_orders", input_uri)?
+    session.activate()
+
+    grouped = orders.group_by([col("customer_id")]).agg([sum(col("amount")), count()])
+    display(grouped.clone())
+    session.write_csv(grouped, output_uri)?
+    return Ok(None)
