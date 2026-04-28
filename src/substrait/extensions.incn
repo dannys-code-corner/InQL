@@ -28,6 +28,11 @@ const FUNCTION_EXTENSION_URI: str = "https://inql.io/extensions/v0.1/functions.y
 const EXPLODE_EXTENSION_URI: str = "https://inql.io/extensions/v0.1/unnest.yaml#explode"
 
 
+pub def function_extension_uri() -> str:
+    """Return the registered extension URI used for shared function anchors."""
+    return FUNCTION_EXTENSION_URI
+
+
 pub def explode_extension_uri() -> str:
     """Return the registered extension URI used for EXPLODE-style gap encoding."""
     return EXPLODE_EXTENSION_URI

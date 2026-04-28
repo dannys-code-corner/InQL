@@ -64,4 +64,4 @@ pub from substrait.inspect import (
     set_operation_name,
     source_named_table_name,
 )
-pub from substrait.extensions import explode_extension_uri, registered_substrait_extension_uris
+pub from substrait.extensions import explode_extension_uri, function_extension_uri, registered_substrait_extension_uris

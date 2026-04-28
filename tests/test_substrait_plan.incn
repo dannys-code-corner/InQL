@@ -4,7 +4,7 @@ from std.testing import assert_eq
 from aggregate_builders import AggregateMeasure, AggregateKind
 from functions import add, always_true, col, int_expr, mul
 from projection_builders import with_column_assignment
-from substrait.extensions import explode_extension_uri, registered_substrait_extension_uris
+from substrait.extensions import explode_extension_uri, function_extension_uri, registered_substrait_extension_uris
 from substrait.inspect import (
     plan_contains_relation_kind,
     plan_has_extension_urn,
@@ -104,7 +104,7 @@ def _fixture_col_primary() -> str:
 
 def _fixture_local_parquet_uri() -> str:
     """Return one neutral fixture parquet URI for local-files scenarios."""
-    return "file:///tmp/__t_main.parquet"
+    return "fixture://__t_main.parquet"
 
 
 def _fixture_virtual_table_name() -> str:
@@ -134,7 +134,7 @@ def test_plan__named_table_root_kind() -> None:
 def test_plan__read_root_kinds_are_distinguished() -> None:
     # -- Arrange --
     named = plan_from_named_table("orders")
-    local = plan_from_local_files("file:///tmp/orders.parquet")
+    local = plan_from_local_files("fixture://orders.parquet")
     virtual = plan_from_virtual_table("inline_orders")
 
     # -- Act --
@@ -150,7 +150,7 @@ def test_plan__read_root_kinds_are_distinguished() -> None:
 
 def test_plan__local_files_helpers_are_explicitly_parquet_backed() -> None:
     # -- Arrange --
-    uri = "file:///tmp/orders.parquet"
+    uri = "fixture://orders.parquet"
     rel_via_compat = read_local_files_rel(uri)
     rel_via_parquet = read_local_parquet_rel(uri)
     plan_via_compat = plan_from_local_files(uri)
@@ -329,8 +329,9 @@ def test_plan__revision_pin_and_extension_registry_are_exported() -> None:
     # -- Assert --
     assert_eq(tag, "v0.63.0", "revision helpers should expose the currently targeted Substrait release tag")
     assert_eq(producer, "inql-rfc002", "revision helpers should expose the package producer label")
-    assert_eq(len(registered), 1, "current package boundary should register one extension URI")
-    assert_eq(registered[0], explode_extension_uri(), "registry should include the emitted explode extension URI")
+    assert_eq(len(registered), 2, "current package boundary should register both extension URIs")
+    assert_eq(registered[0], function_extension_uri(), "registry should include the shared function extension URI first")
+    assert_eq(registered[1], explode_extension_uri(), "registry should include the emitted explode extension URI")
 
 
 def test_conformance__core_scenarios_validate_emission_output() -> None:
