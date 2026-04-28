@@ -29,6 +29,7 @@ from projection_builders import (
 )
 from dataset import DataFrame, LazyFrame
 
+
 pub def col(name: str) -> ColumnExpr:
     """Build one named column reference expression."""
     return col_builder(name)
@@ -113,9 +114,7 @@ pub def display[T with Clone](data: LazyFrame[T]) -> None:
     """Collect one LazyFrame through the active Session and render a preview."""
     match data.clone().collect():
         Ok(df) => _render_data_frame(df)
-        Err(err) => 
-            println(f"InQL display failed: {err.error_message()}")
-
+        Err(err) => println(f"InQL display failed: {err.error_message()}")
 
 
 def _join_columns(columns: list[str]) -> str:

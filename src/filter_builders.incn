@@ -8,6 +8,7 @@ changes in the Incan compiler.
 
 from projection_builders import ColumnExpr, require_column_expr_name
 
+
 @derive(Clone)
 pub enum FilterLiteralKind:
     """Supported literal kinds for the current filter-builder surface."""
@@ -73,9 +74,17 @@ pub def always_false() -> FilterPredicate:
 
 pub def eq(column: ColumnExpr, literal: FilterLiteral) -> FilterPredicate:
     """Build one equality predicate over a named column and literal."""
-    return FilterPredicate(kind=FilterPredicateKind.Eq, column_name=require_column_expr_name(column, str("eq(...)")), literal=literal)
+    return FilterPredicate(
+        kind=FilterPredicateKind.Eq,
+        column_name=require_column_expr_name(column, str("eq(...)")),
+        literal=literal,
+    )
 
 
 pub def gt(column: ColumnExpr, literal: FilterLiteral) -> FilterPredicate:
     """Build one greater-than predicate over a named column and literal."""
-    return FilterPredicate(kind=FilterPredicateKind.Gt, column_name=require_column_expr_name(column, str("gt(...)")), literal=literal)
+    return FilterPredicate(
+        kind=FilterPredicateKind.Gt,
+        column_name=require_column_expr_name(column, str("gt(...)")),
+        literal=literal,
+    )

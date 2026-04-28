@@ -1,5 +1,6 @@
 """Session error model and diagnostics helpers."""
 
+
 pub model SessionError:
     """Typed error envelope for Session-facing APIs."""
 

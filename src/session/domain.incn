@@ -2,6 +2,7 @@
 
 from session.errors import SessionError, invalid_registration, invalid_sink
 
+
 @derive(Clone)
 pub type LogicalName = newtype str:
     """Validated logical table name used by Session registration and lookup paths."""

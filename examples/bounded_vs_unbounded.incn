@@ -13,6 +13,7 @@ This example focuses on compile-time type signatures and keeps runtime bodies as
 from dataset import DataSet, BoundedDataSet, UnboundedDataSet
 from models import Order, Event
 
+
 # ---- Bounded-only functions ----
 def write_to_parquet(data: BoundedDataSet[Order]) -> None:
     """Write to Parquet requires bounded data (finite extent)."""

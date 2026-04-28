@@ -86,27 +86,19 @@ from prism import (
     prism_cursor_output_columns,
 )
 
+
 # ---- DataSet trait ----
 pub trait DataSet[T with Clone]:
     def to_substrait_plan(self) -> Plan: ...
-
     def filter(self, predicate: FilterPredicate) -> Self: ...
-
     # TODO(InQL RFC 004): Replace the temporary Self-only join surface with heterogeneous join typing plus an explicit output-schema contract.
     def join(self, other: Self, on: bool) -> Self: ...
-
     def select(self) -> Self: ...
-
     def with_column(self, name: str, expr: ColumnExpr) -> Self: ...
-
     def group_by(self, columns: list[ColumnExpr]) -> Self: ...
-
     def agg(self, measures: list[AggregateMeasure]) -> Self: ...
-
     def order_by(self) -> Self: ...
-
     def limit(self, n: int) -> Self: ...
-
     def explode(self) -> Self: ...
 
 
@@ -170,7 +162,11 @@ pub class DataFrame[T with Clone] with BoundedDataSet:
 
     def schema(self) -> CarrierSchema:
         """Return one combined schema view containing declared, planned, and resolved columns."""
-        return CarrierSchema(declared_columns=self.declared_columns(), planned_columns=self.planned_columns(), resolved_columns=self.resolved_columns())
+        return CarrierSchema(
+            declared_columns=self.declared_columns(),
+            planned_columns=self.planned_columns(),
+            resolved_columns=self.resolved_columns(),
+        )
 
     def to_substrait_plan(self) -> Plan:
         """Rebuild a one-root Substrait plan from this frame's root relation."""
@@ -178,7 +174,9 @@ pub class DataFrame[T with Clone] with BoundedDataSet:
 
     def filter(self, predicate: FilterPredicate) -> Self:
         """Return one new DataFrame with a filter stage appended and stale materialization cleared."""
-        return _data_frame_with_invalidated_materialization[T](filter_ds_of_columns(self._substrait_rel, self.planned_columns(), predicate))
+        return _data_frame_with_invalidated_materialization[T](
+            filter_ds_of_columns(self._substrait_rel, self.planned_columns(), predicate),
+        )
 
     def join(self, other: Self, on: bool) -> Self:
         """Return one new DataFrame with a join stage and stale materialization cleared."""
@@ -186,19 +184,27 @@ pub class DataFrame[T with Clone] with BoundedDataSet:
 
     def select(self) -> Self:
         """Return one new DataFrame with an identity projection stage and stale materialization cleared."""
-        return _data_frame_with_invalidated_materialization[T](select_ds_of_columns(self._substrait_rel, self.planned_columns()))
+        return _data_frame_with_invalidated_materialization[T](
+            select_ds_of_columns(self._substrait_rel, self.planned_columns()),
+        )
 
     def with_column(self, name: str, expr: ColumnExpr) -> Self:
         """Return one new DataFrame with an add-or-replace projection stage and stale materialization cleared."""
-        return _data_frame_with_invalidated_materialization[T](with_column_ds(self._substrait_rel, self.planned_columns(), name, expr))
+        return _data_frame_with_invalidated_materialization[T](
+            with_column_ds(self._substrait_rel, self.planned_columns(), name, expr),
+        )
 
     def group_by(self, columns: list[ColumnExpr]) -> Self:
         """Return one new DataFrame with a grouping stage and stale materialization cleared."""
-        return _data_frame_with_invalidated_materialization[T](group_by_ds_of_columns(self._substrait_rel, self.planned_columns(), columns))
+        return _data_frame_with_invalidated_materialization[T](
+            group_by_ds_of_columns(self._substrait_rel, self.planned_columns(), columns),
+        )
 
     def agg(self, measures: list[AggregateMeasure]) -> Self:
         """Return one new DataFrame with an aggregation stage and stale materialization cleared."""
-        return _data_frame_with_invalidated_materialization[T](agg_ds_of_columns(self._substrait_rel, self.planned_columns(), measures))
+        return _data_frame_with_invalidated_materialization[T](
+            agg_ds_of_columns(self._substrait_rel, self.planned_columns(), measures),
+        )
 
     def order_by(self) -> Self:
         """Return one new DataFrame with an ordering stage and stale materialization cleared."""
@@ -241,7 +247,11 @@ pub class LazyFrame[T with Clone] with BoundedDataSet:
 
     def schema(self) -> CarrierSchema:
         """Return lazy schema metadata (declared/planned columns only; resolved columns are unavailable pre-collect)."""
-        return CarrierSchema(declared_columns=self.declared_columns(), planned_columns=self.planned_columns(), resolved_columns=[])
+        return CarrierSchema(
+            declared_columns=self.declared_columns(),
+            planned_columns=self.planned_columns(),
+            resolved_columns=[],
+        )
 
     def to_substrait_plan(self) -> Plan:
         """Lower this lazy pipeline to a Substrait `Plan` at the boundary."""
@@ -300,7 +310,11 @@ def _empty_type_witness[T with Clone]() -> list[T]:
 
 def _data_frame_with_invalidated_materialization[T with Clone](rel: Rel) -> DataFrame[T]:
     """Build one DataFrame whose logical relation changed and whose prior collected materialization is no longer valid."""
-    return DataFrame[T](_type_witness=_empty_type_witness[T](), _materialization=DataFrameMaterialization.empty(), _substrait_rel=rel)
+    return DataFrame[T](
+        _type_witness=_empty_type_witness[T](),
+        _materialization=DataFrameMaterialization.empty(),
+        _substrait_rel=rel,
+    )
 
 
 def _declared_columns_from_rel(rel: Rel) -> list[str]:
@@ -334,7 +348,11 @@ pub class DataStream[T with Clone] with UnboundedDataSet:
 
     def schema(self) -> CarrierSchema:
         """Return stream schema metadata (declared/planned columns only; resolved columns are unavailable pre-collect)."""
-        return CarrierSchema(declared_columns=self.declared_columns(), planned_columns=self.planned_columns(), resolved_columns=[])
+        return CarrierSchema(
+            declared_columns=self.declared_columns(),
+            planned_columns=self.planned_columns(),
+            resolved_columns=[],
+        )
 
     def to_substrait_plan(self) -> Plan:
         """Rebuild a one-root Substrait plan from this stream relation."""
@@ -342,36 +360,83 @@ pub class DataStream[T with Clone] with UnboundedDataSet:
 
     def filter(self, predicate: FilterPredicate) -> Self:
         """Return one new DataStream with a filter stage."""
-        return DataStream(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=filter_ds_of_columns(self._substrait_rel, relation_output_columns(self._substrait_rel.clone()), predicate))
+        return DataStream(
+            _row_schema_marker=self._row_schema_marker.clone(),
+            _substrait_rel=filter_ds_of_columns(
+                self._substrait_rel,
+                relation_output_columns(self._substrait_rel.clone()),
+                predicate,
+            ),
+        )
 
     def join(self, other: Self, on: bool) -> Self:
         """Return one new DataStream with a join stage against another stream."""
-        return DataStream(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=join_ds(self._substrait_rel, other._substrait_rel, on))
+        return DataStream(
+            _row_schema_marker=self._row_schema_marker.clone(),
+            _substrait_rel=join_ds(self._substrait_rel, other._substrait_rel, on),
+        )
 
     def select(self) -> Self:
         """Return one new DataStream with an identity projection stage."""
-        return DataStream(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=select_ds_of_columns(self._substrait_rel, relation_output_columns(self._substrait_rel.clone())))
+        return DataStream(
+            _row_schema_marker=self._row_schema_marker.clone(),
+            _substrait_rel=select_ds_of_columns(
+                self._substrait_rel,
+                relation_output_columns(self._substrait_rel.clone()),
+            ),
+        )
 
     def with_column(self, name: str, expr: ColumnExpr) -> Self:
         """Return one new DataStream with an add-or-replace projection stage."""
-        return DataStream(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=with_column_ds(self._substrait_rel, relation_output_columns(self._substrait_rel.clone()), name, expr))
+        return DataStream(
+            _row_schema_marker=self._row_schema_marker.clone(),
+            _substrait_rel=with_column_ds(
+                self._substrait_rel,
+                relation_output_columns(self._substrait_rel.clone()),
+                name,
+                expr,
+            ),
+        )
 
     def group_by(self, columns: list[ColumnExpr]) -> Self:
         """Return one new DataStream with a grouping stage."""
-        return DataStream(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=group_by_ds_of_columns(self._substrait_rel, relation_output_columns(self._substrait_rel.clone()), columns))
+        return DataStream(
+            _row_schema_marker=self._row_schema_marker.clone(),
+            _substrait_rel=group_by_ds_of_columns(
+                self._substrait_rel,
+                relation_output_columns(self._substrait_rel.clone()),
+                columns,
+            ),
+        )
 
     def agg(self, measures: list[AggregateMeasure]) -> Self:
         """Return one new DataStream with an aggregation stage."""
-        return DataStream(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=agg_ds_of_columns(self._substrait_rel, relation_output_columns(self._substrait_rel.clone()), measures))
+        return DataStream(
+            _row_schema_marker=self._row_schema_marker.clone(),
+            _substrait_rel=agg_ds_of_columns(
+                self._substrait_rel,
+                relation_output_columns(self._substrait_rel.clone()),
+                measures,
+            ),
+        )
 
     def order_by(self) -> Self:
         """Return one new DataStream with an ordering stage."""
-        return DataStream(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=order_by_ds(self._substrait_rel))
+        return DataStream(
+            _row_schema_marker=self._row_schema_marker.clone(),
+            _substrait_rel=order_by_ds(self._substrait_rel),
+        )
 
     def limit(self, n: int) -> Self:
         """Return one new DataStream with a row-limit stage."""
-        return DataStream(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=limit_ds(self._substrait_rel, n))
+        return DataStream(
+            _row_schema_marker=self._row_schema_marker.clone(),
+            _substrait_rel=limit_ds(self._substrait_rel, n),
+        )
 
     def explode(self) -> Self:
         """Return one new DataStream with an explode/unnest stage."""
-        return DataStream(_row_schema_marker=self._row_schema_marker.clone(), _substrait_rel=explode_ds(self._substrait_rel))
+        return DataStream(
+            _row_schema_marker=self._row_schema_marker.clone(),
+            _substrait_rel=explode_ds(self._substrait_rel),
+        )

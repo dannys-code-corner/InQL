@@ -7,6 +7,7 @@ from projection_builders import project_output_columns
 from substrait.inspect import aggregate_measure_output_names
 from substrait.schema_registry import named_table_columns
 
+
 def _is_passthrough_output_kind(kind: PrismNodeKind) -> bool:
     """Return whether a Prism node preserves its input columns unchanged."""
     return (kind == PrismNodeKind.Filter or kind == PrismNodeKind.OrderBy or kind == PrismNodeKind.Limit or kind == PrismNodeKind.Explode)

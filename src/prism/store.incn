@@ -5,6 +5,7 @@ from filter_builders import FilterLiteralKind, FilterPredicate, FilterPredicateK
 from projection_builders import ColumnExpr, ProjectionAssignment
 from prism.types import PrismNode, PrismNodeKind, PrismStoreAdoption, PrismStoreId
 
+
 model PrismStoredNode:
     store_id_raw: int
     node: PrismNode
@@ -29,20 +30,46 @@ pub def allocate_prism_store_id() -> PrismStoreId:
     return PrismStoreId(next_id)
 
 
-pub def append_node(store_id: PrismStoreId, kind: PrismNodeKind, input_ids: list[int], named_table: str, join_predicate: bool, filter_predicate: FilterPredicate, limit_count: int, group_columns: list[str], aggregate_measures: list[AggregateMeasure], projection_assignments: list[ProjectionAssignment]) -> int:
+pub def append_node(
+    store_id: PrismStoreId,
+    kind: PrismNodeKind,
+    input_ids: list[int],
+    named_table: str,
+    join_predicate: bool,
+    filter_predicate: FilterPredicate,
+    limit_count: int,
+    group_columns: list[str],
+    aggregate_measures: list[AggregateMeasure],
+    projection_assignments: list[ProjectionAssignment],
+) -> int:
     """
     Append one immutable node to the target store.
 
     Node ids are store-local and monotonic. Appending never mutates earlier nodes.
     """
     next_id = _latest_store_next_node_id(store_id)
-    appended = PrismNode(node_id=next_id, kind=kind, input_ids=input_ids, named_table=named_table, join_predicate=join_predicate, filter_predicate=filter_predicate, limit_count=limit_count, group_columns=group_columns, aggregate_measures=aggregate_measures, projection_assignments=projection_assignments)
+    appended = PrismNode(
+        node_id=next_id,
+        kind=kind,
+        input_ids=input_ids,
+        named_table=named_table,
+        join_predicate=join_predicate,
+        filter_predicate=filter_predicate,
+        limit_count=limit_count,
+        group_columns=group_columns,
+        aggregate_measures=aggregate_measures,
+        projection_assignments=projection_assignments,
+    )
     prism_stored_nodes.append(PrismStoredNode(store_id_raw=store_id.0, node=appended))
     prism_store_node_counts.append(PrismStoreNodeCount(store_id_raw=store_id.0, next_node_id=next_id + 1))
     return next_id
 
 
-pub def adopt_cursor_subgraph(target_store_id: PrismStoreId, source_store_id: PrismStoreId, tip_id: int) -> PrismStoreAdoption:
+pub def adopt_cursor_subgraph(
+    target_store_id: PrismStoreId,
+    source_store_id: PrismStoreId,
+    tip_id: int,
+) -> PrismStoreAdoption:
     """
     Copy only reachable source nodes into the target store.
 
@@ -64,8 +91,12 @@ pub def adopt_cursor_subgraph(target_store_id: PrismStoreId, source_store_id: Pr
         # Inputs are remapped first so structural equality is evaluated in the target store's id space.
         remapped_input_ids = remap_input_ids(source_node.input_ids, id_map)
 
-        # Dedup is intentionally local to this adoption pass. We do not attempt global memoization across stores yet.
-        reused_adopted_id = _find_existing_adopted_node_id(target_store_nodes, source_node, remapped_input_ids, adopted_node_ids)
+        reused_adopted_id = _find_existing_adopted_node_id(
+            target_store_nodes,
+            source_node,
+            remapped_input_ids,
+            adopted_node_ids,
+        )
         if reused_adopted_id >= 0:
             id_map[source_node_id] = reused_adopted_id
         else:
@@ -75,12 +106,35 @@ pub def adopt_cursor_subgraph(target_store_id: PrismStoreId, source_store_id: Pr
             target_group_columns = [column for column in source_node.group_columns]
             target_measures = [measure for measure in source_node.aggregate_measures]
             target_assignments = [assignment for assignment in source_node.projection_assignments]
-            adopted_id = append_node(target_store_id, source_node.kind, remapped_input_ids, source_node.named_table, source_node.join_predicate, source_node.filter_predicate.clone(), source_node.limit_count, adopted_group_columns, adopted_measures, adopted_assignments)
-            target_store_nodes.append(PrismNode(node_id=adopted_id, kind=source_node.kind, input_ids=remapped_input_ids, named_table=source_node.named_table, join_predicate=source_node.join_predicate, filter_predicate=source_node.filter_predicate.clone(), limit_count=source_node.limit_count, group_columns=target_group_columns, aggregate_measures=target_measures, projection_assignments=target_assignments))
+            adopted_id = append_node(
+                store_id=target_store_id,
+                kind=source_node.kind,
+                input_ids=remapped_input_ids,
+                named_table=source_node.named_table,
+                join_predicate=source_node.join_predicate,
+                filter_predicate=source_node.filter_predicate.clone(),
+                limit_count=source_node.limit_count,
+                group_columns=adopted_group_columns,
+                aggregate_measures=adopted_measures,
+                projection_assignments=adopted_assignments,
+            )
+            target_store_nodes.append(
+                PrismNode(
+                    node_id=adopted_id,
+                    kind=source_node.kind,
+                    input_ids=remapped_input_ids,
+                    named_table=source_node.named_table,
+                    join_predicate=source_node.join_predicate,
+                    filter_predicate=source_node.filter_predicate.clone(),
+                    limit_count=source_node.limit_count,
+                    group_columns=target_group_columns,
+                    aggregate_measures=target_measures,
+                    projection_assignments=target_assignments,
+                ),
+            )
             id_map[source_node_id] = adopted_id
             adopted_node_ids.append(adopted_id)
             adopted_node_count += 1
-    # The source tip is guaranteed reachable, so its remapped target-store id is the adopted tip for the caller.
     return PrismStoreAdoption(adopted_tip_id=id_map[tip_id], adopted_node_count=adopted_node_count)
 
 
@@ -96,7 +150,6 @@ pub def reachable_node_ids(store_id: PrismStoreId, tip_id: int) -> list[int]:
     mut visited: list[bool] = [false for _node in store_nodes_for_id]
     mut pending: list[int] = [tip_id]
     mut cursor = 0
-    # Walk backward through inputs from the tip so later lowering/rewrite steps only see the live authored slice.
     while cursor < len(pending):
         node_id = pending[cursor]
         cursor += 1
@@ -106,7 +159,6 @@ pub def reachable_node_ids(store_id: PrismStoreId, tip_id: int) -> list[int]:
         node = store_nodes_for_id[node_id]
         for input_id in node.input_ids:
             pending.append(input_id)
-    # Compute reachable node ids in store order for stable iteration in later passes.
     ordered = [node.node_id for node in store_nodes_for_id if visited[node.node_id]]
     return ordered
 
@@ -123,9 +175,13 @@ pub def remap_input_ids(input_ids: list[int], id_map: list[int]) -> list[int]:
     return remapped
 
 
-def _find_existing_adopted_node_id(target_store_nodes: list[PrismNode], source_node: PrismNode, remapped_input_ids: list[int], adopted_node_ids: list[int]) -> int:
+def _find_existing_adopted_node_id(
+    target_store_nodes: list[PrismNode],
+    source_node: PrismNode,
+    remapped_input_ids: list[int],
+    adopted_node_ids: list[int],
+) -> int:
     """Return an already adopted node id with matching structure, or `-1`."""
-    # Only scan nodes appended during this adoption pass; older target-store nodes are out of scope for this slice.
     for adopted_node_id in adopted_node_ids:
         candidate = target_store_nodes[adopted_node_id]
         if _nodes_structurally_equal(candidate, source_node, remapped_input_ids):
@@ -141,7 +197,10 @@ def _nodes_structurally_equal(candidate: PrismNode, source_node: PrismNode, rema
         return false
     if candidate.join_predicate != source_node.join_predicate:
         return false
-    if not _filter_predicates_structurally_equal(candidate.filter_predicate.clone(), source_node.filter_predicate.clone()):
+    if not _filter_predicates_structurally_equal(
+        candidate.filter_predicate.clone(),
+        source_node.filter_predicate.clone(),
+    ):
         return false
     if candidate.limit_count != source_node.limit_count:
         return false
@@ -154,7 +213,10 @@ def _nodes_structurally_equal(candidate: PrismNode, source_node: PrismNode, rema
             return false
         if candidate.aggregate_measures[idx].column_name != source_node.aggregate_measures[idx].column_name:
             return false
-    if not _projection_assignments_structurally_equal(candidate.projection_assignments, source_node.projection_assignments):
+    if not _projection_assignments_structurally_equal(
+        candidate.projection_assignments,
+        source_node.projection_assignments,
+    ):
         return false
     return candidate.input_ids == remapped_input_ids
 
@@ -176,7 +238,10 @@ def _filter_predicates_structurally_equal(left: FilterPredicate, right: FilterPr
     return true
 
 
-def _projection_assignments_structurally_equal(left: list[ProjectionAssignment], right: list[ProjectionAssignment]) -> bool:
+def _projection_assignments_structurally_equal(
+    left: list[ProjectionAssignment],
+    right: list[ProjectionAssignment],
+) -> bool:
     """Return whether two ordered projection-assignment lists are structurally equivalent."""
     if len(left) != len(right):
         return false
@@ -222,4 +287,11 @@ def _latest_store_next_node_id(store_id: PrismStoreId) -> int:
         candidate = prism_store_node_counts[idx]
         if candidate.store_id_raw == store_id.0:
             return candidate.next_node_id
+
+        # Dedup is intentionally local to this adoption pass. We do not attempt global memoization across stores yet.
+
     return 0
+    # The source tip is guaranteed reachable, so its remapped target-store id is the adopted tip for the caller.
+    # Walk backward through inputs from the tip so later lowering/rewrite steps only see the live authored slice.
+    # Compute reachable node ids in store order for stable iteration in later passes.
+    # Only scan nodes appended during this adoption pass; older target-store nodes are out of scope for this slice.

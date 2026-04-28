@@ -17,6 +17,7 @@ from substrait.relations import (
 from prism.rewrite import derive_rewritten_view, rewritten_node_at
 from prism.types import PrismNodeKind, PrismOptimizedView, PrismStoreId
 
+
 pub def lower_prism_tip(store_id: PrismStoreId, tip_id: int) -> Rel:
     """
     Lower one authored Prism tip through the canonical rewrite view.
@@ -44,25 +45,48 @@ def _lower_node(view: PrismOptimizedView, node_id: int) -> Rel:
     """Lower one Prism node to its corresponding Substrait relation."""
     node = rewritten_node_at(view, node_id)
     match node.kind:
-        PrismNodeKind.ReadNamedTable => 
-            return read_named_table_rel(node.named_table)
-        PrismNodeKind.Filter => 
-            return filter_rel_of_columns(_lower_node(view, node.input_ids[0]), rewritten_output_columns(view, node.input_ids[0]), node.filter_predicate)
-        PrismNodeKind.Join => 
-            return join_rel(_lower_node(view, node.input_ids[0]), _lower_node(view, node.input_ids[1]), node.join_predicate)
-        PrismNodeKind.Project => 
-            return project_rel_of_columns(_lower_node(view, node.input_ids[0]), rewritten_output_columns(view, node.input_ids[0]), node.projection_assignments)
-        PrismNodeKind.GroupBy => 
-            return aggregate_rel_of_columns(_lower_node(view, node.input_ids[0]), rewritten_output_columns(view, node.input_ids[0]), node.group_columns, [])
-        PrismNodeKind.Aggregate => 
+        PrismNodeKind.ReadNamedTable => return read_named_table_rel(node.named_table)
+        PrismNodeKind.Filter =>
+            return filter_rel_of_columns(
+                _lower_node(view, node.input_ids[0]),
+                rewritten_output_columns(view, node.input_ids[0]),
+                node.filter_predicate,
+            )
+        PrismNodeKind.Join =>
+            return join_rel(
+                _lower_node(view, node.input_ids[0]),
+                _lower_node(view, node.input_ids[1]),
+                node.join_predicate,
+            )
+        PrismNodeKind.Project =>
+            return project_rel_of_columns(
+                _lower_node(view, node.input_ids[0]),
+                rewritten_output_columns(view, node.input_ids[0]),
+                node.projection_assignments,
+            )
+        PrismNodeKind.GroupBy =>
+            return aggregate_rel_of_columns(
+                _lower_node(view, node.input_ids[0]),
+                rewritten_output_columns(view, node.input_ids[0]),
+                node.group_columns,
+                [],
+            )
+        PrismNodeKind.Aggregate =>
             input_node = rewritten_node_at(view, node.input_ids[0])
             if input_node.kind == PrismNodeKind.GroupBy:
-                return aggregate_rel_of_columns(_lower_node(view, input_node.input_ids[0]), rewritten_output_columns(view, input_node.input_ids[0]), input_node.group_columns, node.aggregate_measures)
-            return aggregate_rel_of_columns(_lower_node(view, node.input_ids[0]), rewritten_output_columns(view, node.input_ids[0]), [], node.aggregate_measures)
-        PrismNodeKind.OrderBy => 
-            return sort_rel(_lower_node(view, node.input_ids[0]))
-        PrismNodeKind.Limit => 
-            return fetch_rel(_lower_node(view, node.input_ids[0]), 0, node.limit_count)
-        PrismNodeKind.Explode => 
+                return aggregate_rel_of_columns(
+                    _lower_node(view, input_node.input_ids[0]),
+                    rewritten_output_columns(view, input_node.input_ids[0]),
+                    input_node.group_columns,
+                    node.aggregate_measures,
+                )
+            return aggregate_rel_of_columns(
+                _lower_node(view, node.input_ids[0]),
+                rewritten_output_columns(view, node.input_ids[0]),
+                [],
+                node.aggregate_measures,
+            )
+        PrismNodeKind.OrderBy => return sort_rel(_lower_node(view, node.input_ids[0]))
+        PrismNodeKind.Limit => return fetch_rel(_lower_node(view, node.input_ids[0]), 0, node.limit_count)
+        PrismNodeKind.Explode =>
             return extension_single_rel(_lower_node(view, node.input_ids[0]), explode_extension_uri())
-

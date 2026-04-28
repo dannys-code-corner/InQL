@@ -33,6 +33,7 @@ from prism.store import (
 )
 from prism.types import authored_node_kind_name, PrismNodeKind, PrismOptimizedView, PrismRewriteExplain, PrismStoreId
 
+
 pub class PrismCursor[T with Clone]:
     """
     Immutable handle over one Prism-authored query lineage.
@@ -52,52 +53,162 @@ pub class PrismCursor[T with Clone]:
 
     def filter(self, predicate: FilterPredicate) -> Self:
         """Append one filter node in the shared authored store and return the derived tip."""
-        next_tip_id = append_node(self.store_id, PrismNodeKind.Filter, [self.tip_id], str(""), false, predicate, 0, [], [], [])
+        next_tip_id = append_node(
+            store_id=self.store_id,
+            kind=PrismNodeKind.Filter,
+            input_ids=[self.tip_id],
+            named_table="",
+            join_predicate=false,
+            filter_predicate=predicate,
+            limit_count=0,
+            group_columns=[],
+            aggregate_measures=[],
+            projection_assignments=[],
+        )
         return PrismCursor(store_id=self.store_id, tip_id=next_tip_id, _type_marker=[])
 
     def join(self, other: Self, predicate: bool) -> Self:
         """Append one join against another cursor, adopting foreign authored state only when stores differ."""
         if self.store_id.0 == other.store_id.0:
-            next_tip_id = append_node(self.store_id, PrismNodeKind.Join, [self.tip_id, other.tip_id], str(""), predicate, always_true(), 0, [], [], [])
+            next_tip_id = append_node(
+                store_id=self.store_id,
+                kind=PrismNodeKind.Join,
+                input_ids=[self.tip_id, other.tip_id],
+                named_table="",
+                join_predicate=predicate,
+                filter_predicate=always_true(),
+                limit_count=0,
+                group_columns=[],
+                aggregate_measures=[],
+                projection_assignments=[],
+            )
             return PrismCursor(store_id=self.store_id, tip_id=next_tip_id, _type_marker=[])
         adoption = adopt_cursor_subgraph(self.store_id, other.store_id, other.tip_id)
-        next_tip_id = append_node(self.store_id, PrismNodeKind.Join, [self.tip_id, adoption.adopted_tip_id], str(""), predicate, always_true(), 0, [], [], [])
+        next_tip_id = append_node(
+            store_id=self.store_id,
+            kind=PrismNodeKind.Join,
+            input_ids=[self.tip_id, adoption.adopted_tip_id],
+            named_table="",
+            join_predicate=predicate,
+            filter_predicate=always_true(),
+            limit_count=0,
+            group_columns=[],
+            aggregate_measures=[],
+            projection_assignments=[],
+        )
         return PrismCursor(store_id=self.store_id, tip_id=next_tip_id, _type_marker=[])
 
     def select(self) -> Self:
         """Append one identity projection node and return the derived tip."""
-        next_tip_id = append_node(self.store_id, PrismNodeKind.Project, [self.tip_id], str(""), false, always_true(), 0, [], [], [])
+        next_tip_id = append_node(
+            store_id=self.store_id,
+            kind=PrismNodeKind.Project,
+            input_ids=[self.tip_id],
+            named_table="",
+            join_predicate=false,
+            filter_predicate=always_true(),
+            limit_count=0,
+            group_columns=[],
+            aggregate_measures=[],
+            projection_assignments=[],
+        )
         return PrismCursor(store_id=self.store_id, tip_id=next_tip_id, _type_marker=[])
 
     def with_column(self, name: str, expr: ColumnExpr) -> Self:
         """Append one add-or-replace projection assignment and return the derived tip."""
-        next_tip_id = append_node(self.store_id, PrismNodeKind.Project, [self.tip_id], str(""), false, always_true(), 0, [], [], [with_column_assignment(name, expr)])
+        next_tip_id = append_node(
+            store_id=self.store_id,
+            kind=PrismNodeKind.Project,
+            input_ids=[self.tip_id],
+            named_table="",
+            join_predicate=false,
+            filter_predicate=always_true(),
+            limit_count=0,
+            group_columns=[],
+            aggregate_measures=[],
+            projection_assignments=[with_column_assignment(name, expr)],
+        )
         return PrismCursor(store_id=self.store_id, tip_id=next_tip_id, _type_marker=[])
 
     def group_by(self, columns: list[ColumnExpr]) -> Self:
         """Append one grouping node and return the derived tip."""
         column_names = [require_column_expr_name(column, str("group_by(...)")) for column in columns]
-        next_tip_id = append_node(self.store_id, PrismNodeKind.GroupBy, [self.tip_id], str(""), false, always_true(), 0, column_names, [], [])
+        next_tip_id = append_node(
+            store_id=self.store_id,
+            kind=PrismNodeKind.GroupBy,
+            input_ids=[self.tip_id],
+            named_table="",
+            join_predicate=false,
+            filter_predicate=always_true(),
+            limit_count=0,
+            group_columns=column_names,
+            aggregate_measures=[],
+            projection_assignments=[],
+        )
         return PrismCursor(store_id=self.store_id, tip_id=next_tip_id, _type_marker=[])
 
     def agg(self, measures: list[AggregateMeasure]) -> Self:
         """Append one aggregate node and return the derived tip."""
-        next_tip_id = append_node(self.store_id, PrismNodeKind.Aggregate, [self.tip_id], str(""), false, always_true(), 0, [], measures, [])
+        next_tip_id = append_node(
+            store_id=self.store_id,
+            kind=PrismNodeKind.Aggregate,
+            input_ids=[self.tip_id],
+            named_table="",
+            join_predicate=false,
+            filter_predicate=always_true(),
+            limit_count=0,
+            group_columns=[],
+            aggregate_measures=measures,
+            projection_assignments=[],
+        )
         return PrismCursor(store_id=self.store_id, tip_id=next_tip_id, _type_marker=[])
 
     def order_by(self) -> Self:
         """Append one ordering node and return the derived tip."""
-        next_tip_id = append_node(self.store_id, PrismNodeKind.OrderBy, [self.tip_id], str(""), false, always_true(), 0, [], [], [])
+        next_tip_id = append_node(
+            store_id=self.store_id,
+            kind=PrismNodeKind.OrderBy,
+            input_ids=[self.tip_id],
+            named_table="",
+            join_predicate=false,
+            filter_predicate=always_true(),
+            limit_count=0,
+            group_columns=[],
+            aggregate_measures=[],
+            projection_assignments=[],
+        )
         return PrismCursor(store_id=self.store_id, tip_id=next_tip_id, _type_marker=[])
 
     def limit(self, n: int) -> Self:
         """Append one row-limit node and return the derived tip."""
-        next_tip_id = append_node(self.store_id, PrismNodeKind.Limit, [self.tip_id], str(""), false, always_true(), n, [], [], [])
+        next_tip_id = append_node(
+            store_id=self.store_id,
+            kind=PrismNodeKind.Limit,
+            input_ids=[self.tip_id],
+            named_table="",
+            join_predicate=false,
+            filter_predicate=always_true(),
+            limit_count=n,
+            group_columns=[],
+            aggregate_measures=[],
+            projection_assignments=[],
+        )
         return PrismCursor(store_id=self.store_id, tip_id=next_tip_id, _type_marker=[])
 
     def explode(self) -> Self:
         """Append one explode node and return the derived tip."""
-        next_tip_id = append_node(self.store_id, PrismNodeKind.Explode, [self.tip_id], str(""), false, always_true(), 0, [], [], [])
+        next_tip_id = append_node(
+            store_id=self.store_id,
+            kind=PrismNodeKind.Explode,
+            input_ids=[self.tip_id],
+            named_table="",
+            join_predicate=false,
+            filter_predicate=always_true(),
+            limit_count=0,
+            group_columns=[],
+            aggregate_measures=[],
+            projection_assignments=[],
+        )
         return PrismCursor(store_id=self.store_id, tip_id=next_tip_id, _type_marker=[])
 
     def planned_columns(self) -> list[str]:
@@ -120,7 +231,18 @@ pub class PrismCursor[T with Clone]:
 pub def prism_cursor_named_table[T with Clone](table_name: str) -> PrismCursor[T]:
     """Create the minimal shared-store cursor rooted at one named-table read."""
     store_id = allocate_prism_store_id()
-    tip_id = append_node(store_id, PrismNodeKind.ReadNamedTable, [], table_name, false, always_true(), 0, [], [], [])
+    tip_id = append_node(
+        store_id=store_id,
+        kind=PrismNodeKind.ReadNamedTable,
+        input_ids=[],
+        named_table=table_name,
+        join_predicate=false,
+        filter_predicate=always_true(),
+        limit_count=0,
+        group_columns=[],
+        aggregate_measures=[],
+        projection_assignments=[],
+    )
     return PrismCursor(store_id=store_id, tip_id=tip_id, _type_marker=[])
 
 
@@ -129,7 +251,11 @@ pub def prism_cursor_apply_filter[T with Clone](cursor: PrismCursor[T], predicat
     return cursor.filter(predicate)
 
 
-pub def prism_cursor_apply_join[T with Clone](left: PrismCursor[T], right: PrismCursor[T], predicate: bool) -> PrismCursor[T]:
+pub def prism_cursor_apply_join[T with Clone](
+    left: PrismCursor[T],
+    right: PrismCursor[T],
+    predicate: bool,
+) -> PrismCursor[T]:
     """Apply dataset-level join intent while preserving same-store cheapness and cross-store correctness."""
     return left.join(right, predicate)
 
@@ -139,7 +265,11 @@ pub def prism_cursor_apply_select[T with Clone](cursor: PrismCursor[T]) -> Prism
     return cursor.select()
 
 
-pub def prism_cursor_apply_with_column[T with Clone](cursor: PrismCursor[T], name: str, expr: ColumnExpr) -> PrismCursor[T]:
+pub def prism_cursor_apply_with_column[T with Clone](
+    cursor: PrismCursor[T],
+    name: str,
+    expr: ColumnExpr,
+) -> PrismCursor[T]:
     """Apply dataset-level add-or-replace projection intent through Prism."""
     return cursor.with_column(name, expr)
 
@@ -149,7 +279,10 @@ pub def prism_cursor_apply_group_by[T with Clone](cursor: PrismCursor[T], column
     return cursor.group_by(columns)
 
 
-pub def prism_cursor_apply_agg[T with Clone](cursor: PrismCursor[T], measures: list[AggregateMeasure]) -> PrismCursor[T]:
+pub def prism_cursor_apply_agg[T with Clone](
+    cursor: PrismCursor[T],
+    measures: list[AggregateMeasure],
+) -> PrismCursor[T]:
     """Apply dataset-level aggregation intent through Prism."""
     return cursor.agg(measures)
 

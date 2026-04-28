@@ -3,6 +3,7 @@ from backends import csv_source
 from session import Session
 from rust::std::path import Path
 
+
 @derive(Clone)
 pub model Order:
     pub id: int
@@ -13,21 +14,18 @@ def test_session_backend_datafusion__registered_named_table_executes_via_substra
     mut session = Session.default()
     fixture_uri = "../../../tests/fixtures/orders.csv"
     match session.register("orders", csv_source(fixture_uri)):
-        Ok(_) => 
-            pass
+        Ok(_) => pass
         Err(err) => assert_eq(true, false, err.error_message())
 
     # -- Act --
     match session.table[Order]("orders"):
-        Ok(lazy) => 
+        Ok(lazy) =>
             match session.execute(lazy):
-                Ok(_) => 
+                Ok(_) =>
                     # -- Assert --
                     pass
                 Err(err) => assert_eq(true, false, err.error_message())
-
         Err(err) => assert_eq(true, false, err.error_message())
-
 
 
 def test_session_backend_datafusion__session_write_csv_routes_through_execution_path() -> None:
@@ -36,18 +34,15 @@ def test_session_backend_datafusion__session_write_csv_routes_through_execution_
     output_uri = "../../../tests/target/session_backend_datafusion_output.csv"
     fixture_uri = "../../../tests/fixtures/orders.csv"
     match session.register("orders", csv_source(fixture_uri)):
-        Ok(_) => 
-            pass
+        Ok(_) => pass
         Err(err) => assert_eq(true, false, err.error_message())
 
     # -- Act --
     match session.table[Order]("orders"):
-        Ok(lazy) => 
+        Ok(lazy) =>
             match session.write_csv(lazy, output_uri):
-                Ok(_) => 
+                Ok(_) =>
                     # -- Assert --
                     assert_eq(Path.new(output_uri).exists(), true, "session.write_csv should produce an output artifact")
                 Err(err) => assert_eq(true, false, err.error_message())
-
         Err(err) => assert_eq(true, false, err.error_message())
-

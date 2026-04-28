@@ -28,47 +28,105 @@ from substrait.extensions import (
     scalar_function_name_from_anchor,
 )
 
+
 pub def bool_expr(value: bool) -> Expression:
     """Build one boolean literal expression."""
-    return Expression(rex_type=Some(RexType.Literal(Literal(literal_type=Some(LiteralType.Boolean(value)), nullable=false, type_variation_reference=0))))
+    return Expression(
+        rex_type=Some(
+            RexType.Literal(
+                Literal(literal_type=Some(LiteralType.Boolean(value)), nullable=false, type_variation_reference=0),
+            ),
+        ),
+    )
 
 
 pub def i64_expr(value: int) -> Expression:
     """Build one i64 literal expression."""
-    return Expression(rex_type=Some(RexType.Literal(Literal(literal_type=Some(LiteralType.I64(value)), nullable=false, type_variation_reference=0))))
+    return Expression(
+        rex_type=Some(
+            RexType.Literal(
+                Literal(literal_type=Some(LiteralType.I64(value)), nullable=false, type_variation_reference=0),
+            ),
+        ),
+    )
 
 
 pub def f64_expr(value: float) -> Expression:
     """Build one f64 literal expression."""
-    return Expression(rex_type=Some(RexType.Literal(Literal(literal_type=Some(LiteralType.Fp64(value)), nullable=false, type_variation_reference=0))))
+    return Expression(
+        rex_type=Some(
+            RexType.Literal(
+                Literal(literal_type=Some(LiteralType.Fp64(value)), nullable=false, type_variation_reference=0),
+            ),
+        ),
+    )
 
 
 pub def string_expr(value: str) -> Expression:
     """Build one nullable string literal expression."""
-    return Expression(rex_type=Some(RexType.Literal(Literal(literal_type=Some(LiteralType.String(value.to_string())), nullable=true, type_variation_reference=0))))
+    return Expression(
+        rex_type=Some(
+            RexType.Literal(
+                Literal(
+                    literal_type=Some(LiteralType.String(value.to_string())),
+                    nullable=true,
+                    type_variation_reference=0,
+                ),
+            ),
+        ),
+    )
 
 
 pub def field_ref_expr(index: int) -> Expression:
     """Build one direct field-reference expression selecting the input column at `index`."""
-    return Expression(rex_type=Some(RexType.Selection(Box.new(FieldReference(reference_type=Some(FieldReferenceType.DirectReference(ReferenceSegment(reference_type=Some(SegmentReferenceType.StructField(Box.new(StructField(field=to_rust_i32(index), child=None))))))), root_type=Some(RootType.RootReference(RootReference())))))))
+    return Expression(
+        rex_type=Some(
+            RexType.Selection(
+                Box.new(
+                    FieldReference(
+                        reference_type=Some(
+                            FieldReferenceType.DirectReference(
+                                ReferenceSegment(
+                                    reference_type=Some(
+                                        SegmentReferenceType.StructField(
+                                            Box.new(StructField(field=to_rust_i32(index), child=None)),
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        root_type=Some(RootType.RootReference(RootReference())),
+                    ),
+                ),
+            ),
+        ),
+    )
 
 
 pub def filter_literal_expr(literal: FilterLiteral) -> Expression:
     """Build one literal expression from a filter literal builder value."""
     match literal.kind:
-        FilterLiteralKind.Int => 
-            return i64_expr(literal.int_value)
-        FilterLiteralKind.String => 
-            return string_expr(literal.string_value)
-        FilterLiteralKind.Bool => 
-            return bool_expr(literal.bool_value)
-
+        FilterLiteralKind.Int => return i64_expr(literal.int_value)
+        FilterLiteralKind.String => return string_expr(literal.string_value)
+        FilterLiteralKind.Bool => return bool_expr(literal.bool_value)
 
 
 pub def scalar_function_expr(function_reference: int, arguments: list[Expression]) -> Expression:
     """Build one scalar-function expression over positional value arguments."""
     lowered_arguments = [FunctionArgument(arg_type=Some(ArgType.Value(argument))) for argument in arguments]
-    return Expression(rex_type=Some(RexType.ScalarFunction(ScalarFunction(function_reference=to_rust_u32(function_reference), arguments=lowered_arguments, output_type=None, args=[], options=[]))))
+    return Expression(
+        rex_type=Some(
+            RexType.ScalarFunction(
+                ScalarFunction(
+                    function_reference=to_rust_u32(function_reference),
+                    arguments=lowered_arguments,
+                    output_type=None,
+                    args=[],
+                    options=[],
+                ),
+            ),
+        ),
+    )
 
 
 model ResolvedProjectionBinding:
@@ -142,7 +200,10 @@ def _resolved_projection_expr(bindings: list[ResolvedProjectionBinding], expr: C
     return scalar_function_expr(ADD_FUNCTION_ANCHOR, [left, right])
 
 
-def _apply_projection_assignments_to_bindings(input_columns: list[str], assignments: list[ProjectionAssignment]) -> list[ResolvedProjectionBinding]:
+def _apply_projection_assignments_to_bindings(
+    input_columns: list[str],
+    assignments: list[ProjectionAssignment],
+) -> list[ResolvedProjectionBinding]:
     """Apply ordered add-or-replace assignments to the current binding set."""
     input_column_count = len(input_columns)
     mut bindings = _resolved_projection_bindings_for_input_columns(input_columns)
@@ -151,9 +212,19 @@ def _apply_projection_assignments_to_bindings(input_columns: list[str], assignme
         resolved_expr = _resolved_projection_expr(bindings, assignment.expr)
         existing_idx = _index_of_binding(bindings, assignment.output_name)
         if existing_idx >= 0:
-            bindings[existing_idx] = ResolvedProjectionBinding(name=assignment.output_name, expr=resolved_expr, output_index=next_output_index)
+            bindings[existing_idx] = ResolvedProjectionBinding(
+                name=assignment.output_name,
+                expr=resolved_expr,
+                output_index=next_output_index,
+            )
         else:
-            bindings.append(ResolvedProjectionBinding(name=assignment.output_name, expr=resolved_expr, output_index=next_output_index))
+            bindings.append(
+                ResolvedProjectionBinding(
+                    name=assignment.output_name,
+                    expr=resolved_expr,
+                    output_index=next_output_index,
+                ),
+            )
         next_output_index += 1
     return bindings
 
@@ -170,9 +241,19 @@ pub def lower_project(input_columns: list[str], assignments: list[ProjectionAssi
         next_output_index = input_column_count + len(expressions) - 1
         existing_idx = _index_of_binding(bindings, assignment.output_name)
         if existing_idx >= 0:
-            bindings[existing_idx] = ResolvedProjectionBinding(name=assignment.output_name, expr=resolved_expr, output_index=next_output_index)
+            bindings[existing_idx] = ResolvedProjectionBinding(
+                name=assignment.output_name,
+                expr=resolved_expr,
+                output_index=next_output_index,
+            )
         else:
-            bindings.append(ResolvedProjectionBinding(name=assignment.output_name, expr=resolved_expr, output_index=next_output_index))
+            bindings.append(
+                ResolvedProjectionBinding(
+                    name=assignment.output_name,
+                    expr=resolved_expr,
+                    output_index=next_output_index,
+                ),
+            )
     for binding in bindings:
         mapping_indexes.append(binding.output_index)
     return LoweredProject(expressions=expressions, output_mapping=[to_rust_i32(index) for index in mapping_indexes])
@@ -201,11 +282,8 @@ pub def filter_predicate_expr(input_columns: list[str], predicate: FilterPredica
 pub def to_rust_i32(value: int) -> RustI32:
     """Convert one Incan `int` into Rust `i32` for proto fields that require 32-bit indices."""
     match RustI32.try_from(value):
-        Ok(converted) => 
-            return converted
-        Err(_) => 
-            return 0
-
+        Ok(converted) => return converted
+        Err(_) => return 0
 
 
 pub def rust_i32_to_int(value: RustI32) -> int:
@@ -221,31 +299,22 @@ pub def rust_u32_to_int(value: RustU32) -> int:
 pub def to_rust_u32(value: int) -> RustU32:
     """Convert one non-negative Incan `int` into Rust `u32` for proto index vectors."""
     match RustU32.try_from(value):
-        Ok(converted) => 
-            return converted
-        Err(_) => 
-            return 0
-
+        Ok(converted) => return converted
+        Err(_) => return 0
 
 
 def _field_index_from_reference_segment(segment: ReferenceSegment) -> int:
     """Extract one struct-field index from a direct reference segment, or `-1` when the segment is not a field."""
     match segment.reference_type:
-        Some(SegmentReferenceType.StructField(field)) => 
-            return (field.field).into()
-        _ => 
-            return -1
-
+        Some(SegmentReferenceType.StructField(field)) => return (field.field).into()
+        _ => return -1
 
 
 def _field_index_from_field_reference(field_ref: FieldReference) -> int:
     """Extract one struct-field index from a direct field reference, or `-1` when the reference is not direct."""
     match field_ref.reference_type:
-        Some(FieldReferenceType.DirectReference(segment)) => 
-            return _field_index_from_reference_segment(segment)
-        _ => 
-            return -1
-
+        Some(FieldReferenceType.DirectReference(segment)) => return _field_index_from_reference_segment(segment)
+        _ => return -1
 
 
 # TODO(Incan RFC 049): revisit this direct-reference unwrapping path once `if let` lands. The helper split keeps the
@@ -253,11 +322,8 @@ def _field_index_from_field_reference(field_ref: FieldReference) -> int:
 pub def field_index_from_expression(expr: Expression) -> int:
     """Extract the selected field index from one direct field-reference expression, or `-1` when absent."""
     match expr.rex_type:
-        Some(RexType.Selection(field_ref)) => 
-            return _field_index_from_field_reference(field_ref.as_ref().clone())
-        _ => 
-            return -1
-
+        Some(RexType.Selection(field_ref)) => return _field_index_from_field_reference(field_ref.as_ref().clone())
+        _ => return -1
 
 
 pub def grouping_reference_indexes(count: int) -> list[RustU32]:
@@ -274,24 +340,16 @@ pub def project_output_columns_from_expressions(input_columns: list[str], expres
             columns.append(input_columns[field_index])
             continue
         match expr.rex_type.clone():
-            Some(RexType.ScalarFunction(fun)) => 
+            Some(RexType.ScalarFunction(fun)) =>
                 columns.append(scalar_function_name_from_anchor(rust_u32_to_int(fun.function_reference)))
-            Some(RexType.Literal(literal)) => 
+            Some(RexType.Literal(literal)) =>
                 match literal.literal_type:
-                    Some(LiteralType.String(_)) => 
-                        columns.append("string")
-                    Some(LiteralType.I64(_)) => 
-                        columns.append("int")
-                    Some(LiteralType.Fp64(_)) => 
-                        columns.append("float")
-                    Some(LiteralType.Boolean(_)) => 
-                        columns.append("bool")
-                    _ => 
-                        columns.append("expr")
-
-            _ => 
-                columns.append("expr")
-
+                    Some(LiteralType.String(_)) => columns.append("string")
+                    Some(LiteralType.I64(_)) => columns.append("int")
+                    Some(LiteralType.Fp64(_)) => columns.append("float")
+                    Some(LiteralType.Boolean(_)) => columns.append("bool")
+                    _ => columns.append("expr")
+            _ => columns.append("expr")
     return columns
 
 
@@ -312,13 +370,8 @@ pub def project_output_columns_with_emit(input_columns: list[str], project_rel: 
     for projected_name in project_output_columns_from_expressions(input_columns, project_rel.expressions):
         default_columns.append(projected_name)
     match project_rel.common.clone():
-        Some(common) => 
+        Some(common) =>
             match common.emit_kind:
-                Some(EmitKind.Emit(emit)) => 
-                    return _emitted_output_columns(default_columns, emit.output_mapping)
-                _ => 
-                    return default_columns
-
-        _ => 
-            return default_columns
-
+                Some(EmitKind.Emit(emit)) => return _emitted_output_columns(default_columns, emit.output_mapping)
+                _ => return default_columns
+        _ => return default_columns

@@ -15,6 +15,7 @@ This example demonstrates compile-time trait hierarchy usage patterns.
 from dataset import DataSet, BoundedDataSet, UnboundedDataSet, DataFrame, LazyFrame, DataStream
 from models import Order, Event
 
+
 # ---- Trait hierarchy assignment patterns ----
 def assign_data_frame_to_bounded(data: DataFrame[Order]) -> BoundedDataSet[Order]:
     """Concrete bounded carrier upcasts to its bounded trait."""

@@ -4,6 +4,7 @@ from rust::std::fs import read_to_string
 from session.errors import SessionError, invalid_registration
 from substrait.schema import RowColumnSpec, SubstraitPrimitiveKind
 
+
 pub def infer_csv_schema_columns(uri: str) -> Result[list[RowColumnSpec], SessionError]:
     """Read one CSV file and infer schema columns (name, nullability, primitive kind) from header + rows."""
     # TODO(InQL RFC 010): This is still an intentionally high-level CSV inference pass.
@@ -11,7 +12,7 @@ pub def infer_csv_schema_columns(uri: str) -> Result[list[RowColumnSpec], Sessio
     # Revisit this once the fuller CSV ingestion contract lands so dialect rules, quoting/escaping,
     # richer typing, and stricter schema/header policies stop living behind this lightweight helper.
     match read_to_string(uri):
-        Ok(content) => 
+        Ok(content) =>
             normalized = str(content).replace(str("\r"), str(""))
             lines = normalized.split(str("\n"))
             if len(lines) == 0:
@@ -52,9 +53,7 @@ pub def infer_csv_schema_columns(uri: str) -> Result[list[RowColumnSpec], Sessio
                     kind = SubstraitPrimitiveKind.String
                 specs.append(RowColumnSpec(name=columns[spec_idx], kind=kind, nullable=nullable[spec_idx]))
             return Ok(specs)
-        Err(err) => 
-            return Err(invalid_registration(f"failed to read csv source '{uri}': {err.to_string()}"))
-
+        Err(err) => return Err(invalid_registration(f"failed to read csv source '{uri}': {err.to_string()}"))
 
 
 def _non_empty_csv_header_columns(header: str) -> list[str]:

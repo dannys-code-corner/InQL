@@ -4,6 +4,7 @@ from std.testing import assert_eq
 from functions import col, count, sum
 from session import Session
 
+
 @derive(Clone)
 pub model AggregateOrder:
     pub customer_id: str
@@ -25,10 +26,10 @@ def test_session_aggregates__grouped_collect_executes_sum_and_count() -> None:
 
     # -- Act --
     match session.read_csv[AggregateOrder]("aggregate_orders", AGGREGATE_ORDERS_CSV_FIXTURE):
-        Ok(lazy) => 
+        Ok(lazy) =>
             grouped = lazy.group_by([col("customer_id")]).agg([sum(col("amount")), count()])
             match session.collect(grouped):
-                Ok(df) => 
+                Ok(df) =>
                     payload = df.preview_text()
                     assert_eq(df.row_count(), 2, "grouped aggregate collect should produce one row per customer")
                     resolved = df.resolved_columns()
@@ -36,14 +37,28 @@ def test_session_aggregates__grouped_collect_executes_sum_and_count() -> None:
                     assert_eq(len(resolved), 3, "grouped aggregate output should contain one key plus two measures")
                     assert_eq(payload.contains("A"), true, "grouped aggregate output should contain customer A")
                     assert_eq(payload.contains("B"), true, "grouped aggregate output should contain customer B")
-                    assert_eq(payload.contains("25"), true, "grouped aggregate output should contain the summed amount for customer A")
-                    assert_eq(payload.contains("7"), true, "grouped aggregate output should contain the summed amount for customer B")
-                    assert_eq(payload.contains("2"), true, "grouped aggregate output should contain the row-count for customer A")
-                    assert_eq(payload.contains("1"), true, "grouped aggregate output should contain the row-count for customer B")
+                    assert_eq(
+                        payload.contains("25"),
+                        true,
+                        "grouped aggregate output should contain the summed amount for customer A",
+                    )
+                    assert_eq(
+                        payload.contains("7"),
+                        true,
+                        "grouped aggregate output should contain the summed amount for customer B",
+                    )
+                    assert_eq(
+                        payload.contains("2"),
+                        true,
+                        "grouped aggregate output should contain the row-count for customer A",
+                    )
+                    assert_eq(
+                        payload.contains("1"),
+                        true,
+                        "grouped aggregate output should contain the row-count for customer B",
+                    )
                 Err(err) => assert_eq(true, false, err.error_message())
-
         Err(err) => assert_eq(true, false, err.error_message())
-
 
 
 def test_session_aggregates__global_collect_executes_count() -> None:
@@ -52,20 +67,22 @@ def test_session_aggregates__global_collect_executes_count() -> None:
 
     # -- Act --
     match session.read_csv[Order]("orders", ORDERS_CSV_FIXTURE):
-        Ok(lazy) => 
+        Ok(lazy) =>
             aggregated = lazy.agg([count()])
             match session.collect(aggregated):
-                Ok(df) => 
+                Ok(df) =>
                     payload = df.preview_text()
                     assert_eq(df.row_count(), 1, "global count aggregate should produce one output row")
                     resolved = df.resolved_columns()
                     # -- Assert --
                     assert_eq(len(resolved), 1, "global count aggregate should return one measure column")
-                    assert_eq(payload.contains("3"), true, "global count aggregate should report the three rows in orders.csv")
+                    assert_eq(
+                        payload.contains("3"),
+                        true,
+                        "global count aggregate should report the three rows in orders.csv",
+                    )
                 Err(err) => assert_eq(true, false, err.error_message())
-
         Err(err) => assert_eq(true, false, err.error_message())
-
 
 
 def test_session_aggregates__adjacent_agg_calls_merge_measures() -> None:
@@ -74,23 +91,41 @@ def test_session_aggregates__adjacent_agg_calls_merge_measures() -> None:
 
     # -- Act --
     match session.read_csv[AggregateOrder]("aggregate_orders", AGGREGATE_ORDERS_CSV_FIXTURE):
-        Ok(lazy) => 
+        Ok(lazy) =>
             grouped = lazy.group_by([col("customer_id")]).agg([sum(col("amount"))]).agg([count()])
             match session.collect(grouped):
-                Ok(df) => 
+                Ok(df) =>
                     payload = df.preview_text()
                     assert_eq(df.row_count(), 2, "adjacent aggregate merge should still produce one row per group")
                     resolved = df.resolved_columns()
                     # -- Assert --
-                    assert_eq(len(resolved), 3, "adjacent agg calls should preserve both the existing and appended measure columns")
+                    assert_eq(
+                        len(resolved),
+                        3,
+                        "adjacent agg calls should preserve both the existing and appended measure columns",
+                    )
                     assert_eq(resolved[0], "customer_id", "group key should remain the first output column")
                     assert_eq(resolved[1], "sum_amount", "existing aggregate measure should survive a later agg append")
                     assert_eq(resolved[2], "count", "later aggregate measure should append after existing measures")
-                    assert_eq(payload.contains("25"), true, "adjacent agg merge should retain the summed amount for customer A")
-                    assert_eq(payload.contains("7"), true, "adjacent agg merge should retain the summed amount for customer B")
-                    assert_eq(payload.contains("2"), true, "adjacent agg merge should still include the later count measure for customer A")
-                    assert_eq(payload.contains("1"), true, "adjacent agg merge should still include the later count measure for customer B")
+                    assert_eq(
+                        payload.contains("25"),
+                        true,
+                        "adjacent agg merge should retain the summed amount for customer A",
+                    )
+                    assert_eq(
+                        payload.contains("7"),
+                        true,
+                        "adjacent agg merge should retain the summed amount for customer B",
+                    )
+                    assert_eq(
+                        payload.contains("2"),
+                        true,
+                        "adjacent agg merge should still include the later count measure for customer A",
+                    )
+                    assert_eq(
+                        payload.contains("1"),
+                        true,
+                        "adjacent agg merge should still include the later count measure for customer B",
+                    )
                 Err(err) => assert_eq(true, false, err.error_message())
-
         Err(err) => assert_eq(true, false, err.error_message())
-

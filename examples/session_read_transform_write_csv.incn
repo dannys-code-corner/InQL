@@ -3,6 +3,7 @@
 from functions import col, display, eq, int_lit
 from session import Session, SessionError, report_session_error
 
+
 @derive(Clone)
 pub model CsvOrder:
     pub id: int
@@ -16,7 +17,6 @@ def main() -> None:
     match _read_transform_write(session, input_uri, output_uri):
         Ok(_) => print("Wrote CSV to: " + output_uri)
         Err(err) => report_session_error("example.read_transform_write_csv", err)
-
 
 
 def _read_transform_write(mut session: Session, input_uri: str, output_uri: str) -> Result[None, SessionError]:

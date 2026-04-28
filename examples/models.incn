@@ -11,6 +11,7 @@ be defined in a separate module with proper field definitions.
 - `Event`: Represents an event with id, type, severity
 """
 
+
 # In real code, these would have proper field definitions:
 pub model Order:
     pub id: int

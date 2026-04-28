@@ -21,9 +21,18 @@ from substrait.expr_lowering import field_index_from_expression, project_output_
 from substrait.extensions import COUNT_FUNCTION_ANCHOR
 from substrait.schema_registry import named_table_columns, unknown_named_struct
 
+
 def _malformed_root_rel() -> Rel:
     """Build one placeholder read relation when a plan root is structurally missing."""
-    read = ReadRel(common=Some(RelCommon(hint=None, advanced_extension=None, emit_kind=Some(EmitKind.Direct(Direct())))), base_schema=Some(unknown_named_struct()), filter=None, best_effort_filter=None, projection=None, advanced_extension=None, read_type=Some(ReadType.NamedTable(ReadNamedTable(names=["__malformed_plan__"], advanced_extension=None))))
+    read = ReadRel(
+        common=Some(RelCommon(hint=None, advanced_extension=None, emit_kind=Some(EmitKind.Direct(Direct())))),
+        base_schema=Some(unknown_named_struct()),
+        filter=None,
+        best_effort_filter=None,
+        projection=None,
+        advanced_extension=None,
+        read_type=Some(ReadType.NamedTable(ReadNamedTable(names=["__malformed_plan__"], advanced_extension=None))),
+    )
     return Rel(rel_type=Some(RelType.Read(Box.new(read))))
 
 
@@ -47,22 +56,17 @@ pub def aggregate_measure_output_names(measures: list[AggregateMeasure]) -> list
 pub def aggregate_group_columns(rel: Rel) -> list[str]:
     """Return grouping output column names when `rel` is an aggregate root, otherwise empty."""
     match rel.rel_type:
-        Some(RelType.Aggregate(aggregate_rel)) => 
+        Some(RelType.Aggregate(aggregate_rel)) =>
             input_columns = _aggregate_input_columns(aggregate_rel.as_ref().clone())
             return _grouping_output_columns(input_columns, aggregate_rel.grouping_expressions)
-        _ => 
-            return []
-
+        _ => return []
 
 
 def _aggregate_input_columns(aggregate_rel: AggregateRel) -> list[str]:
     """Resolve the current input-column names feeding one aggregate relation."""
     match aggregate_rel.input:
-        Some(child) => 
-            return relation_output_columns(child.as_ref().clone())
-        None => 
-            return []
-
+        Some(child) => return relation_output_columns(child.as_ref().clone())
+        None => return []
 
 
 def _grouping_output_columns(input_columns: list[str], grouping_expressions: list[Expression]) -> list[str]:
@@ -78,23 +82,19 @@ def _grouping_output_columns(input_columns: list[str], grouping_expressions: lis
 def _aggregate_measure_output_name(input_columns: list[str], measure: Measure) -> str:
     """Resolve one aggregate output name from the lowered Substrait aggregate measure payload."""
     match measure.measure:
-        Some(agg_fn) => 
+        Some(agg_fn) =>
             if agg_fn.function_reference == to_rust_u32(COUNT_FUNCTION_ANCHOR):
                 return "count"
             if len(agg_fn.arguments) == 0:
                 return "sum"
             match agg_fn.arguments[0].arg_type:
-                Some(ArgType.Value(expr)) => 
+                Some(ArgType.Value(expr)) =>
                     field_index = field_index_from_expression(expr)
                     if field_index >= 0 and field_index < len(input_columns):
                         return "sum_" + input_columns[field_index]
                     return "sum"
-                _ => 
-                    return "sum"
-
-        None => 
-            return ""
-
+                _ => return "sum"
+        None => return ""
 
 
 def _aggregate_measure_output_columns(input_columns: list[str], measures: list[Measure]) -> list[str]:
@@ -118,91 +118,62 @@ def _aggregate_output_columns(aggregate_rel: AggregateRel) -> list[str]:
 def _relation_output_columns(rel: Rel) -> list[str]:
     """Return the current best-effort output column names for one relation subtree."""
     match rel.rel_type.clone():
-        Some(RelType.Read(read_rel)) => 
+        Some(RelType.Read(read_rel)) =>
             match read_rel.read_type:
-                Some(ReadType.NamedTable(named_table)) => 
+                Some(ReadType.NamedTable(named_table)) =>
                     if len(named_table.names) == 0:
                         return []
                     return named_table_columns(named_table.names[0])
-                _ => 
-                    return []
-
-        Some(RelType.Filter(filter_rel)) => 
+                _ => return []
+        Some(RelType.Filter(filter_rel)) =>
             match filter_rel.input:
-                Some(child) => 
-                    return _relation_output_columns(child.as_ref().clone())
-                None => 
-                    return []
-
-        Some(RelType.Project(project_rel)) => 
+                Some(child) => return _relation_output_columns(child.as_ref().clone())
+                None => return []
+        Some(RelType.Project(project_rel)) =>
             mut input_columns: list[str] = []
             match project_rel.input.clone():
-                Some(child) => 
+                Some(child) =>
                     input_columns = _relation_output_columns(child.as_ref().clone())
-                None => 
+                None =>
                     input_columns = []
 
             return project_output_columns_with_emit(input_columns, project_rel.as_ref().clone())
-        Some(RelType.Sort(sort_rel)) => 
+        Some(RelType.Sort(sort_rel)) =>
             match sort_rel.input:
-                Some(child) => 
-                    return _relation_output_columns(child.as_ref().clone())
-                None => 
-                    return []
-
-        Some(RelType.Fetch(fetch_rel)) => 
+                Some(child) => return _relation_output_columns(child.as_ref().clone())
+                None => return []
+        Some(RelType.Fetch(fetch_rel)) =>
             match fetch_rel.input:
-                Some(child) => 
-                    return _relation_output_columns(child.as_ref().clone())
-                None => 
-                    return []
-
-        Some(RelType.ExtensionSingle(extension_rel)) => 
+                Some(child) => return _relation_output_columns(child.as_ref().clone())
+                None => return []
+        Some(RelType.ExtensionSingle(extension_rel)) =>
             match extension_rel.input:
-                Some(child) => 
-                    return _relation_output_columns(child.as_ref().clone())
-                None => 
-                    return []
-
-        Some(RelType.Join(join_rel)) => 
+                Some(child) => return _relation_output_columns(child.as_ref().clone())
+                None => return []
+        Some(RelType.Join(join_rel)) =>
             mut names: list[str] = []
             match join_rel.left:
-                Some(left) => 
-                    names.extend(_relation_output_columns(left.as_ref().clone()))
-                None => 
-                    pass
-
+                Some(left) => names.extend(_relation_output_columns(left.as_ref().clone()))
+                None => pass
             match join_rel.right:
-                Some(right) => 
-                    names.extend(_relation_output_columns(right.as_ref().clone()))
-                None => 
-                    pass
-
+                Some(right) => names.extend(_relation_output_columns(right.as_ref().clone()))
+                None => pass
             return names
-        Some(RelType.Cross(cross_rel)) => 
+        Some(RelType.Cross(cross_rel)) =>
             mut names: list[str] = []
             match cross_rel.left:
-                Some(left) => 
-                    names.extend(_relation_output_columns(left.as_ref().clone()))
-                None => 
-                    pass
-
+                Some(left) => names.extend(_relation_output_columns(left.as_ref().clone()))
+                None => pass
             match cross_rel.right:
-                Some(right) => 
-                    names.extend(_relation_output_columns(right.as_ref().clone()))
-                None => 
-                    pass
-
+                Some(right) => names.extend(_relation_output_columns(right.as_ref().clone()))
+                None => pass
             return names
-        Some(RelType.Set(set_rel)) => 
+        Some(RelType.Set(set_rel)) =>
             if len(set_rel.inputs) == 0:
                 return []
             return _relation_output_columns(set_rel.inputs[0])
-        Some(RelType.Aggregate(aggregate_rel)) => 
-            return _aggregate_output_columns(aggregate_rel.as_ref().clone())
-        _ => 
-            return []
-
+        Some(RelType.Aggregate(aggregate_rel)) => return _aggregate_output_columns(aggregate_rel.as_ref().clone())
+        _ => return []
 
 
 pub def relation_output_columns(rel: Rel) -> list[str]:
@@ -216,18 +187,12 @@ pub def root_rel(plan: Plan) -> Rel:
         return _malformed_root_rel()
     relation = plan.relations[0]
     match relation.rel_type:
-        Some(PlanRelType.Root(root)) => 
+        Some(PlanRelType.Root(root)) =>
             match root.input:
-                Some(rel) => 
-                    return rel
-                None => 
-                    return _malformed_root_rel()
-
-        Some(PlanRelType.Rel(rel)) => 
-            return rel
-        _ => 
-            return _malformed_root_rel()
-
+                Some(rel) => return rel
+                None => return _malformed_root_rel()
+        Some(PlanRelType.Rel(rel)) => return rel
+        _ => return _malformed_root_rel()
 
 
 pub def root_names(plan: Plan) -> list[str]:
@@ -236,81 +201,52 @@ pub def root_names(plan: Plan) -> list[str]:
         return []
     relation = plan.relations[0]
     match relation.rel_type:
-        Some(PlanRelType.Root(root)) => 
-            return root.names
-        _ => 
-            return []
-
+        Some(PlanRelType.Root(root)) => return root.names
+        _ => return []
 
 
 pub def relation_kind_name(rel: Rel) -> str:
     """Return the public Substrait relation-kind label for one `Rel` node."""
     match rel.rel_type:
-        Some(RelType.Read(_)) => 
-            return "ReadRel"
-        Some(RelType.Filter(_)) => 
-            return "FilterRel"
-        Some(RelType.Project(_)) => 
-            return "ProjectRel"
-        Some(RelType.Join(_)) => 
-            return "JoinRel"
-        Some(RelType.Cross(_)) => 
-            return "CrossRel"
-        Some(RelType.Aggregate(_)) => 
-            return "AggregateRel"
-        Some(RelType.Sort(_)) => 
-            return "SortRel"
-        Some(RelType.Fetch(_)) => 
-            return "FetchRel"
-        Some(RelType.Set(_)) => 
-            return "SetRel"
-        Some(RelType.Reference(_)) => 
-            return "ReferenceRel"
-        Some(RelType.ExtensionSingle(_)) => 
-            return "ExtensionSingleRel"
-        Some(RelType.ExtensionLeaf(_)) => 
-            return "ExtensionLeafRel"
-        Some(RelType.ExtensionMulti(_)) => 
-            return "ExtensionMultiRel"
-        _ => 
-            return "UnknownRel"
-
+        Some(RelType.Read(_)) => return "ReadRel"
+        Some(RelType.Filter(_)) => return "FilterRel"
+        Some(RelType.Project(_)) => return "ProjectRel"
+        Some(RelType.Join(_)) => return "JoinRel"
+        Some(RelType.Cross(_)) => return "CrossRel"
+        Some(RelType.Aggregate(_)) => return "AggregateRel"
+        Some(RelType.Sort(_)) => return "SortRel"
+        Some(RelType.Fetch(_)) => return "FetchRel"
+        Some(RelType.Set(_)) => return "SetRel"
+        Some(RelType.Reference(_)) => return "ReferenceRel"
+        Some(RelType.ExtensionSingle(_)) => return "ExtensionSingleRel"
+        Some(RelType.ExtensionLeaf(_)) => return "ExtensionLeafRel"
+        Some(RelType.ExtensionMulti(_)) => return "ExtensionMultiRel"
+        _ => return "UnknownRel"
 
 
 pub def read_kind_name(rel: Rel) -> str:
     """Return the read-root kind label for one relation."""
     match rel.rel_type:
-        Some(RelType.Read(read)) => 
+        Some(RelType.Read(read)) =>
             match read.read_type:
-                Some(ReadType.NamedTable(_)) => 
-                    return "NamedTable"
-                Some(ReadType.LocalFiles(_)) => 
-                    return "LocalFiles"
-                Some(ReadType.VirtualTable(_)) => 
-                    return "VirtualTable"
-                _ => 
-                    return "ReadRel"
-
-        _ => 
-            return "Unknown"
-
+                Some(ReadType.NamedTable(_)) => return "NamedTable"
+                Some(ReadType.LocalFiles(_)) => return "LocalFiles"
+                Some(ReadType.VirtualTable(_)) => return "VirtualTable"
+                _ => return "ReadRel"
+        _ => return "Unknown"
 
 
 pub def read_named_table_name(rel: Rel) -> str:
     """Return the first named-table identifier for ReadRel(NamedTable), or empty when not applicable."""
     match rel.rel_type:
-        Some(RelType.Read(read_rel)) => 
+        Some(RelType.Read(read_rel)) =>
             match read_rel.read_type:
-                Some(ReadType.NamedTable(named_table)) => 
+                Some(ReadType.NamedTable(named_table)) =>
                     if len(named_table.names) == 0:
                         return ""
                     return named_table.names[0]
-                _ => 
-                    return ""
-
-        _ => 
-            return ""
-
+                _ => return ""
+        _ => return ""
 
 
 pub def source_named_table_name(rel: Rel) -> str:
@@ -328,7 +264,7 @@ pub def source_named_table_name(rel: Rel) -> str:
 pub def set_operation_name(rel: Rel) -> str:
     """Return the public Substrait set-operation label for one `SetRel` node."""
     match rel.rel_type:
-        Some(RelType.Set(set_rel)) => 
+        Some(RelType.Set(set_rel)) =>
             if set_rel.op == _set_op_value(SetOp.MinusPrimary):
                 return "MinusPrimary"
             elif set_rel.op == _set_op_value(SetOp.IntersectionPrimary):
@@ -342,97 +278,63 @@ pub def set_operation_name(rel: Rel) -> str:
             elif set_rel.op == _set_op_value(SetOp.UnionAll):
                 return "UnionAll"
             return "UnknownSetOp"
-        _ => 
-            return "NotSet"
-
+        _ => return "NotSet"
 
 
 pub def reference_subtree_ordinal(rel: Rel) -> RustI32:
     """Return the subtree ordinal for one `ReferenceRel`, or `-1` when the input is not a reference."""
     match rel.rel_type:
-        Some(RelType.Reference(reference)) => 
-            return reference.subtree_ordinal
-        _ => 
-            return -1
-
+        Some(RelType.Reference(reference)) => return reference.subtree_ordinal
+        _ => return -1
 
 
 pub def relation_children(rel: Rel) -> list[Rel]:
     """Return direct child relations for one relation node."""
     match rel.rel_type:
-        Some(RelType.Filter(filter)) => 
+        Some(RelType.Filter(filter)) =>
             match filter.input:
-                Some(child) => 
-                    return [child.as_ref().clone()]
-                None => 
-                    return []
-
-        Some(RelType.Project(project)) => 
+                Some(child) => return [child.as_ref().clone()]
+                None => return []
+        Some(RelType.Project(project)) =>
             match project.input:
-                Some(child) => 
-                    return [child.as_ref().clone()]
-                None => 
-                    return []
-
-        Some(RelType.Join(join)) => 
+                Some(child) => return [child.as_ref().clone()]
+                None => return []
+        Some(RelType.Join(join)) =>
             mut children: list[Rel] = []
             match join.left:
                 Some(left) => children.append(left.as_ref().clone())
-                None => 
-                    pass
-
+                None => pass
             match join.right:
                 Some(right) => children.append(right.as_ref().clone())
-                None => 
-                    pass
-
+                None => pass
             return children
-        Some(RelType.Cross(cross)) => 
+        Some(RelType.Cross(cross)) =>
             mut children: list[Rel] = []
             match cross.left:
                 Some(left) => children.append(left.as_ref().clone())
-                None => 
-                    pass
-
+                None => pass
             match cross.right:
                 Some(right) => children.append(right.as_ref().clone())
-                None => 
-                    pass
-
+                None => pass
             return children
-        Some(RelType.Aggregate(aggregate)) => 
+        Some(RelType.Aggregate(aggregate)) =>
             match aggregate.input:
-                Some(child) => 
-                    return [child.as_ref().clone()]
-                None => 
-                    return []
-
-        Some(RelType.Sort(sort)) => 
+                Some(child) => return [child.as_ref().clone()]
+                None => return []
+        Some(RelType.Sort(sort)) =>
             match sort.input:
-                Some(child) => 
-                    return [child.as_ref().clone()]
-                None => 
-                    return []
-
-        Some(RelType.Fetch(fetch)) => 
+                Some(child) => return [child.as_ref().clone()]
+                None => return []
+        Some(RelType.Fetch(fetch)) =>
             match fetch.input:
-                Some(child) => 
-                    return [child.as_ref().clone()]
-                None => 
-                    return []
-
-        Some(RelType.Set(set_rel)) => 
-            return set_rel.inputs
-        Some(RelType.ExtensionSingle(extension)) => 
+                Some(child) => return [child.as_ref().clone()]
+                None => return []
+        Some(RelType.Set(set_rel)) => return set_rel.inputs
+        Some(RelType.ExtensionSingle(extension)) =>
             match extension.input:
-                Some(child) => 
-                    return [child.as_ref().clone()]
-                None => 
-                    return []
-
-        _ => 
-            return []
-
+                Some(child) => return [child.as_ref().clone()]
+                None => return []
+        _ => return []
 
 
 pub def rel_contains_kind(rel: Rel, expected_kind: str) -> bool:

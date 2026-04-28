@@ -14,6 +14,7 @@ from backends import SourceKind, TableSource
 from dataset.materialization import DataFrameMaterialization
 from substrait.inspect import root_names
 
+
 @derive(Clone)
 pub class BackendRegistration:
     pub logical_name: str
@@ -34,7 +35,10 @@ def _backend_error(kind: str, message: str) -> BackendError:
     return BackendError(kind=kind, message=message)
 
 
-pub async def datafusion_execute_async(registrations: list[BackendRegistration], plan: Plan) -> Result[None, BackendError]:
+pub async def datafusion_execute_async(
+    registrations: list[BackendRegistration],
+    plan: Plan,
+) -> Result[None, BackendError]:
     """Execute one Substrait plan via DataFusion and discard collected rows."""
     ctx = SessionContext.new()
     consumer_plan = _consumer_plan_from_current_plan(plan)?
@@ -44,20 +48,18 @@ pub async def datafusion_execute_async(registrations: list[BackendRegistration],
     match await from_substrait_plan(state, consumer_plan):
         Ok(logical_plan) => match await ctx.execute_logical_plan(logical_plan):
             Ok(df) => match await df.collect():
-                Ok(_) => 
-                    return Ok(None)
-                Err(err) => 
-                    return Err(_backend_error("backend_execution_error", err.to_string()))
+                Ok(_) => return Ok(None)
+                Err(err) => return Err(_backend_error("backend_execution_error", err.to_string()))
 
-            Err(err) => 
-                return Err(_backend_error("backend_execution_error", err.to_string()))
+            Err(err) => return Err(_backend_error("backend_execution_error", err.to_string()))
 
-        Err(err) => 
-            return Err(_backend_error("backend_planning_error", err.to_string()))
+        Err(err) => return Err(_backend_error("backend_planning_error", err.to_string()))
 
 
-
-pub async def datafusion_collect_materialization_async(registrations: list[BackendRegistration], plan: Plan) -> Result[DataFrameMaterialization, BackendError]:
+pub async def datafusion_collect_materialization_async(
+    registrations: list[BackendRegistration],
+    plan: Plan,
+) -> Result[DataFrameMaterialization, BackendError]:
     """Execute one Substrait plan via DataFusion and return structured DataFrame materialization."""
     ctx = SessionContext.new()
     resolved_columns = root_names(plan.clone())
@@ -69,26 +71,31 @@ pub async def datafusion_collect_materialization_async(registrations: list[Backe
         Ok(logical_plan) => match await ctx.execute_logical_plan(logical_plan):
             Ok(df) => match await df.clone().collect():
                 Ok(batches) => match await df.to_string():
-                    Ok(rendered) => 
+                    Ok(rendered) =>
                         mut row_count = 0
                         for batch in batches:
                             row_count += _rust_usize_to_int(batch.num_rows())
-                        return Ok(DataFrameMaterialization(resolved_columns=resolved_columns, row_count=row_count, preview_text=rendered))
-                    Err(err) => 
-                        return Err(_backend_error("backend_execution_error", err.to_string()))
+                        return Ok(
+                            DataFrameMaterialization(
+                                resolved_columns=resolved_columns,
+                                row_count=row_count,
+                                preview_text=rendered,
+                            ),
+                        )
+                    Err(err) => return Err(_backend_error("backend_execution_error", err.to_string()))
 
-                Err(err) => 
-                    return Err(_backend_error("backend_execution_error", err.to_string()))
+                Err(err) => return Err(_backend_error("backend_execution_error", err.to_string()))
 
-            Err(err) => 
-                return Err(_backend_error("backend_execution_error", err.to_string()))
+            Err(err) => return Err(_backend_error("backend_execution_error", err.to_string()))
 
-        Err(err) => 
-            return Err(_backend_error("backend_planning_error", err.to_string()))
+        Err(err) => return Err(_backend_error("backend_planning_error", err.to_string()))
 
 
-
-pub async def datafusion_write_csv_async(registrations: list[BackendRegistration], plan: Plan, uri: str) -> Result[None, BackendError]:
+pub async def datafusion_write_csv_async(
+    registrations: list[BackendRegistration],
+    plan: Plan,
+    uri: str,
+) -> Result[None, BackendError]:
     """Execute one plan and write result rows to a CSV sink URI via DataFusion."""
     ctx = SessionContext.new()
     consumer_plan = _consumer_plan_from_current_plan(plan)?
@@ -98,20 +105,19 @@ pub async def datafusion_write_csv_async(registrations: list[BackendRegistration
     match await from_substrait_plan(state, consumer_plan):
         Ok(logical_plan) => match await ctx.execute_logical_plan(logical_plan):
             Ok(df) => match await df.write_csv(uri, DataFrameWriteOptions.new(), None):
-                Ok(_) => 
-                    return Ok(None)
-                Err(err) => 
-                    return Err(_backend_error("backend_sink_error", err.to_string()))
+                Ok(_) => return Ok(None)
+                Err(err) => return Err(_backend_error("backend_sink_error", err.to_string()))
 
-            Err(err) => 
-                return Err(_backend_error("backend_execution_error", err.to_string()))
+            Err(err) => return Err(_backend_error("backend_execution_error", err.to_string()))
 
-        Err(err) => 
-            return Err(_backend_error("backend_planning_error", err.to_string()))
+        Err(err) => return Err(_backend_error("backend_planning_error", err.to_string()))
 
 
-
-pub async def datafusion_write_parquet_async(registrations: list[BackendRegistration], plan: Plan, uri: str) -> Result[None, BackendError]:
+pub async def datafusion_write_parquet_async(
+    registrations: list[BackendRegistration],
+    plan: Plan,
+    uri: str,
+) -> Result[None, BackendError]:
     """Execute one plan and write result rows to a Parquet sink URI via DataFusion."""
     ctx = SessionContext.new()
     consumer_plan = _consumer_plan_from_current_plan(plan)?
@@ -121,20 +127,18 @@ pub async def datafusion_write_parquet_async(registrations: list[BackendRegistra
     match await from_substrait_plan(state, consumer_plan):
         Ok(logical_plan) => match await ctx.execute_logical_plan(logical_plan):
             Ok(df) => match await df.write_parquet(uri, DataFrameWriteOptions.new(), None):
-                Ok(_) => 
-                    return Ok(None)
-                Err(err) => 
-                    return Err(_backend_error("backend_sink_error", err.to_string()))
+                Ok(_) => return Ok(None)
+                Err(err) => return Err(_backend_error("backend_sink_error", err.to_string()))
 
-            Err(err) => 
-                return Err(_backend_error("backend_execution_error", err.to_string()))
+            Err(err) => return Err(_backend_error("backend_execution_error", err.to_string()))
 
-        Err(err) => 
-            return Err(_backend_error("backend_planning_error", err.to_string()))
+        Err(err) => return Err(_backend_error("backend_planning_error", err.to_string()))
 
 
-
-async def _register_sources(ctx: SessionContext, registrations: list[BackendRegistration]) -> Result[None, BackendError]:
+async def _register_sources(
+    ctx: SessionContext,
+    registrations: list[BackendRegistration],
+) -> Result[None, BackendError]:
     """Register all logical sources on the DataFusion context before execution."""
     for registration in registrations:
         await _register_one(ctx, registration.logical_name, registration.source)?
@@ -146,44 +150,31 @@ async def _register_one(ctx: SessionContext, logical_name: str, source: TableSou
     if source.source_kind == SourceKind.Csv:
         csv_opts = CsvReadOptions.new().has_header(true)
         match await ctx.register_csv(logical_name, source.uri, csv_opts):
-            Ok(_) => 
-                return Ok(None)
-            Err(err) => 
-                return Err(_backend_error("backend_registration_error", err.to_string()))
+            Ok(_) => return Ok(None)
+            Err(err) => return Err(_backend_error("backend_registration_error", err.to_string()))
 
     if source.source_kind == SourceKind.Parquet:
         parquet_opts = ParquetReadOptions.default()
         match await ctx.register_parquet(logical_name, source.uri, parquet_opts):
-            Ok(_) => 
-                return Ok(None)
-            Err(err) => 
-                return Err(_backend_error("backend_registration_error", err.to_string()))
+            Ok(_) => return Ok(None)
+            Err(err) => return Err(_backend_error("backend_registration_error", err.to_string()))
 
     arrow_opts = ArrowReadOptions.default()
     match await ctx.register_arrow(logical_name, source.uri, arrow_opts):
-        Ok(_) => 
-            return Ok(None)
-        Err(err) => 
-            return Err(_backend_error("backend_registration_error", err.to_string()))
-
+        Ok(_) => return Ok(None)
+        Err(err) => return Err(_backend_error("backend_registration_error", err.to_string()))
 
 
 def _consumer_plan_from_current_plan(plan: Plan) -> Result[ConsumerPlan, BackendError]:
     """Decode the producer-side plan bytes into DataFusion's consumer Plan type."""
     encoded = plan.encode_to_vec()
     match ConsumerPlan.decode(encoded.as_slice()):
-        Ok(decoded) => 
-            return Ok(decoded)
-        Err(err) => 
-            return Err(_backend_error("backend_planning_error", err.to_string()))
-
+        Ok(decoded) => return Ok(decoded)
+        Err(err) => return Err(_backend_error("backend_planning_error", err.to_string()))
 
 
 def _rust_usize_to_int(value: RustUsize) -> int:
     """Convert one Rust `usize` count into Incan `int` through a checked `i64` boundary."""
     match RustI64.try_from(value):
-        Ok(converted) => 
-            return converted.into()
-        Err(_) => 
-            return 0
-
+        Ok(converted) => return converted.into()
+        Err(_) => return 0

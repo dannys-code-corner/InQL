@@ -3,6 +3,7 @@
 from functions import col, display, int_expr, mul
 from session import Session, SessionError, report_session_error
 
+
 @derive(Clone)
 pub model AggregateOrder:
     pub customer_id: str
@@ -17,7 +18,6 @@ def main() -> None:
     match _read_transform_write(session, input_uri, output_uri):
         Ok(_) => print("Wrote CSV to: " + output_uri)
         Err(err) => report_session_error("example.session_with_column_csv", err)
-
 
 
 def _read_transform_write(mut session: Session, input_uri: str, output_uri: str) -> Result[None, SessionError]:

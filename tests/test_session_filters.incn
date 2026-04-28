@@ -4,6 +4,7 @@ from std.testing import assert_eq
 from functions import col, eq, gt, int_lit, str_lit
 from session import Session
 
+
 @derive(Clone)
 model OrderLine:
     order_id: int
@@ -26,21 +27,19 @@ def test_session_filters__collect_executes_gt_predicate() -> None:
 
     # -- Act & Assert --
     match session.read_csv[OrderLine]("order_lines", ORDER_LINES_CSV_FIXTURE):
-        Ok(lazy) => 
+        Ok(lazy) =>
             filtered = lazy.filter(gt(col("qty"), int_lit(2)))
             match session.collect(filtered):
-                Ok(df) => 
+                Ok(df) =>
                     payload = df.preview_text()
                     assert_eq(df.row_count(), 2, "qty > 2 should materialize two matching rows")
                     assert payload.contains("SKU-LAMP-11"), "qty > 2 should keep the row with qty 4"
                     assert payload.contains("SKU-MAT-07"), "qty > 2 should keep the row with qty 3"
                     assert payload.contains("SKU-CHAIR-01") is false, "qty > 2 should exclude rows with qty 2"
-                Err(err) => 
+                Err(err) =>
                     assert err.kind == "__unexpected__", err.error_message()
-
-        Err(err) => 
+        Err(err) =>
             assert err.kind == "__unexpected__", err.error_message()
-
 
 
 def test_session_filters__collect_executes_eq_predicate() -> None:
@@ -50,10 +49,10 @@ def test_session_filters__collect_executes_eq_predicate() -> None:
 
     # -- Act & Assert --
     match session.read_csv[OrderLine]("order_lines", ORDER_LINES_CSV_FIXTURE):
-        Ok(lazy) => 
+        Ok(lazy) =>
             filtered = lazy.filter(eq(col("status"), str_lit("open")))
             match session.collect(filtered):
-                Ok(df) => 
+                Ok(df) =>
                     payload = df.preview_text()
                     assert_eq(df.row_count(), 3, "status == open should materialize the three open rows")
                     assert payload.contains("SKU-CHAIR-01"), "status == open should keep open rows"
@@ -61,9 +60,7 @@ def test_session_filters__collect_executes_eq_predicate() -> None:
                     assert payload.contains("SKU-MAT-07"), "status == open should keep the third open row"
                     assert payload.contains("SKU-LAMP-11") is false, "status == open should exclude closed rows"
                     assert payload.contains("SKU-MONITOR-24") is false, "status == open should exclude cancelled rows"
-                Err(err) => 
+                Err(err) =>
                     assert err.kind == "__unexpected__", err.error_message()
-
-        Err(err) => 
+        Err(err) =>
             assert err.kind == "__unexpected__", err.error_message()
-

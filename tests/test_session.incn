@@ -7,6 +7,7 @@ from dataset import lazy_frame_named_table
 from session import Session
 from substrait.inspect import read_kind_name, root_rel
 
+
 @derive(Clone)
 model Order:
     id: int
@@ -80,15 +81,13 @@ def test_session__register_tracks_named_sources() -> None:
     # -- Act --
     # register two sources with different logical names and kinds, asserting that no unexpected errors are raised
     match session.register("orders", csv_source(ORDERS_CSV_FIXTURE)):
-        Ok(_) => 
-            pass
-        Err(err) => 
+        Ok(_) => pass
+        Err(err) =>
             assert err.kind == "__unexpected__", err.error_message()
 
     match session.register("orders_archive", parquet_source(ORDERS_PARQUET_FIXTURE)):
-        Ok(_) => 
-            pass
-        Err(err) => 
+        Ok(_) => pass
+        Err(err) =>
             assert err.kind == "__unexpected__", err.error_message()
 
     # -- Assert --
@@ -107,18 +106,16 @@ def test_session__table_returns_prism_backed_named_table_plan() -> None:
     # -- Arrange --
     mut session = Session.default()
     match session.register("orders", csv_source(ORDERS_CSV_FIXTURE)):
-        Ok(_) => 
-            pass
-        Err(err) => 
+        Ok(_) => pass
+        Err(err) =>
             assert err.kind == "__unexpected__", err.error_message()
 
     # -- Act & Assert --
     match session.table[Order]("orders"):
-        Ok(lazy) => 
+        Ok(lazy) =>
             assert read_kind_name(root_rel(lazy.to_substrait_plan())) == "NamedTable", "table lookup should create a logical named-table read"
-        Err(err) => 
+        Err(err) =>
             assert err.kind == "__unexpected__", err.error_message()
-
 
 
 def test_session__read_csv_registers_source_and_returns_named_table_plan() -> None:
@@ -131,7 +128,7 @@ def test_session__read_csv_registers_source_and_returns_named_table_plan() -> No
 
     # -- Act & Assert --
     match session.read_csv[Order]("orders", ORDERS_CSV_FIXTURE):
-        Ok(lazy) => 
+        Ok(lazy) =>
             assert session.registration_count() == 1, "read_csv should register one CSV source"
             assert session.has_registration("orders") is true, "read_csv should register the provided logical name"
             assert session.registered_source_kind("orders") == "csv", "read_csv should register CSV source kind"
@@ -146,9 +143,8 @@ def test_session__read_csv_registers_source_and_returns_named_table_plan() -> No
             assert len(lazy_schema.declared_columns) == len(declared_cols), "lazy schema() should surface declared columns"
             assert len(lazy_schema.planned_columns) == len(planned_cols), "lazy schema() should surface planned columns"
             assert len(lazy_schema.resolved_columns) == 0, "lazy schema() should keep resolved columns empty pre-collect"
-        Err(err) => 
+        Err(err) =>
             assert err.kind == "__unexpected__", err.error_message()
-
 
 
 def test_session__read_csv_rejects_duplicate_logical_names() -> None:
@@ -156,18 +152,16 @@ def test_session__read_csv_rejects_duplicate_logical_names() -> None:
     # -- Arrange --
     mut session = Session.default()
     match session.read_csv[Order]("orders", ORDERS_CSV_FIXTURE):
-        Ok(_) => 
-            pass
-        Err(err) => 
+        Ok(_) => pass
+        Err(err) =>
             assert err.kind == "__unexpected__", err.error_message()
 
     # -- Act & Assert --
     match session.read_csv[Order]("orders", ORDERS_CSV_FIXTURE):
-        Ok(_) => 
+        Ok(_) =>
             assert false, "expected duplicate read_csv logical name to fail"
-        Err(err) => 
+        Err(err) =>
             assert err.kind == "duplicate_registration", "read_csv should surface duplicate-registration errors"
-
 
 
 def test_session__read_parquet_registers_source_and_executes_named_table_plan() -> None:
@@ -178,31 +172,26 @@ def test_session__read_parquet_registers_source_and_executes_named_table_plan() 
 
     # -- Act --
     match session.read_csv[Order]("orders_csv", ORDERS_CSV_FIXTURE):
-        Ok(csv_lazy) => 
+        Ok(csv_lazy) =>
             match session.write_parquet(csv_lazy, parquet_uri):
-                Ok(_) => 
-                    pass
-                Err(err) => 
+                Ok(_) => pass
+                Err(err) =>
                     assert err.kind == "__unexpected__", err.error_message()
-
-        Err(err) => 
+        Err(err) =>
             assert err.kind == "__unexpected__", err.error_message()
 
     # -- Assert --
     match session.read_parquet[Order]("orders_parquet", parquet_uri):
-        Ok(lazy) => 
+        Ok(lazy) =>
             assert session.has_registration("orders_parquet") is true, "read_parquet should register the provided logical name"
             assert session.registered_source_kind("orders_parquet") == "parquet", "read_parquet should register Parquet source kind"
             assert read_kind_name(root_rel(lazy.to_substrait_plan())) == "NamedTable", "read_parquet should lower through a logical named-table root"
             match session.execute(lazy):
-                Ok(_) => 
-                    pass
-                Err(err) => 
+                Ok(_) => pass
+                Err(err) =>
                     assert err.kind == "__unexpected__", err.error_message()
-
-        Err(err) => 
+        Err(err) =>
             assert err.kind == "__unexpected__", err.error_message()
-
 
 
 def test_session__read_arrow_registers_source_and_returns_named_table_plan() -> None:
@@ -212,14 +201,13 @@ def test_session__read_arrow_registers_source_and_returns_named_table_plan() -> 
 
     # -- Act & Assert --
     match session.read_arrow[Order]("orders_arrow", ORDERS_ARROW_FIXTURE):
-        Ok(lazy) => 
+        Ok(lazy) =>
             assert session.registration_count() == 1, "read_arrow should register one Arrow source"
             assert session.has_registration("orders_arrow") is true, "read_arrow should register the provided logical name"
             assert session.registered_source_kind("orders_arrow") == "arrow", "read_arrow should register Arrow source kind"
             assert read_kind_name(root_rel(lazy.to_substrait_plan())) == "NamedTable", "read_arrow should lower through a logical named-table root"
-        Err(err) => 
+        Err(err) =>
             assert err.kind == "__unexpected__", err.error_message()
-
 
 
 def test_session__execute_runs_plan_and_preserves_carrier_shape() -> None:
@@ -229,16 +217,14 @@ def test_session__execute_runs_plan_and_preserves_carrier_shape() -> None:
 
     # -- Act & Assert --
     match session.read_csv[Order]("orders", ORDERS_CSV_FIXTURE):
-        Ok(lazy) => 
+        Ok(lazy) =>
             match session.execute(lazy):
-                Ok(executed) => 
+                Ok(executed) =>
                     assert read_kind_name(root_rel(executed.to_substrait_plan())) == "NamedTable", "execute should preserve deferred named-table carrier shape on success"
-                Err(err) => 
+                Err(err) =>
                     assert err.kind == "__unexpected__", err.error_message()
-
-        Err(err) => 
+        Err(err) =>
             assert err.kind == "__unexpected__", err.error_message()
-
 
 
 def test_session__collect_returns_materialized_dataframe() -> None:
@@ -248,9 +234,9 @@ def test_session__collect_returns_materialized_dataframe() -> None:
 
     # -- Act & Assert --
     match session.read_csv[Order]("orders", ORDERS_CSV_FIXTURE):
-        Ok(lazy) => 
+        Ok(lazy) =>
             match session.collect(lazy):
-                Ok(df) => 
+                Ok(df) =>
                     assert read_kind_name(root_rel(df.to_substrait_plan())) == "NamedTable", "collect should return a typed DataFrame carrier"
                     assert len(df.preview_text()) > 0, "collect should populate a non-empty preview render for display/debug paths"
                     assert df.row_count() > 0, "collect should record structural row-count metadata"
@@ -266,12 +252,10 @@ def test_session__collect_returns_materialized_dataframe() -> None:
                     assert len(schema.declared_columns) == len(declared_cols), "schema() should surface declared columns"
                     assert len(schema.planned_columns) == len(planned_cols), "schema() should surface planned columns"
                     assert len(schema.resolved_columns) == len(resolved_cols), "schema() should surface resolved columns"
-                Err(err) => 
+                Err(err) =>
                     assert err.kind == "__unexpected__", err.error_message()
-
-        Err(err) => 
+        Err(err) =>
             assert err.kind == "__unexpected__", err.error_message()
-
 
 
 def test_session__lazy_collect_fails_without_active_session() -> None:
@@ -282,11 +266,10 @@ def test_session__lazy_collect_fails_without_active_session() -> None:
 
     # -- Act & Assert --
     match lazy.collect():
-        Ok(_) => 
+        Ok(_) =>
             assert false, "expected lazy.collect() to fail without an active Session"
-        Err(err) => 
+        Err(err) =>
             assert err.kind == "no_active_session", "lazy.collect should fail with no_active_session when no session is active"
-
 
 
 def test_session__activate_enables_lazy_collect_with_live_session() -> None:
@@ -297,17 +280,15 @@ def test_session__activate_enables_lazy_collect_with_live_session() -> None:
 
     # -- Act & Assert --
     match session.read_csv[Order]("orders", ORDERS_CSV_FIXTURE):
-        Ok(lazy) => 
+        Ok(lazy) =>
             session.activate()
             match lazy.collect():
-                Ok(df) => 
+                Ok(df) =>
                     assert read_kind_name(root_rel(df.to_substrait_plan())) == "NamedTable", "lazy.collect should delegate through the active session"
-                Err(err) => 
+                Err(err) =>
                     assert err.kind == "__unexpected__", err.error_message()
-
-        Err(err) => 
+        Err(err) =>
             assert err.kind == "__unexpected__", err.error_message()
-
 
 
 def test_session__lazy_collect_uses_currently_active_session() -> None:
@@ -319,18 +300,16 @@ def test_session__lazy_collect_uses_currently_active_session() -> None:
 
     # -- Act & Assert --
     match source_session.read_csv[Order]("orders", ORDERS_CSV_FIXTURE):
-        Ok(lazy) => 
+        Ok(lazy) =>
             source_session.activate()
             other_session.activate()
             match lazy.collect():
-                Ok(_) => 
+                Ok(_) =>
                     assert false, "expected lazy.collect to resolve against the currently active session"
-                Err(err) => 
+                Err(err) =>
                     assert err.kind == "unknown_table", "active-session switching should route collect through the latest active session"
-
-        Err(err) => 
+        Err(err) =>
             assert err.kind == "__unexpected__", err.error_message()
-
 
 
 def test_session__clear_active_session_forces_no_active_session() -> None:
@@ -340,18 +319,16 @@ def test_session__clear_active_session_forces_no_active_session() -> None:
 
     # -- Act & Assert --
     match session.read_csv[Order]("orders", ORDERS_CSV_FIXTURE):
-        Ok(lazy) => 
+        Ok(lazy) =>
             session.activate()
             Session.clear_active_session()
             match lazy.collect():
-                Ok(_) => 
+                Ok(_) =>
                     assert false, "expected clear_active_session to remove active-session binding"
-                Err(err) => 
+                Err(err) =>
                     assert err.kind == "no_active_session", "clear_active_session should force no_active_session for lazy.collect"
-
-        Err(err) => 
+        Err(err) =>
             assert err.kind == "__unexpected__", err.error_message()
-
 
 
 def test_session__read_transform_collect_write_csv_end_to_end() -> None:
@@ -362,24 +339,21 @@ def test_session__read_transform_collect_write_csv_end_to_end() -> None:
 
     # -- Act & Assert --
     match session.read_csv[Order]("orders", ORDERS_CSV_FIXTURE):
-        Ok(lazy) => 
+        Ok(lazy) =>
             transformed = lazy.limit(2)
             match session.collect(transformed.clone()):
-                Ok(df) => 
+                Ok(df) =>
                     assert len(df.preview_text()) > 0, "collect should materialize preview text before downstream sink operations"
                     assert df.row_count() > 0, "collect should record row-count metadata before downstream sink operations"
                     match session.write_csv(transformed, output_uri):
-                        Ok(_) => 
+                        Ok(_) =>
                             assert Path.new(output_uri).exists() is true, "write_csv should still succeed on the Session path after collect"
-                        Err(err) => 
+                        Err(err) =>
                             assert err.kind == "__unexpected__", err.error_message()
-
-                Err(err) => 
+                Err(err) =>
                     assert err.kind == "__unexpected__", err.error_message()
-
-        Err(err) => 
+        Err(err) =>
             assert err.kind == "__unexpected__", err.error_message()
-
 
 
 @parametrize("sink_kind, output_name", [("csv", "session_write_csv_output.csv"), ("parquet", "session_write_parquet_output")])
@@ -391,26 +365,23 @@ def test_session__write_succeeds_for_deferred_lazyframe(sink_kind: str, output_n
 
     # -- Act & Assert --
     match session.read_csv[Order]("orders", ORDERS_CSV_FIXTURE):
-        Ok(lazy) => 
+        Ok(lazy) =>
             if sink_kind == "csv":
                 match session.write_csv(lazy, output_uri):
-                    Ok(_) => 
+                    Ok(_) =>
                         assert true, "write_csv should complete successfully"
-                    Err(err) => 
+                    Err(err) =>
                         assert err.kind == "__unexpected__", err.error_message()
-
             elif sink_kind == "parquet":
                 match session.write_parquet(lazy, output_uri):
-                    Ok(_) => 
+                    Ok(_) =>
                         assert true, "write_parquet should complete successfully"
-                    Err(err) => 
+                    Err(err) =>
                         assert err.kind == "__unexpected__", err.error_message()
-
             else:
                 assert false, f"unexpected sink kind: {sink_kind}"
-        Err(err) => 
+        Err(err) =>
             assert err.kind == "__unexpected__", err.error_message()
-
 
 
 def test_session__write_rejects_empty_sink_uri() -> None:
@@ -420,16 +391,14 @@ def test_session__write_rejects_empty_sink_uri() -> None:
 
     # -- Act & Assert --
     match session.read_csv[Order]("orders", ORDERS_CSV_FIXTURE):
-        Ok(lazy) => 
+        Ok(lazy) =>
             match session.write_csv(lazy, ""):
-                Ok(_) => 
+                Ok(_) =>
                     assert false, "expected empty CSV sink URI to fail"
-                Err(err) => 
+                Err(err) =>
                     assert err.kind == "invalid_sink", "write_csv should reject empty sink URIs"
-
-        Err(err) => 
+        Err(err) =>
             assert err.kind == "__unexpected__", err.error_message()
-
 
 
 def test_session__register_rejects_duplicates_with_typed_error() -> None:
@@ -437,18 +406,16 @@ def test_session__register_rejects_duplicates_with_typed_error() -> None:
     # -- Arrange --
     mut session = Session.default()
     match session.register("orders", csv_source(ORDERS_CSV_FIXTURE)):
-        Ok(_) => 
-            pass
-        Err(err) => 
+        Ok(_) => pass
+        Err(err) =>
             assert err.kind == "__unexpected__", err.error_message()
 
     # -- Act & Assert --
     match session.register("orders", csv_source(ORDERS_CSV_FIXTURE)):
-        Ok(_) => 
+        Ok(_) =>
             assert false, "expected duplicate registration to fail"
-        Err(err) => 
+        Err(err) =>
             assert err.kind == "duplicate_registration", "duplicate names should surface a typed registration error"
-
 
 
 def test_session__table_reports_unknown_name_with_typed_error() -> None:
@@ -458,11 +425,10 @@ def test_session__table_reports_unknown_name_with_typed_error() -> None:
 
     # -- Act & Assert --
     match session.table[Order]("missing"):
-        Ok(_) => 
+        Ok(_) =>
             assert false, "expected unknown table lookup to fail"
-        Err(err) => 
+        Err(err) =>
             assert err.kind == "unknown_table", "unknown table lookup should surface a typed binding error"
-
 
 
 def test_session__empty_registration_input_is_rejected() -> None:
@@ -472,14 +438,13 @@ def test_session__empty_registration_input_is_rejected() -> None:
 
     # -- Act & Assert --
     match session.register("", csv_source(ORDERS_CSV_FIXTURE)):
-        Ok(_) => 
+        Ok(_) =>
             assert false, "expected empty logical name to fail"
-        Err(err) => 
+        Err(err) =>
             assert err.kind == "invalid_registration", "empty logical names should be rejected"
 
     match session.register("orders", csv_source("")):
-        Ok(_) => 
+        Ok(_) =>
             assert false, "expected empty source uri to fail"
-        Err(err) => 
+        Err(err) =>
             assert err.kind == "invalid_registration", "empty source uris should be rejected"
-

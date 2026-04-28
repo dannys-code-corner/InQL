@@ -22,7 +22,13 @@ const DEFAULT_SUBSTRAIT_PRODUCER_NAME: str = "inql-rfc002"
 
 def _default_version() -> Version:
     """Return the default Substrait plan version envelope."""
-    return Version(major_number=0, minor_number=63, patch_number=0, git_hash="", producer=DEFAULT_SUBSTRAIT_PRODUCER_NAME)
+    return Version(
+        major_number=0,
+        minor_number=63,
+        patch_number=0,
+        git_hash="",
+        producer=DEFAULT_SUBSTRAIT_PRODUCER_NAME,
+    )
 
 
 def _plan_root(input: Rel, names: list[str]) -> PlanRel:
@@ -32,7 +38,16 @@ def _plan_root(input: Rel, names: list[str]) -> PlanRel:
 
 pub def empty_plan() -> Plan:
     """Return an empty proto-backed Substrait plan with the RFC 002 default version."""
-    return Plan(version=Some(_default_version()), extension_urns=[], extensions=[], relations=[], advanced_extensions=None, expected_type_urls=[], parameter_bindings=[], type_aliases=[])
+    return Plan(
+        version=Some(_default_version()),
+        extension_urns=[],
+        extensions=[],
+        relations=[],
+        advanced_extensions=None,
+        expected_type_urls=[],
+        parameter_bindings=[],
+        type_aliases=[],
+    )
 
 
 pub def substrait_release_tag() -> str:
@@ -47,7 +62,16 @@ pub def substrait_producer_name() -> str:
 
 pub def plan_from_root_relation(input: Rel, names: list[str]) -> Plan:
     """Wrap one root relation in a complete Substrait `Plan` envelope."""
-    return Plan(version=Some(_default_version()), extension_urns=extension_urns_for_rel(input), extensions=plan_extensions_for_rel(input), relations=[_plan_root(input, names)], advanced_extensions=None, expected_type_urls=[], parameter_bindings=[], type_aliases=[])
+    return Plan(
+        version=Some(_default_version()),
+        extension_urns=extension_urns_for_rel(input),
+        extensions=plan_extensions_for_rel(input),
+        relations=[_plan_root(input, names)],
+        advanced_extensions=None,
+        expected_type_urls=[],
+        parameter_bindings=[],
+        type_aliases=[],
+    )
 
 
 pub def plan_from_named_table(table_name: str) -> Plan:

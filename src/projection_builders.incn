@@ -8,6 +8,7 @@ typechecker changes in the Incan compiler.
 
 import std.testing
 
+
 @derive(Clone)
 pub enum ColumnExprKind:
     """Supported expression kinds for the current projection-builder surface."""
@@ -44,37 +45,93 @@ pub model ProjectionAssignment:
 
 pub def col(name: str) -> ColumnExpr:
     """Build one named column reference expression."""
-    return ColumnExpr(kind=ColumnExprKind.Column, column_name=name, int_value=0, float_value=0.0, string_value="", bool_value=false, arguments=[])
+    return ColumnExpr(
+        kind=ColumnExprKind.Column,
+        column_name=name,
+        int_value=0,
+        float_value=0.0,
+        string_value="",
+        bool_value=false,
+        arguments=[],
+    )
 
 
 pub def int_expr(value: int) -> ColumnExpr:
     """Build one integer literal expression."""
-    return ColumnExpr(kind=ColumnExprKind.IntLiteral, column_name="", int_value=value, float_value=0.0, string_value="", bool_value=false, arguments=[])
+    return ColumnExpr(
+        kind=ColumnExprKind.IntLiteral,
+        column_name="",
+        int_value=value,
+        float_value=0.0,
+        string_value="",
+        bool_value=false,
+        arguments=[],
+    )
 
 
 pub def float_expr(value: float) -> ColumnExpr:
     """Build one float literal expression."""
-    return ColumnExpr(kind=ColumnExprKind.FloatLiteral, column_name="", int_value=0, float_value=value, string_value="", bool_value=false, arguments=[])
+    return ColumnExpr(
+        kind=ColumnExprKind.FloatLiteral,
+        column_name="",
+        int_value=0,
+        float_value=value,
+        string_value="",
+        bool_value=false,
+        arguments=[],
+    )
 
 
 pub def str_expr(value: str) -> ColumnExpr:
     """Build one string literal expression."""
-    return ColumnExpr(kind=ColumnExprKind.StringLiteral, column_name="", int_value=0, float_value=0.0, string_value=value, bool_value=false, arguments=[])
+    return ColumnExpr(
+        kind=ColumnExprKind.StringLiteral,
+        column_name="",
+        int_value=0,
+        float_value=0.0,
+        string_value=value,
+        bool_value=false,
+        arguments=[],
+    )
 
 
 pub def bool_expr(value: bool) -> ColumnExpr:
     """Build one boolean literal expression."""
-    return ColumnExpr(kind=ColumnExprKind.BoolLiteral, column_name="", int_value=0, float_value=0.0, string_value="", bool_value=value, arguments=[])
+    return ColumnExpr(
+        kind=ColumnExprKind.BoolLiteral,
+        column_name="",
+        int_value=0,
+        float_value=0.0,
+        string_value="",
+        bool_value=value,
+        arguments=[],
+    )
 
 
 pub def add(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
     """Build one binary addition expression."""
-    return ColumnExpr(kind=ColumnExprKind.Add, column_name="", int_value=0, float_value=0.0, string_value="", bool_value=false, arguments=[left, right])
+    return ColumnExpr(
+        kind=ColumnExprKind.Add,
+        column_name="",
+        int_value=0,
+        float_value=0.0,
+        string_value="",
+        bool_value=false,
+        arguments=[left, right],
+    )
 
 
 pub def mul(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
     """Build one binary multiply expression."""
-    return ColumnExpr(kind=ColumnExprKind.Multiply, column_name="", int_value=0, float_value=0.0, string_value="", bool_value=false, arguments=[left, right])
+    return ColumnExpr(
+        kind=ColumnExprKind.Multiply,
+        column_name="",
+        int_value=0,
+        float_value=0.0,
+        string_value="",
+        bool_value=false,
+        arguments=[left, right],
+    )
 
 
 pub def with_column_assignment(name: str, expr: ColumnExpr) -> ProjectionAssignment:

@@ -3,6 +3,7 @@
 from functions import col, count, display, sum
 from session import Session, SessionError, report_session_error
 
+
 @derive(Clone)
 pub model AggregateOrder:
     pub customer_id: str
@@ -17,7 +18,6 @@ def main() -> None:
     match _group_collect_write(session, input_uri, output_uri):
         Ok(_) => println(f"Wrote grouped aggregate CSV to: {output_uri}")
         Err(err) => report_session_error("example.session_grouped_aggregate_csv", err)
-
 
 
 def _group_collect_write(mut session: Session, input_uri: str, output_uri: str) -> Result[None, SessionError]:

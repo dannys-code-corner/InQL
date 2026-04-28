@@ -3,6 +3,7 @@
 from functions import display
 from session import Session, SessionError, report_session_error
 
+
 @derive(Clone)
 pub model OrderLine:
     pub order_id: int
@@ -25,8 +26,11 @@ def main() -> None:
         Err(err) => report_session_error("example.read_transform_write_order_lines_csv", err)
 
 
-
-def _read_transform_collect_display_write(mut session: Session, input_uri: str, output_uri: str) -> Result[None, SessionError]:
+def _read_transform_collect_display_write(
+    mut session: Session,
+    input_uri: str,
+    output_uri: str,
+) -> Result[None, SessionError]:
     raw = session.read_csv[OrderLine]("order_lines", input_uri)?
     # Activate after registration so LazyFrame.collect/display sees the registered sources.
     session.activate()
