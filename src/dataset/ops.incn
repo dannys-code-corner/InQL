@@ -22,6 +22,7 @@ from substrait.relations import (
     sort_rel,
 )
 
+
 pub def filter_ds(rel: Rel, predicate: FilterPredicate) -> Rel:
     """
     Apply dataset-level filter intent to one relation.

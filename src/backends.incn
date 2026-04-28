@@ -6,6 +6,7 @@ This module intentionally starts small: DataFusion is the first real backend con
 implemented backend in the current slice.
 """
 
+
 @derive(Clone)
 pub class DataFusion:
     """Minimal backend configuration object for the reference execution backend."""

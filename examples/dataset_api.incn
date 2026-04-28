@@ -15,6 +15,7 @@ from functions import add, col, count, eq, gt, int_expr, int_lit, mul, str_lit, 
 from dataset import DataSet, BoundedDataSet, DataFrame, LazyFrame
 from models import Order, Customer
 
+
 def filter_high_value_orders(orders: LazyFrame[Order]) -> LazyFrame[Order]:
     return orders.filter(gt(col("amount"), int_lit(100)))
 

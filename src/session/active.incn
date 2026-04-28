@@ -7,6 +7,7 @@ object to keep ownership boundaries explicit across session submodules.
 
 from backends import BackendSelection, TableSource, default_backend_selection
 
+
 @derive(Clone)
 pub class ActiveRegistration:
     pub logical_name: str
@@ -63,6 +64,7 @@ pub def get_active_session_state() -> Result[ActiveSessionState, ActiveSessionEr
         found_flag = true
     if found_flag is false or latest_has_active is false:
         return Err(ActiveSessionError(kind="no_active_session", message=err_msg))
+
     # State snapshots are also append-only.
     # The latest entry is the active snapshot payload associated with the most recent lifecycle marker.
     mut found_state = false
@@ -72,4 +74,5 @@ pub def get_active_session_state() -> Result[ActiveSessionState, ActiveSessionEr
         found_state = true
     if found_state is false:
         return Err(ActiveSessionError(kind="no_active_session", message=err_msg))
+
     return Ok(active)

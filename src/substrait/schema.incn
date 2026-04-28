@@ -23,6 +23,7 @@ from rust::substrait::proto::type import (
     Struct,
 )
 
+
 @derive(Clone)
 pub model DemoCustomer:
     pub id: int
@@ -53,7 +54,14 @@ pub model RowShapeSpec:
 
 pub def demo_customer_row_shape() -> RowShapeSpec:
     """Return the row shape for `DemoCustomer` (manual until compiler-derived)."""
-    return RowShapeSpec(model_name=str("DemoCustomer"), columns=[RowColumnSpec(name=str("id"), kind=SubstraitPrimitiveKind.I64, nullable=false), RowColumnSpec(name=str("name"), kind=SubstraitPrimitiveKind.String, nullable=true)])
+    return RowShapeSpec(
+        model_name=str("DemoCustomer"),
+        columns=[RowColumnSpec(name=str("id"), kind=SubstraitPrimitiveKind.I64, nullable=false), RowColumnSpec(
+            name=str("name"),
+            kind=SubstraitPrimitiveKind.String,
+            nullable=true,
+        )],
+    )
 
 
 pub def row_shape_field_names(shape: RowShapeSpec) -> list[str]:
@@ -74,7 +82,13 @@ def _type_from_primitive(kind: SubstraitPrimitiveKind, nullable: bool) -> Type:
     if kind == SubstraitPrimitiveKind.F64:
         return Type(kind=Some(Kind.Fp64(Fp64(type_variation_reference=0, nullability=n.into()))))
     if kind == SubstraitPrimitiveKind.Timestamp:
-        return Type(kind=Some(Kind.PrecisionTimestamp(PrecisionTimestamp(type_variation_reference=0, nullability=n.into(), precision=6))))
+        return Type(
+            kind=Some(
+                Kind.PrecisionTimestamp(
+                    PrecisionTimestamp(type_variation_reference=0, nullability=n.into(), precision=6),
+                ),
+            ),
+        )
     return Type(kind=Some(Kind.String(SubstraitString(type_variation_reference=0, nullability=n.into()))))
 
 
@@ -91,13 +105,21 @@ pub def row_shape_to_substrait_struct_type(shape: RowShapeSpec) -> Type:
     `NamedStruct` boundary when wiring read roots (prost field `struct` is a Rust keyword and
     is awkward to populate from Incan literals today).
     """
-    struct_inner = Struct(types=_row_shape_field_types(shape), type_variation_reference=0, nullability=Nullability.Required.into())
+    struct_inner = Struct(
+        types=_row_shape_field_types(shape),
+        type_variation_reference=0,
+        nullability=Nullability.Required.into(),
+    )
     return Type(kind=Some(Kind.Struct(struct_inner)))
 
 
 pub def row_shape_to_named_struct(shape: RowShapeSpec) -> NamedStruct:
     """Build a NamedStruct from a row shape using DFS field order."""
-    struct_inner = Struct(types=_row_shape_field_types(shape), type_variation_reference=0, nullability=Nullability.Required.into())
+    struct_inner = Struct(
+        types=_row_shape_field_types(shape),
+        type_variation_reference=0,
+        nullability=Nullability.Required.into(),
+    )
     return NamedStruct(names=row_shape_field_names(shape), struct=Some(struct_inner))
 
 

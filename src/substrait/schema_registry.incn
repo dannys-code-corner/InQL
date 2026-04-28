@@ -8,9 +8,13 @@ reads. It does not build plans or relations beyond the schema envelopes themselv
 from rust::substrait::proto import NamedStruct
 from substrait.schema import RowColumnSpec, RowShapeSpec, SubstraitPrimitiveKind, row_shape_to_named_struct
 
+
 def _logical_shape(name: str) -> RowShapeSpec:
     """Build one minimal placeholder logical row shape for helper-generated reads."""
-    return RowShapeSpec(model_name=name, columns=[RowColumnSpec(name="id", kind=SubstraitPrimitiveKind.I64, nullable=false)])
+    return RowShapeSpec(
+        model_name=name,
+        columns=[RowColumnSpec(name="id", kind=SubstraitPrimitiveKind.I64, nullable=false)],
+    )
 
 
 def _default_named_struct(name: str) -> NamedStruct:

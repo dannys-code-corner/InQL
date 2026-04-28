@@ -28,6 +28,11 @@ const FUNCTION_EXTENSION_URI: str = "https://inql.io/extensions/v0.1/functions.y
 const EXPLODE_EXTENSION_URI: str = "https://inql.io/extensions/v0.1/unnest.yaml#explode"
 
 
+pub def function_extension_uri() -> str:
+    """Return the registered extension URI used for shared function anchors."""
+    return FUNCTION_EXTENSION_URI
+
+
 pub def explode_extension_uri() -> str:
     """Return the registered extension URI used for EXPLODE-style gap encoding."""
     return EXPLODE_EXTENSION_URI
@@ -58,128 +63,117 @@ pub def scalar_function_name_from_anchor(anchor: int) -> str:
 
 def _aggregate_extension_decl(anchor: int) -> SimpleExtensionDeclaration:
     """Build one aggregate-function extension declaration for the provided anchor."""
-    return SimpleExtensionDeclaration(mapping_type=Some(MappingType.ExtensionFunction(ExtensionFunction(extension_urn_reference=to_rust_u32(FUNCTION_EXTENSION_URN_ANCHOR), function_anchor=to_rust_u32(anchor), name=aggregate_function_name_from_anchor(anchor)))))
+    return SimpleExtensionDeclaration(
+        mapping_type=Some(
+            MappingType.ExtensionFunction(
+                ExtensionFunction(
+                    extension_urn_reference=to_rust_u32(FUNCTION_EXTENSION_URN_ANCHOR),
+                    function_anchor=to_rust_u32(anchor),
+                    name=aggregate_function_name_from_anchor(anchor),
+                ),
+            ),
+        ),
+    )
 
 
 def _scalar_extension_decl(anchor: int) -> SimpleExtensionDeclaration:
     """Build one scalar-function extension declaration for the provided anchor."""
-    return SimpleExtensionDeclaration(mapping_type=Some(MappingType.ExtensionFunction(ExtensionFunction(extension_urn_reference=to_rust_u32(FUNCTION_EXTENSION_URN_ANCHOR), function_anchor=to_rust_u32(anchor), name=scalar_function_name_from_anchor(anchor)))))
+    return SimpleExtensionDeclaration(
+        mapping_type=Some(
+            MappingType.ExtensionFunction(
+                ExtensionFunction(
+                    extension_urn_reference=to_rust_u32(FUNCTION_EXTENSION_URN_ANCHOR),
+                    function_anchor=to_rust_u32(anchor),
+                    name=scalar_function_name_from_anchor(anchor),
+                ),
+            ),
+        ),
+    )
 
 
 def _relation_children(rel: Rel) -> list[Rel]:
     """Return direct child relations for one relation node while walking extension usage."""
     match rel.rel_type:
-        Some(RelType.Filter(filter)) => 
+        Some(RelType.Filter(filter)) =>
             match filter.input:
-                Some(child) => 
-                    return [child.as_ref().clone()]
-                None => 
-                    return []
-
-        Some(RelType.Project(project)) => 
+                Some(child) => return [child.as_ref().clone()]
+                None => return []
+        Some(RelType.Project(project)) =>
             match project.input:
-                Some(child) => 
-                    return [child.as_ref().clone()]
-                None => 
-                    return []
-
-        Some(RelType.Join(join)) => 
+                Some(child) => return [child.as_ref().clone()]
+                None => return []
+        Some(RelType.Join(join)) =>
             mut children: list[Rel] = []
             match join.left:
                 Some(left) => children.append(left.as_ref().clone())
-                None => 
-                    pass
+                None => pass
 
             match join.right:
                 Some(right) => children.append(right.as_ref().clone())
-                None => 
-                    pass
+                None => pass
 
             return children
-        Some(RelType.Cross(cross)) => 
+        Some(RelType.Cross(cross)) =>
             mut children: list[Rel] = []
             match cross.left:
                 Some(left) => children.append(left.as_ref().clone())
-                None => 
-                    pass
+                None => pass
 
             match cross.right:
                 Some(right) => children.append(right.as_ref().clone())
-                None => 
-                    pass
+                None => pass
 
             return children
-        Some(RelType.Aggregate(aggregate)) => 
+        Some(RelType.Aggregate(aggregate)) =>
             match aggregate.input:
-                Some(child) => 
-                    return [child.as_ref().clone()]
-                None => 
-                    return []
-
-        Some(RelType.Sort(sort)) => 
+                Some(child) => return [child.as_ref().clone()]
+                None => return []
+        Some(RelType.Sort(sort)) =>
             match sort.input:
-                Some(child) => 
-                    return [child.as_ref().clone()]
-                None => 
-                    return []
-
-        Some(RelType.Fetch(fetch)) => 
+                Some(child) => return [child.as_ref().clone()]
+                None => return []
+        Some(RelType.Fetch(fetch)) =>
             match fetch.input:
-                Some(child) => 
-                    return [child.as_ref().clone()]
-                None => 
-                    return []
-
-        Some(RelType.Set(set_rel)) => 
-            return set_rel.inputs
-        Some(RelType.ExtensionSingle(extension)) => 
+                Some(child) => return [child.as_ref().clone()]
+                None => return []
+        Some(RelType.Set(set_rel)) => return set_rel.inputs
+        Some(RelType.ExtensionSingle(extension)) =>
             match extension.input:
-                Some(child) => 
-                    return [child.as_ref().clone()]
-                None => 
-                    return []
-
-        _ => 
-            return []
-
+                Some(child) => return [child.as_ref().clone()]
+                None => return []
+        _ => return []
 
 
 def _expr_uses_scalar_function_anchor(expr: Expression, expected_anchor: int) -> bool:
     """Return whether one expression tree uses the requested scalar-function anchor."""
     expected_function_anchor = to_rust_u32(expected_anchor)
     match expr.rex_type:
-        Some(RexType.ScalarFunction(fun)) => 
+        Some(RexType.ScalarFunction(fun)) =>
             if fun.function_reference == expected_function_anchor:
                 return true
             for argument in fun.arguments:
                 match argument.arg_type:
-                    Some(ArgType.Value(value)) => 
+                    Some(ArgType.Value(value)) =>
                         if _expr_uses_scalar_function_anchor(value, expected_anchor):
                             return true
-                    _ => 
-                        pass
+                    _ => pass
 
             return false
-        _ => 
-            return false
-
+        _ => return false
 
 
 def _rel_uses_aggregate_function_anchor(rel: Rel, expected_anchor: int) -> bool:
     """Return whether one relation subtree uses the requested aggregate-function anchor."""
     expected_function_anchor = to_rust_u32(expected_anchor)
     match rel.rel_type.clone():
-        Some(RelType.Aggregate(aggregate_rel)) => 
+        Some(RelType.Aggregate(aggregate_rel)) =>
             for measure in aggregate_rel.measures:
                 match measure.measure:
-                    Some(agg_fn) => 
+                    Some(agg_fn) =>
                         if agg_fn.function_reference == expected_function_anchor:
                             return true
-                    None => 
-                        pass
-
-        _ => 
-            pass
+                    None => pass
+        _ => pass
 
     for child in _relation_children(rel):
         if _rel_uses_aggregate_function_anchor(child, expected_anchor):
@@ -190,20 +184,17 @@ def _rel_uses_aggregate_function_anchor(rel: Rel, expected_anchor: int) -> bool:
 def _rel_uses_scalar_function_anchor(rel: Rel, expected_anchor: int) -> bool:
     """Return whether one relation subtree uses the requested scalar-function anchor."""
     match rel.rel_type.clone():
-        Some(RelType.Filter(filter_rel)) => 
+        Some(RelType.Filter(filter_rel)) =>
             match filter_rel.condition:
-                Some(condition) => 
+                Some(condition) =>
                     if _expr_uses_scalar_function_anchor(condition.as_ref().clone(), expected_anchor):
                         return true
-                None => 
-                    pass
-
-        Some(RelType.Project(project_rel)) => 
+                None => pass
+        Some(RelType.Project(project_rel)) =>
             for expr in project_rel.expressions:
                 if _expr_uses_scalar_function_anchor(expr, expected_anchor):
                     return true
-        _ => 
-            pass
+        _ => pass
 
     for child in _relation_children(rel):
         if _rel_uses_scalar_function_anchor(child, expected_anchor):
@@ -283,16 +274,13 @@ def _collect_extension_urn_strings(rel: Rel) -> list[str]:
     """Recursively collect extension URI strings from one relation subtree."""
     mut urns: list[str] = []
     match rel.rel_type.clone():
-        Some(RelType.ExtensionSingle(extension)) => 
+        Some(RelType.ExtensionSingle(extension)) =>
             match extension.detail:
-                Some(detail) => 
+                Some(detail) =>
                     if detail.type_url != "":
                         urns.append(detail.type_url)
-                None => 
-                    pass
-
-        _ => 
-            pass
+                None => pass
+        _ => pass
 
     for child in _relation_children(rel):
         for urn in _collect_extension_urn_strings(child):
@@ -304,7 +292,12 @@ pub def extension_urns_for_rel(rel: Rel) -> list[SimpleExtensionUrn]:
     """Collect extension URNs required by one relation subtree."""
     mut urns: list[SimpleExtensionUrn] = []
     if _function_extension_urn_is_required(rel.clone()):
-        urns.append(SimpleExtensionUrn(extension_urn_anchor=to_rust_u32(FUNCTION_EXTENSION_URN_ANCHOR), urn=FUNCTION_EXTENSION_URI))
+        urns.append(
+            SimpleExtensionUrn(
+                extension_urn_anchor=to_rust_u32(FUNCTION_EXTENSION_URN_ANCHOR),
+                urn=FUNCTION_EXTENSION_URI,
+            ),
+        )
     for urn in _collect_extension_urn_strings(rel):
         urns.append(SimpleExtensionUrn(extension_urn_anchor=to_rust_u32(RELATION_EXTENSION_URN_ANCHOR), urn=urn))
     return urns

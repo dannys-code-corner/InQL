@@ -4,7 +4,7 @@ from std.testing import assert_eq
 from aggregate_builders import AggregateMeasure, AggregateKind
 from functions import add, always_true, col, int_expr, mul
 from projection_builders import with_column_assignment
-from substrait.extensions import explode_extension_uri, registered_substrait_extension_uris
+from substrait.extensions import explode_extension_uri, function_extension_uri, registered_substrait_extension_uris
 from substrait.inspect import (
     plan_contains_relation_kind,
     plan_has_extension_urn,
@@ -64,6 +64,7 @@ from substrait.conformance import (
     scenario_matches_root_shape,
 )
 
+
 def _core_keys() -> list[CoreScenarioKey]:
     return [CoreScenarioKey.ReadNamedTable, CoreScenarioKey.ReadLocalFiles, CoreScenarioKey.ReadVirtualTable, CoreScenarioKey.FilterRows, CoreScenarioKey.ProjectComputedColumns, CoreScenarioKey.JoinRelVariants, CoreScenarioKey.CrossRelCartesian, CoreScenarioKey.AggregateGroupingSets, CoreScenarioKey.SortRelOrdering, CoreScenarioKey.FetchRelLimitOffset, CoreScenarioKey.SetRelOperations, CoreScenarioKey.ReferenceRelSharedSubplan]
 
@@ -103,7 +104,7 @@ def _fixture_col_primary() -> str:
 
 def _fixture_local_parquet_uri() -> str:
     """Return one neutral fixture parquet URI for local-files scenarios."""
-    return "file:///tmp/__t_main.parquet"
+    return "fixture://__t_main.parquet"
 
 
 def _fixture_virtual_table_name() -> str:
@@ -133,7 +134,7 @@ def test_plan__named_table_root_kind() -> None:
 def test_plan__read_root_kinds_are_distinguished() -> None:
     # -- Arrange --
     named = plan_from_named_table("orders")
-    local = plan_from_local_files("file:///tmp/orders.parquet")
+    local = plan_from_local_files("fixture://orders.parquet")
     virtual = plan_from_virtual_table("inline_orders")
 
     # -- Act --
@@ -149,7 +150,7 @@ def test_plan__read_root_kinds_are_distinguished() -> None:
 
 def test_plan__local_files_helpers_are_explicitly_parquet_backed() -> None:
     # -- Arrange --
-    uri = "file:///tmp/orders.parquet"
+    uri = "fixture://orders.parquet"
     rel_via_compat = read_local_files_rel(uri)
     rel_via_parquet = read_local_parquet_rel(uri)
     plan_via_compat = plan_from_local_files(uri)
@@ -192,15 +193,30 @@ def test_plan__combinators_compose_deterministically() -> None:
 def test_plan__project_rel_supports_projection_expression_payloads() -> None:
     # -- Arrange --
     base = read_named_table_rel("orders")
-    projected = project_rel_of_columns(base, ["id"], [with_column_assignment("double_id", mul(col("id"), int_expr(2))), with_column_assignment("id_plus_one", add(col("id"), int_expr(1)))])
+    projected = project_rel_of_columns(
+        base,
+        ["id"],
+        [with_column_assignment("double_id", mul(col("id"), int_expr(2))), with_column_assignment(
+            "id_plus_one",
+            add(col("id"), int_expr(1)),
+        )],
+    )
 
     # -- Act --
     plan = plan_from_root_relation(projected, ["id", "double_id", "id_plus_one"])
     # -- Assert --
     assert_eq(relation_kind_name(projected), "ProjectRel", "projection builder lowering should emit ProjectRel roots")
     assert_eq(plan_encoded_len(plan) > 0, true, "projection builder lowering should still encode into a valid plan")
-    assert_eq(plan_contains_relation_kind(plan, "ProjectRel"), true, "encoded plan should retain the projected root relation kind")
-    assert_eq(plan_has_extension_urn(plan, registered_substrait_extension_uris()[0]), true, "scalar function plans should register the shared function extension URN")
+    assert_eq(
+        plan_contains_relation_kind(plan, "ProjectRel"),
+        true,
+        "encoded plan should retain the projected root relation kind",
+    )
+    assert_eq(
+        plan_has_extension_urn(plan, registered_substrait_extension_uris()[0]),
+        true,
+        "scalar function plans should register the shared function extension URN",
+    )
     root_output_names = root_names(plan)
     assert_eq(len(root_output_names), 3, "project root should publish one output name per projected column")
     assert_eq(root_output_names[0], "id", "project root should preserve passthrough column names")
@@ -212,7 +228,14 @@ def test_plan__aggregate_rel_surfaces_group_and_measure_output_columns() -> None
     # -- Arrange --
     _register_orders_schema()
     base = read_named_table_rel("orders")
-    aggregated = aggregate_rel(base, ["id"], [AggregateMeasure(kind=AggregateKind.Sum, column_name="id"), AggregateMeasure(kind=AggregateKind.Count, column_name="")])
+    aggregated = aggregate_rel(
+        base,
+        ["id"],
+        [AggregateMeasure(kind=AggregateKind.Sum, column_name="id"), AggregateMeasure(
+            kind=AggregateKind.Count,
+            column_name="",
+        )],
+    )
     plan = plan_from_root_relation(aggregated, ["id", "sum_id", "count"])
 
     # -- Act --
@@ -220,7 +243,11 @@ def test_plan__aggregate_rel_surfaces_group_and_measure_output_columns() -> None
 
     # -- Assert --
     assert_eq(relation_kind_name(aggregated), "AggregateRel", "aggregate lowering should emit AggregateRel")
-    assert_eq(plan_has_extension_urn(plan, registered_substrait_extension_uris()[0]), true, "aggregate function plans should register the shared function extension URN")
+    assert_eq(
+        plan_has_extension_urn(plan, registered_substrait_extension_uris()[0]),
+        true,
+        "aggregate function plans should register the shared function extension URN",
+    )
     assert_eq(len(output_columns), 3, "aggregate output columns should include group key plus measure outputs")
     assert_eq(output_columns[0], "id", "group key should remain the first aggregate output column")
     assert_eq(output_columns[1], "sum_id", "sum measure output columns should use the stable prefixed name")
@@ -244,8 +271,17 @@ def test_plan__set_rel_uses_operation_enum() -> None:
 
 def test_plan__enum_backed_join_and_set_builders_expose_boundary_facts() -> None:
     # -- Arrange --
-    left_join_rel = join_rel_of_kind(read_named_table_rel("orders"), read_named_table_rel("customers"), true, SubstraitJoinKind.Left)
-    union_distinct_rel = set_rel_of_kind(read_named_table_rel("orders_current"), read_named_table_rel("orders_archive"), SubstraitSetOperation.UnionDistinct)
+    left_join_rel = join_rel_of_kind(
+        read_named_table_rel("orders"),
+        read_named_table_rel("customers"),
+        true,
+        SubstraitJoinKind.Left,
+    )
+    union_distinct_rel = set_rel_of_kind(
+        read_named_table_rel("orders_current"),
+        read_named_table_rel("orders_archive"),
+        SubstraitSetOperation.UnionDistinct,
+    )
 
     # -- Act --
     join_kind = relation_kind_name(left_join_rel)
@@ -293,8 +329,9 @@ def test_plan__revision_pin_and_extension_registry_are_exported() -> None:
     # -- Assert --
     assert_eq(tag, "v0.63.0", "revision helpers should expose the currently targeted Substrait release tag")
     assert_eq(producer, "inql-rfc002", "revision helpers should expose the package producer label")
-    assert_eq(len(registered), 1, "current package boundary should register one extension URI")
-    assert_eq(registered[0], explode_extension_uri(), "registry should include the emitted explode extension URI")
+    assert_eq(len(registered), 2, "current package boundary should register both extension URIs")
+    assert_eq(registered[0], function_extension_uri(), "registry should include the shared function extension URI first")
+    assert_eq(registered[1], explode_extension_uri(), "registry should include the emitted explode extension URI")
 
 
 def test_conformance__core_scenarios_validate_emission_output() -> None:
@@ -306,48 +343,119 @@ def test_conformance__core_scenarios_validate_emission_output() -> None:
     for scenario in scenarios:
         assert_eq(len(scenario.capability_tags.0) > 0, true, "capability tags must remain non-empty")
         assert_eq(len(scenario.references.0) > 0, true, "references must remain non-empty")
+
     # -- Assert --
     for key in _core_keys():
         scenario = core_scenario(key)
         mut plan = plan_from_named_table(_fixture_table_main())
         match key:
-            CoreScenarioKey.ReadNamedTable => 
+            CoreScenarioKey.ReadNamedTable =>
                 plan = plan_from_named_table(_fixture_table_main())
-            CoreScenarioKey.ReadLocalFiles => 
+            CoreScenarioKey.ReadLocalFiles =>
                 plan = plan_from_local_parquet(_fixture_local_parquet_uri())
-            CoreScenarioKey.ReadVirtualTable => 
+            CoreScenarioKey.ReadVirtualTable =>
                 plan = plan_from_virtual_table(_fixture_virtual_table_name())
-            CoreScenarioKey.FilterRows => 
-                plan = plan_from_root_relation(filter_rel(read_named_table_rel(_fixture_table_main()), always_true()), [_fixture_col_primary()])
-            CoreScenarioKey.ProjectComputedColumns => 
-                plan = plan_from_root_relation(project_rel(read_named_table_rel(_fixture_table_main())), [_fixture_col_primary()])
-            CoreScenarioKey.JoinRelVariants => 
-                plan = plan_from_root_relation(join_rel_of_kind(read_named_table_rel(_fixture_table_main()), read_named_table_rel(_fixture_table_aux()), true, SubstraitJoinKind.Left), [_fixture_col_primary()])
-            CoreScenarioKey.CrossRelCartesian => 
-                plan = plan_from_root_relation(cross_rel(read_named_table_rel(_fixture_table_left()), read_named_table_rel(_fixture_table_right())), [_fixture_col_primary()])
-            CoreScenarioKey.AggregateGroupingSets => 
-                plan = plan_from_root_relation(aggregate_rel(read_named_table_rel(_fixture_table_main()), [_fixture_col_primary()], [AggregateMeasure(kind=AggregateKind.Count, column_name="")]), [_fixture_col_primary()])
-            CoreScenarioKey.SortRelOrdering => 
-                plan = plan_from_root_relation(sort_rel(read_named_table_rel(_fixture_table_main())), [_fixture_col_primary()])
-            CoreScenarioKey.FetchRelLimitOffset => 
-                plan = plan_from_root_relation(fetch_rel(read_named_table_rel(_fixture_table_main()), 10, 25), [_fixture_col_primary()])
-            CoreScenarioKey.SetRelOperations => 
-                plan = plan_from_root_relation(set_rel_of_kind(read_named_table_rel(_fixture_table_main()), read_named_table_rel(_fixture_table_aux()), SubstraitSetOperation.UnionDistinct), [_fixture_col_primary()])
-            CoreScenarioKey.ReferenceRelSharedSubplan => 
+            CoreScenarioKey.FilterRows =>
+                plan = plan_from_root_relation(
+                    filter_rel(read_named_table_rel(_fixture_table_main()), always_true()),
+                    [_fixture_col_primary()],
+                )
+            CoreScenarioKey.ProjectComputedColumns =>
+                plan = plan_from_root_relation(
+                    project_rel(read_named_table_rel(_fixture_table_main())),
+                    [_fixture_col_primary()],
+                )
+            CoreScenarioKey.JoinRelVariants =>
+                plan = plan_from_root_relation(
+                    join_rel_of_kind(
+                        read_named_table_rel(_fixture_table_main()),
+                        read_named_table_rel(_fixture_table_aux()),
+                        true,
+                        SubstraitJoinKind.Left,
+                    ),
+                    [_fixture_col_primary()],
+                )
+            CoreScenarioKey.CrossRelCartesian =>
+                plan = plan_from_root_relation(
+                    cross_rel(read_named_table_rel(_fixture_table_left()), read_named_table_rel(_fixture_table_right())),
+                    [_fixture_col_primary()],
+                )
+            CoreScenarioKey.AggregateGroupingSets =>
+                plan = plan_from_root_relation(
+                    aggregate_rel(
+                        read_named_table_rel(_fixture_table_main()),
+                        [_fixture_col_primary()],
+                        [AggregateMeasure(kind=AggregateKind.Count, column_name="")],
+                    ),
+                    [_fixture_col_primary()],
+                )
+            CoreScenarioKey.SortRelOrdering =>
+                plan = plan_from_root_relation(
+                    sort_rel(read_named_table_rel(_fixture_table_main())),
+                    [_fixture_col_primary()],
+                )
+            CoreScenarioKey.FetchRelLimitOffset =>
+                plan = plan_from_root_relation(
+                    fetch_rel(read_named_table_rel(_fixture_table_main()), 10, 25),
+                    [_fixture_col_primary()],
+                )
+            CoreScenarioKey.SetRelOperations =>
+                plan = plan_from_root_relation(
+                    set_rel_of_kind(
+                        read_named_table_rel(_fixture_table_main()),
+                        read_named_table_rel(_fixture_table_aux()),
+                        SubstraitSetOperation.UnionDistinct,
+                    ),
+                    [_fixture_col_primary()],
+                )
+            CoreScenarioKey.ReferenceRelSharedSubplan =>
                 plan = plan_from_root_relation(reference_rel(7), [_fixture_col_primary()])
 
-        assert_eq(scenario_matches_root_shape(scenario, plan), true, "scenario should validate root shape against test-owned fixture plan")
-        assert_eq(scenario_has_required_rel_kinds(scenario, plan), true, "fixture plan should contain all scenario-required relation kinds")
-        assert_eq(scenario_matches_key_invariants(key, plan), true, "fixture plan should satisfy scenario-specific invariant checks")
+        assert_eq(
+            scenario_matches_root_shape(scenario, plan),
+            true,
+            "scenario should validate root shape against test-owned fixture plan",
+        )
+        assert_eq(
+            scenario_has_required_rel_kinds(scenario, plan),
+            true,
+            "fixture plan should contain all scenario-required relation kinds",
+        )
+        assert_eq(
+            scenario_matches_key_invariants(key, plan),
+            true,
+            "fixture plan should satisfy scenario-specific invariant checks",
+        )
 
 
 def test_conformance__scenario_shape_requires_all_declared_required_rels() -> None:
     # -- Arrange --
-    scenario = SubstraitConformanceScenario(scenario_id="test.multi.required.rels", title="test", status=ConformanceStatus.Core, profile_tags=[ConformanceProfileTag.ReadQueryCore], capability_tags=_test_tags(["named-table"]), root_rel=ConformanceRel.Filter, required_rels=[ConformanceRel.Read, ConformanceRel.Filter], portability=ConformancePortability.Portable, intent="test", required_rel_shape="test", expected_constraints="test", references=_test_refs(["docs/rfcs/002_apache_substrait_integration.md"]))
+    scenario = SubstraitConformanceScenario(
+        scenario_id="test.multi.required.rels",
+        title="test",
+        status=ConformanceStatus.Core,
+        profile_tags=[ConformanceProfileTag.ReadQueryCore],
+        capability_tags=_test_tags(["named-table"]),
+        root_rel=ConformanceRel.Filter,
+        required_rels=[ConformanceRel.Read, ConformanceRel.Filter],
+        portability=ConformancePortability.Portable,
+        intent="test",
+        required_rel_shape="test",
+        expected_constraints="test",
+        references=_test_refs(["docs/rfcs/002_apache_substrait_integration.md"]),
+    )
 
     # -- Act --
     named_only_plan = plan_from_named_table("orders")
 
     # -- Assert --
-    assert_eq(scenario_matches_root_shape(scenario, named_only_plan), false, "shape validation should fail when the root relation does not match the declared root contract")
-    assert_eq(scenario_has_required_rel_kinds(scenario, named_only_plan), false, "recursive relation-kind validation should fail when one required relation is missing")
+    assert_eq(
+        scenario_matches_root_shape(scenario, named_only_plan),
+        false,
+        "shape validation should fail when the root relation does not match the declared root contract",
+    )
+    assert_eq(
+        scenario_has_required_rel_kinds(scenario, named_only_plan),
+        false,
+        "recursive relation-kind validation should fail when one required relation is missing",
+    )

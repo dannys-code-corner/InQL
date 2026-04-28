@@ -8,6 +8,7 @@ typechecker changes in the Incan compiler.
 
 from projection_builders import ColumnExpr, col as col_expr, require_column_expr_name
 
+
 @derive(Clone)
 pub enum AggregateKind:
     """Supported aggregate function kinds in the current package slice."""

@@ -26,6 +26,7 @@ from substrait.plans import plan_encoded_len
 from substrait.schema_registry import register_named_table_schema
 from substrait.schema import RowColumnSpec, SubstraitPrimitiveKind
 
+
 @derive(Clone)
 model Order:
     id: int
@@ -44,13 +45,29 @@ def test_prism__branching_keeps_base_reachable_history_small() -> None:
     plan = filtered.to_substrait_plan()
 
     # -- Assert --
-    assert_eq(prism_cursors_share_store(base, filtered), true, "unary branching should share one append-only Prism store")
+    assert_eq(
+        prism_cursors_share_store(base, filtered),
+        true,
+        "unary branching should share one append-only Prism store",
+    )
     assert_eq(prism_cursor_authored_node_count(base), 1, "base cursor should still only reach the original read node")
-    assert_eq(prism_cursor_store_node_count(base), 2, "shared store should contain the appended filter node exactly once")
+    assert_eq(
+        prism_cursor_store_node_count(base),
+        2,
+        "shared store should contain the appended filter node exactly once",
+    )
     assert_eq(prism_cursor_tip_kind_name(base), str("ReadNamedTable"), "base cursor tip should remain the read root")
-    assert_eq(prism_cursor_authored_node_count(filtered), 2, "derived cursor should reach the read node plus the new filter")
+    assert_eq(
+        prism_cursor_authored_node_count(filtered),
+        2,
+        "derived cursor should reach the read node plus the new filter",
+    )
     assert_eq(prism_cursor_tip_kind_name(filtered), str("Filter"), "filtered cursor tip should become the filter node")
-    assert_eq(prism_cursor_tip_origin_id(filtered), 1, "identity optimized view should preserve the appended filter as the tip origin")
+    assert_eq(
+        prism_cursor_tip_origin_id(filtered),
+        1,
+        "identity optimized view should preserve the appended filter as the tip origin",
+    )
     assert_eq(plan_encoded_len(plan) > 0, true, "lazy carrier should still emit a real proto-backed plan")
     assert_eq(relation_kind_name(root_rel(plan)), str("FilterRel"), "Prism lowering should preserve filter root shape")
     assert_eq(plan_contains_relation_kind(plan, str("ReadRel")), true, "Prism lowering should still reach the read root")
@@ -83,17 +100,49 @@ def test_prism__same_store_join_reuses_shared_history() -> None:
     plan = joined.to_substrait_plan()
 
     # -- Assert --
-    assert_eq(prism_cursors_share_store(left, right), true, "branches from the same base should still share one store before the join")
-    assert_eq(prism_cursor_authored_node_count(base), 1, "joining later should not mutate the base cursor's reachable history")
-    assert_eq(prism_cursor_store_node_count(joined), 4, "same-store join should append one join node without duplicating the shared read root")
-    assert_eq(prism_cursor_authored_node_count(joined), 4, "joined cursor should reach the shared read plus both unary nodes and the join")
+    assert_eq(
+        prism_cursors_share_store(left, right),
+        true,
+        "branches from the same base should still share one store before the join",
+    )
+    assert_eq(
+        prism_cursor_authored_node_count(base),
+        1,
+        "joining later should not mutate the base cursor's reachable history",
+    )
+    assert_eq(
+        prism_cursor_store_node_count(joined),
+        4,
+        "same-store join should append one join node without duplicating the shared read root",
+    )
+    assert_eq(
+        prism_cursor_authored_node_count(joined),
+        4,
+        "joined cursor should reach the shared read plus both unary nodes and the join",
+    )
     assert_eq(prism_cursor_tip_kind_name(joined), str("Join"), "same-store join tip should become a join node")
-    assert_eq(prism_cursor_tip_origin_id(joined), 3, "identity optimized view should preserve the appended join node as the tip origin")
+    assert_eq(
+        prism_cursor_tip_origin_id(joined),
+        3,
+        "identity optimized view should preserve the appended join node as the tip origin",
+    )
     assert_eq(plan_encoded_len(plan) > 0, true, "branch-and-join carrier should still emit a real proto-backed plan")
     assert_eq(relation_kind_name(root_rel(plan)), str("JoinRel"), "binary authored nodes should lower back to JoinRel")
-    assert_eq(plan_contains_relation_kind(plan, str("FilterRel")), true, "join lowering should preserve the left filter input")
-    assert_eq(plan_contains_relation_kind(plan, str("ProjectRel")), true, "join lowering should preserve the right project input")
-    assert_eq(plan_contains_relation_kind(plan, str("ReadRel")), true, "join lowering should still reach the original read root")
+    assert_eq(
+        plan_contains_relation_kind(plan, str("FilterRel")),
+        true,
+        "join lowering should preserve the left filter input",
+    )
+    assert_eq(
+        plan_contains_relation_kind(plan, str("ProjectRel")),
+        true,
+        "join lowering should preserve the right project input",
+    )
+    assert_eq(
+        plan_contains_relation_kind(plan, str("ReadRel")),
+        true,
+        "join lowering should still reach the original read root",
+    )
 
 
 def test_prism__same_store_join_with_longer_branches_is_still_one_append() -> None:
@@ -107,14 +156,38 @@ def test_prism__same_store_join_with_longer_branches_is_still_one_append() -> No
     plan = joined.to_substrait_plan()
 
     # -- Assert --
-    assert_eq(prism_cursors_share_store(left, right), true, "branches from one base should continue sharing a store as branch depth grows")
-    assert_eq(prism_cursor_authored_node_count(base), 1, "deeper branch joins should still keep the base handle immutable")
-    assert_eq(prism_cursor_store_node_count(joined), 6, "same-store join should still append one join node after deeper branch history")
-    assert_eq(prism_cursor_authored_node_count(joined), 6, "joined cursor should still reach exactly read + branch nodes + join")
-    assert_eq(relation_kind_name(root_rel(plan)), str("JoinRel"), "deeper same-store branches should still lower through JoinRel")
+    assert_eq(
+        prism_cursors_share_store(left, right),
+        true,
+        "branches from one base should continue sharing a store as branch depth grows",
+    )
+    assert_eq(
+        prism_cursor_authored_node_count(base),
+        1,
+        "deeper branch joins should still keep the base handle immutable",
+    )
+    assert_eq(
+        prism_cursor_store_node_count(joined),
+        6,
+        "same-store join should still append one join node after deeper branch history",
+    )
+    assert_eq(
+        prism_cursor_authored_node_count(joined),
+        6,
+        "joined cursor should still reach exactly read + branch nodes + join",
+    )
+    assert_eq(
+        relation_kind_name(root_rel(plan)),
+        str("JoinRel"),
+        "deeper same-store branches should still lower through JoinRel",
+    )
     assert_eq(plan_contains_relation_kind(plan, str("SortRel")), true, "left branch sort should be preserved")
     assert_eq(plan_contains_relation_kind(plan, str("FetchRel")), true, "right branch limit should be preserved")
-    assert_eq(plan_contains_relation_kind(plan, str("ReadRel")), true, "joined deeper branches should still reach the original read root")
+    assert_eq(
+        plan_contains_relation_kind(plan, str("ReadRel")),
+        true,
+        "joined deeper branches should still reach the original read root",
+    )
 
 
 def test_prism__cross_store_join_adopts_reachable_subgraph() -> None:
@@ -128,12 +201,28 @@ def test_prism__cross_store_join_adopts_reachable_subgraph() -> None:
 
     # -- Assert --
     assert_eq(prism_cursors_share_store(left, right), false, "independent roots should begin on distinct stores")
-    assert_eq(prism_cursor_store_node_count(joined), 5, "cross-store join should adopt two reachable rhs nodes then append one join node")
-    assert_eq(prism_cursor_authored_node_count(joined), 5, "joined cursor should reach both adopted branches plus the join")
+    assert_eq(
+        prism_cursor_store_node_count(joined),
+        5,
+        "cross-store join should adopt two reachable rhs nodes then append one join node",
+    )
+    assert_eq(
+        prism_cursor_authored_node_count(joined),
+        5,
+        "joined cursor should reach both adopted branches plus the join",
+    )
     assert_eq(prism_cursor_tip_kind_name(joined), str("Join"), "cross-store join tip should become a join node")
     assert_eq(relation_kind_name(root_rel(plan)), str("JoinRel"), "cross-store joins should still lower to JoinRel")
-    assert_eq(plan_contains_relation_kind(plan, str("FilterRel")), true, "cross-store join lowering should preserve nested filters")
-    assert_eq(plan_contains_relation_kind(plan, str("ReadRel")), true, "cross-store join lowering should still reach both read roots")
+    assert_eq(
+        plan_contains_relation_kind(plan, str("FilterRel")),
+        true,
+        "cross-store join lowering should preserve nested filters",
+    )
+    assert_eq(
+        plan_contains_relation_kind(plan, str("ReadRel")),
+        true,
+        "cross-store join lowering should still reach both read roots",
+    )
 
 
 def test_prism__cross_store_join_dedups_equivalent_reachable_rhs_nodes() -> None:
@@ -149,12 +238,36 @@ def test_prism__cross_store_join_dedups_equivalent_reachable_rhs_nodes() -> None
     plan = joined.to_substrait_plan()
 
     # -- Assert --
-    assert_eq(prism_cursors_share_store(left, right_joined), false, "left and rhs join trees should still begin on distinct stores")
-    assert_eq(prism_cursor_store_node_count(joined), 6, "cross-store adoption should dedup equivalent rhs filter branches instead of cloning both copies")
-    assert_eq(prism_cursor_authored_node_count(joined), 6, "joined cursor should reach the left branch plus one deduped rhs branch-join subgraph")
-    assert_eq(relation_kind_name(root_rel(plan)), str("JoinRel"), "cross-store join with rhs dedup should still lower to JoinRel")
-    assert_eq(plan_contains_relation_kind(plan, str("FilterRel")), true, "deduped cross-store join lowering should still preserve nested filters")
-    assert_eq(plan_contains_relation_kind(plan, str("ReadRel")), true, "deduped cross-store join lowering should still preserve read roots")
+    assert_eq(
+        prism_cursors_share_store(left, right_joined),
+        false,
+        "left and rhs join trees should still begin on distinct stores",
+    )
+    assert_eq(
+        prism_cursor_store_node_count(joined),
+        6,
+        "cross-store adoption should dedup equivalent rhs filter branches instead of cloning both copies",
+    )
+    assert_eq(
+        prism_cursor_authored_node_count(joined),
+        6,
+        "joined cursor should reach the left branch plus one deduped rhs branch-join subgraph",
+    )
+    assert_eq(
+        relation_kind_name(root_rel(plan)),
+        str("JoinRel"),
+        "cross-store join with rhs dedup should still lower to JoinRel",
+    )
+    assert_eq(
+        plan_contains_relation_kind(plan, str("FilterRel")),
+        true,
+        "deduped cross-store join lowering should still preserve nested filters",
+    )
+    assert_eq(
+        plan_contains_relation_kind(plan, str("ReadRel")),
+        true,
+        "deduped cross-store join lowering should still preserve read roots",
+    )
 
 
 def test_prism__cross_store_join_dedups_equivalent_rhs_multistep_branches() -> None:
@@ -170,13 +283,41 @@ def test_prism__cross_store_join_dedups_equivalent_rhs_multistep_branches() -> N
     plan = joined.to_substrait_plan()
 
     # -- Assert --
-    assert_eq(prism_cursors_share_store(left, right_joined), false, "final join should still cross stores for independently rooted branches")
-    assert_eq(prism_cursor_store_node_count(joined), 7, "cross-store adoption should dedup structurally equivalent multi-step rhs branches")
-    assert_eq(prism_cursor_authored_node_count(joined), 7, "joined cursor should still reach exactly one adopted copy of each rhs branch shape")
-    assert_eq(relation_kind_name(root_rel(plan)), str("JoinRel"), "deduped cross-store multistep branches should still lower to JoinRel")
-    assert_eq(plan_contains_relation_kind(plan, str("SortRel")), true, "rhs multistep branch sort should remain present after adoption")
-    assert_eq(plan_contains_relation_kind(plan, str("FilterRel")), true, "rhs multistep branch filter should remain present after adoption")
-    assert_eq(plan_contains_relation_kind(plan, str("ReadRel")), true, "deduped multistep adoption should still preserve read roots")
+    assert_eq(
+        prism_cursors_share_store(left, right_joined),
+        false,
+        "final join should still cross stores for independently rooted branches",
+    )
+    assert_eq(
+        prism_cursor_store_node_count(joined),
+        7,
+        "cross-store adoption should dedup structurally equivalent multi-step rhs branches",
+    )
+    assert_eq(
+        prism_cursor_authored_node_count(joined),
+        7,
+        "joined cursor should still reach exactly one adopted copy of each rhs branch shape",
+    )
+    assert_eq(
+        relation_kind_name(root_rel(plan)),
+        str("JoinRel"),
+        "deduped cross-store multistep branches should still lower to JoinRel",
+    )
+    assert_eq(
+        plan_contains_relation_kind(plan, str("SortRel")),
+        true,
+        "rhs multistep branch sort should remain present after adoption",
+    )
+    assert_eq(
+        plan_contains_relation_kind(plan, str("FilterRel")),
+        true,
+        "rhs multistep branch filter should remain present after adoption",
+    )
+    assert_eq(
+        plan_contains_relation_kind(plan, str("ReadRel")),
+        true,
+        "deduped multistep adoption should still preserve read roots",
+    )
 
 
 def test_prism__cursor_native_nodes_cover_current_method_surface() -> None:
@@ -209,10 +350,22 @@ def test_prism__rewrite_eliminates_filter_true_by_default() -> None:
     # -- Assert --
     assert_eq(prism_cursor_authored_node_count(cursor), 2, "authored history should still keep the explicit filter node")
     assert_eq(prism_cursor_rewritten_node_count(cursor), 1, "rewrite should eliminate filter(true) from lowered shape")
-    assert_eq(prism_cursor_rewritten_tip_kind_name(cursor), str("ReadNamedTable"), "rewritten tip should become the read root after eliminating filter(true)")
+    assert_eq(
+        prism_cursor_rewritten_tip_kind_name(cursor),
+        str("ReadNamedTable"),
+        "rewritten tip should become the read root after eliminating filter(true)",
+    )
     assert_eq(prism_cursor_rewrite_applied_rule_count(cursor), 1, "one rewrite rule should be recorded for filter(true)")
-    assert_eq(prism_cursor_rewrite_applied_rule_name_at(cursor, 0), str("eliminate_filter_true"), "rewrite trace should include the filter elimination rule")
-    assert_eq(relation_kind_name(root_rel(plan)), str("ReadRel"), "filter(true) should lower to ReadRel root after canonical rewrite")
+    assert_eq(
+        prism_cursor_rewrite_applied_rule_name_at(cursor, 0),
+        str("eliminate_filter_true"),
+        "rewrite trace should include the filter elimination rule",
+    )
+    assert_eq(
+        relation_kind_name(root_rel(plan)),
+        str("ReadRel"),
+        "filter(true) should lower to ReadRel root after canonical rewrite",
+    )
 
 
 def test_prism__rewrite_collapses_adjacent_limits_projects_and_order_by() -> None:
@@ -225,33 +378,67 @@ def test_prism__rewrite_collapses_adjacent_limits_projects_and_order_by() -> Non
 
     # -- Assert --
     assert_eq(prism_cursor_authored_node_count(limited), 3, "authored history should keep both limit nodes")
-    assert_eq(prism_cursor_rewritten_node_count(limited), 2, "rewritten view should collapse adjacent limits to one node")
-    assert_eq(prism_cursor_rewrite_applied_rule_name_at(limited, 0), str("collapse_adjacent_limit"), "limit rewrite trace should record adjacent limit collapse")
+    assert_eq(
+        prism_cursor_rewritten_node_count(limited),
+        2,
+        "rewritten view should collapse adjacent limits to one node",
+    )
+    assert_eq(
+        prism_cursor_rewrite_applied_rule_name_at(limited, 0),
+        str("collapse_adjacent_limit"),
+        "limit rewrite trace should record adjacent limit collapse",
+    )
     assert_eq(prism_cursor_authored_node_count(projected), 3, "authored history should keep both project nodes")
     assert_eq(prism_cursor_rewritten_node_count(projected), 2, "rewritten view should collapse adjacent projects")
-    assert_eq(prism_cursor_rewrite_applied_rule_name_at(projected, 0), str("collapse_adjacent_project"), "project rewrite trace should record adjacent project collapse")
+    assert_eq(
+        prism_cursor_rewrite_applied_rule_name_at(projected, 0),
+        str("collapse_adjacent_project"),
+        "project rewrite trace should record adjacent project collapse",
+    )
     assert_eq(prism_cursor_authored_node_count(ordered), 3, "authored history should keep both order_by nodes")
     assert_eq(prism_cursor_rewritten_node_count(ordered), 2, "rewritten view should collapse adjacent order_by nodes")
-    assert_eq(prism_cursor_rewrite_applied_rule_name_at(ordered, 0), str("collapse_adjacent_order_by"), "order_by rewrite trace should record adjacent order_by collapse")
+    assert_eq(
+        prism_cursor_rewrite_applied_rule_name_at(ordered, 0),
+        str("collapse_adjacent_order_by"),
+        "order_by rewrite trace should record adjacent order_by collapse",
+    )
 
 
 def test_prism__rewrite_collapses_adjacent_aggregates_by_merging_measures() -> None:
     # -- Arrange --
-    aggregated: PrismCursor[Order] = prism_cursor_named_table[Order](str("orders")).group_by([col("id")]).agg([sum(col("id"))]).agg([count()])
+    aggregated: PrismCursor[Order] = prism_cursor_named_table[Order](str("orders")).group_by([col("id")]).agg(
+        [sum(col("id"))],
+    ).agg([count()])
 
     # -- Act --
     output_cols = prism_cursor_output_columns(aggregated)
     plan = aggregated.to_substrait_plan()
 
     # -- Assert --
-    assert_eq(prism_cursor_authored_node_count(aggregated), 4, "authored history should keep read, group_by, and both aggregate nodes")
-    assert_eq(prism_cursor_rewritten_node_count(aggregated), 3, "rewritten view should collapse adjacent aggregate nodes")
-    assert_eq(prism_cursor_rewrite_applied_rule_name_at(aggregated, 0), str("collapse_adjacent_aggregate"), "aggregate rewrite trace should record adjacent aggregate collapse")
+    assert_eq(
+        prism_cursor_authored_node_count(aggregated),
+        4,
+        "authored history should keep read, group_by, and both aggregate nodes",
+    )
+    assert_eq(
+        prism_cursor_rewritten_node_count(aggregated),
+        3,
+        "rewritten view should collapse adjacent aggregate nodes",
+    )
+    assert_eq(
+        prism_cursor_rewrite_applied_rule_name_at(aggregated, 0),
+        str("collapse_adjacent_aggregate"),
+        "aggregate rewrite trace should record adjacent aggregate collapse",
+    )
     assert_eq(len(output_cols), 3, "merged aggregate output columns should preserve group key plus both measures")
     assert_eq(output_cols[0], "id", "group key should stay first after aggregate rewrite collapse")
     assert_eq(output_cols[1], "sum_id", "existing aggregate measures should survive adjacent aggregate collapse")
     assert_eq(output_cols[2], "count", "later aggregate measures should append after existing measures")
-    assert_eq(relation_kind_name(root_rel(plan)), str("AggregateRel"), "collapsed aggregate rewrite should still lower through AggregateRel")
+    assert_eq(
+        relation_kind_name(root_rel(plan)),
+        str("AggregateRel"),
+        "collapsed aggregate rewrite should still lower through AggregateRel",
+    )
 
 
 def test_prism__with_column_tracks_output_columns_and_collapses_adjacent_projects() -> None:
@@ -260,19 +447,38 @@ def test_prism__with_column_tracks_output_columns_and_collapses_adjacent_project
     base: PrismCursor[Order] = prism_cursor_named_table[Order](str("orders_projection_prism"))
 
     # -- Act --
-    projected: PrismCursor[Order] = base.with_column("double_id", mul(col("id"), int_expr(2))).with_column("triple_id", mul(col("id"), int_expr(3)))
+    projected: PrismCursor[Order] = base.with_column("double_id", mul(col("id"), int_expr(2))).with_column(
+        "triple_id",
+        mul(col("id"), int_expr(3)),
+    )
     output_cols = prism_cursor_output_columns(projected)
     plan = projected.to_substrait_plan()
 
     # -- Assert --
     assert_eq(prism_cursor_tip_kind_name(projected), str("Project"), "with_column should append a native project node")
-    assert_eq(len(output_cols), 3, "projection output columns should include the original column plus both derived names")
+    assert_eq(
+        len(output_cols),
+        3,
+        "projection output columns should include the original column plus both derived names",
+    )
     assert_eq(output_cols[0], "id", "projection output columns should preserve existing source ordinal positions")
     assert_eq(output_cols[1], "double_id", "projection output columns should preserve appended derived-column names")
     assert_eq(output_cols[2], "triple_id", "multiple derived columns should preserve append order")
-    assert_eq(prism_cursor_rewritten_node_count(projected), 2, "adjacent with_column projections should collapse into one rewritten project")
-    assert_eq(prism_cursor_rewrite_applied_rule_name_at(projected, 0), str("collapse_adjacent_project"), "projection rewrite trace should record adjacent project collapse")
-    assert_eq(relation_kind_name(root_rel(plan)), str("ProjectRel"), "with_column should lower through ProjectRel at the plan boundary")
+    assert_eq(
+        prism_cursor_rewritten_node_count(projected),
+        2,
+        "adjacent with_column projections should collapse into one rewritten project",
+    )
+    assert_eq(
+        prism_cursor_rewrite_applied_rule_name_at(projected, 0),
+        str("collapse_adjacent_project"),
+        "projection rewrite trace should record adjacent project collapse",
+    )
+    assert_eq(
+        relation_kind_name(root_rel(plan)),
+        str("ProjectRel"),
+        "with_column should lower through ProjectRel at the plan boundary",
+    )
 
 
 def test_prism__rewrite_explain_origin_mapping_matches_rewritten_nodes() -> None:
@@ -284,7 +490,11 @@ def test_prism__rewrite_explain_origin_mapping_matches_rewritten_nodes() -> None
     rewritten_origins = prism_cursor_rewritten_origin_count(cursor)
 
     # -- Assert --
-    assert_eq(rewritten_nodes, rewritten_origins, "rewritten origin mapping cardinality should match rewritten node cardinality")
+    assert_eq(
+        rewritten_nodes,
+        rewritten_origins,
+        "rewritten origin mapping cardinality should match rewritten node cardinality",
+    )
 
 
 def test_prism__cursor_methods_match_apply_helpers() -> None:
@@ -296,6 +506,18 @@ def test_prism__cursor_methods_match_apply_helpers() -> None:
     via_helpers = prism_cursor_apply_limit(prism_cursor_apply_select(prism_cursor_apply_filter(base, always_false())), 3)
 
     # -- Assert --
-    assert_eq(prism_cursor_tip_kind_name(via_methods), prism_cursor_tip_kind_name(via_helpers), "method and helper paths should produce the same tip kind")
-    assert_eq(prism_cursor_authored_node_count(via_methods), prism_cursor_authored_node_count(via_helpers), "method and helper paths should produce equivalent authored history shape")
-    assert_eq(relation_kind_name(root_rel(via_methods.to_substrait_plan())), relation_kind_name(root_rel(via_helpers.to_substrait_plan())), "method and helper paths should lower to equivalent root relation kinds")
+    assert_eq(
+        prism_cursor_tip_kind_name(via_methods),
+        prism_cursor_tip_kind_name(via_helpers),
+        "method and helper paths should produce the same tip kind",
+    )
+    assert_eq(
+        prism_cursor_authored_node_count(via_methods),
+        prism_cursor_authored_node_count(via_helpers),
+        "method and helper paths should produce equivalent authored history shape",
+    )
+    assert_eq(
+        relation_kind_name(root_rel(via_methods.to_substrait_plan())),
+        relation_kind_name(root_rel(via_helpers.to_substrait_plan())),
+        "method and helper paths should lower to equivalent root relation kinds",
+    )

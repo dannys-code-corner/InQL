@@ -28,6 +28,7 @@ from substrait.inspect import (
 from substrait.plans import plan_encoded_len
 from substrait.conformance_catalog import ConformanceRel, CoreScenarioKey, SubstraitConformanceScenario
 
+
 def _capability_tags_contain(scenario: SubstraitConformanceScenario, expected: str) -> bool:
     """Check scenario capability-tag membership."""
     for tag in scenario.capability_tags.0:
@@ -39,33 +40,19 @@ def _capability_tags_contain(scenario: SubstraitConformanceScenario, expected: s
 pub def relation_kind_name_from_conformance(rel: ConformanceRel) -> str:
     """Map one conformance relation enum to the public Substrait relation-kind label."""
     match rel:
-        ConformanceRel.Read => 
-            return "ReadRel"
-        ConformanceRel.Filter => 
-            return "FilterRel"
-        ConformanceRel.Project => 
-            return "ProjectRel"
-        ConformanceRel.Join => 
-            return "JoinRel"
-        ConformanceRel.Cross => 
-            return "CrossRel"
-        ConformanceRel.Aggregate => 
-            return "AggregateRel"
-        ConformanceRel.Sort => 
-            return "SortRel"
-        ConformanceRel.Fetch => 
-            return "FetchRel"
-        ConformanceRel.Set => 
-            return "SetRel"
-        ConformanceRel.Reference => 
-            return "ReferenceRel"
-        ConformanceRel.ExtensionSingle => 
-            return "ExtensionSingleRel"
-        ConformanceRel.ExtensionLeaf => 
-            return "ExtensionLeafRel"
-        _ => 
-            return "UnknownRel"
-
+        ConformanceRel.Read => return "ReadRel"
+        ConformanceRel.Filter => return "FilterRel"
+        ConformanceRel.Project => return "ProjectRel"
+        ConformanceRel.Join => return "JoinRel"
+        ConformanceRel.Cross => return "CrossRel"
+        ConformanceRel.Aggregate => return "AggregateRel"
+        ConformanceRel.Sort => return "SortRel"
+        ConformanceRel.Fetch => return "FetchRel"
+        ConformanceRel.Set => return "SetRel"
+        ConformanceRel.Reference => return "ReferenceRel"
+        ConformanceRel.ExtensionSingle => return "ExtensionSingleRel"
+        ConformanceRel.ExtensionLeaf => return "ExtensionLeafRel"
+        _ => return "UnknownRel"
 
 
 def _root_matches_declared_read_kind(scenario: SubstraitConformanceScenario, plan: Plan) -> bool:
@@ -123,10 +110,6 @@ pub def scenario_matches_key_invariants(key: CoreScenarioKey, plan: Plan) -> boo
     """
     root = root_rel(plan)
     match key:
-        CoreScenarioKey.SetRelOperations => 
-            return set_operation_name(root) == "UnionDistinct"
-        CoreScenarioKey.ReferenceRelSharedSubplan => 
-            return reference_subtree_ordinal(root) == 7
-        _ => 
-            return true
-
+        CoreScenarioKey.SetRelOperations => return set_operation_name(root) == "UnionDistinct"
+        CoreScenarioKey.ReferenceRelSharedSubplan => return reference_subtree_ordinal(root) == 7
+        _ => return true

@@ -4,6 +4,7 @@ from aggregate_builders import AggregateMeasure
 from filter_builders import FilterPredicate
 from projection_builders import ProjectionAssignment
 
+
 pub type PrismStoreId = newtype int
 
 
@@ -76,22 +77,12 @@ pub model PrismRewriteExplain:
 pub def authored_node_kind_name(node: PrismNode) -> str:
     """Render one stable human-readable node-kind name for tests and diagnostics."""
     match node.kind:
-        PrismNodeKind.ReadNamedTable => 
-            return str("ReadNamedTable")
-        PrismNodeKind.Filter => 
-            return str("Filter")
-        PrismNodeKind.Join => 
-            return str("Join")
-        PrismNodeKind.Project => 
-            return str("Project")
-        PrismNodeKind.GroupBy => 
-            return str("GroupBy")
-        PrismNodeKind.Aggregate => 
-            return str("Aggregate")
-        PrismNodeKind.OrderBy => 
-            return str("OrderBy")
-        PrismNodeKind.Limit => 
-            return str("Limit")
-        PrismNodeKind.Explode => 
-            return str("Explode")
-
+        PrismNodeKind.ReadNamedTable => return str("ReadNamedTable")
+        PrismNodeKind.Filter => return str("Filter")
+        PrismNodeKind.Join => return str("Join")
+        PrismNodeKind.Project => return str("Project")
+        PrismNodeKind.GroupBy => return str("GroupBy")
+        PrismNodeKind.Aggregate => return str("Aggregate")
+        PrismNodeKind.OrderBy => return str("OrderBy")
+        PrismNodeKind.Limit => return str("Limit")
+        PrismNodeKind.Explode => return str("Explode")

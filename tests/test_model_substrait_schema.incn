@@ -8,6 +8,7 @@ from substrait.schema import (
     substrait_row_type_encoded_len,
 )
 
+
 def test_demo_customer_row_shape__field_order() -> None:
     # -- Arrange --
     shape = demo_customer_row_shape()

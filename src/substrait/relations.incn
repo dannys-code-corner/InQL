@@ -61,6 +61,7 @@ from substrait.extensions import COUNT_FUNCTION_ANCHOR, SUM_FUNCTION_ANCHOR
 from substrait.inspect import relation_output_columns
 from substrait.schema_registry import named_table_base_schema, unknown_named_struct
 
+
 model ResolvedAggregateMeasure:
     kind: AggregateKind
     column_index: int
@@ -151,41 +152,25 @@ def _rel_extension_single(input: Rel, extension_uri: str) -> Rel:
 def _join_type_from_kind(kind: SubstraitJoinKind) -> RustI32:
     """Map typed join-kind enum to Substrait protobuf JoinType discriminant."""
     match kind:
-        SubstraitJoinKind.Inner => 
-            return JoinType.Inner.into()
-        SubstraitJoinKind.Left => 
-            return JoinType.Left.into()
-        SubstraitJoinKind.Right => 
-            return JoinType.Right.into()
-        SubstraitJoinKind.Outer => 
-            return JoinType.Outer.into()
-        SubstraitJoinKind.Semi => 
-            return JoinType.LeftSemi.into()
-        SubstraitJoinKind.Anti => 
-            return JoinType.LeftAnti.into()
-        SubstraitJoinKind.Single => 
-            return JoinType.LeftSingle.into()
-        SubstraitJoinKind.Mark => 
-            return JoinType.LeftMark.into()
-
+        SubstraitJoinKind.Inner => return JoinType.Inner.into()
+        SubstraitJoinKind.Left => return JoinType.Left.into()
+        SubstraitJoinKind.Right => return JoinType.Right.into()
+        SubstraitJoinKind.Outer => return JoinType.Outer.into()
+        SubstraitJoinKind.Semi => return JoinType.LeftSemi.into()
+        SubstraitJoinKind.Anti => return JoinType.LeftAnti.into()
+        SubstraitJoinKind.Single => return JoinType.LeftSingle.into()
+        SubstraitJoinKind.Mark => return JoinType.LeftMark.into()
 
 
 pub def set_op_from_kind(operation: SubstraitSetOperation) -> RustI32:
     """Map typed set-operation enum to Substrait protobuf SetOp discriminant."""
     match operation:
-        SubstraitSetOperation.MinusPrimary => 
-            return SetOp.MinusPrimary.into()
-        SubstraitSetOperation.IntersectPrimary => 
-            return SetOp.IntersectionPrimary.into()
-        SubstraitSetOperation.IntersectMultiset => 
-            return SetOp.IntersectionMultiset.into()
-        SubstraitSetOperation.MinusMultiset => 
-            return SetOp.MinusMultiset.into()
-        SubstraitSetOperation.UnionDistinct => 
-            return SetOp.UnionDistinct.into()
-        SubstraitSetOperation.UnionAll => 
-            return SetOp.UnionAll.into()
-
+        SubstraitSetOperation.MinusPrimary => return SetOp.MinusPrimary.into()
+        SubstraitSetOperation.IntersectPrimary => return SetOp.IntersectionPrimary.into()
+        SubstraitSetOperation.IntersectMultiset => return SetOp.IntersectionMultiset.into()
+        SubstraitSetOperation.MinusMultiset => return SetOp.MinusMultiset.into()
+        SubstraitSetOperation.UnionDistinct => return SetOp.UnionDistinct.into()
+        SubstraitSetOperation.UnionAll => return SetOp.UnionAll.into()
 
 
 def _set_operation_from_legacy_name(operation: str) -> SubstraitSetOperation:
@@ -207,7 +192,21 @@ def _resolved_measure_to_substrait(measure: ResolvedAggregateMeasure) -> Measure
         function_reference = SUM_FUNCTION_ANCHOR
         if measure.column_index >= 0:
             arguments.append(FunctionArgument(arg_type=Some(ArgType.Value(field_ref_expr(measure.column_index)))))
-    return Measure(measure=Some(AggregateFunction(function_reference=to_rust_u32(function_reference), arguments=arguments, sorts=[], output_type=None, invocation=AggregationInvocation.All.into(), phase=AggregationPhase.Unspecified.into(), args=[], options=[])), filter=None)
+    return Measure(
+        measure=Some(
+            AggregateFunction(
+                function_reference=to_rust_u32(function_reference),
+                arguments=arguments,
+                sorts=[],
+                output_type=None,
+                invocation=AggregationInvocation.All.into(),
+                phase=AggregationPhase.Unspecified.into(),
+                args=[],
+                options=[],
+            ),
+        ),
+        filter=None,
+    )
 
 
 def _grouping_indexes(input_columns: list[str], grouping_columns: list[str]) -> list[int]:
@@ -235,14 +234,36 @@ def _resolved_measures(input_columns: list[str], measures: list[AggregateMeasure
 
 pub def read_named_table_rel(table_name: str) -> Rel:
     """Construct a logical `ReadRel(NamedTable)` root for a registered table name."""
-    read = ReadRel(common=Some(_direct_common()), base_schema=Some(named_table_base_schema(table_name)), filter=None, best_effort_filter=None, projection=None, advanced_extension=None, read_type=Some(ReadType.NamedTable(ReadNamedTable(names=[table_name], advanced_extension=None))))
+    read = ReadRel(
+        common=Some(_direct_common()),
+        base_schema=Some(named_table_base_schema(table_name)),
+        filter=None,
+        best_effort_filter=None,
+        projection=None,
+        advanced_extension=None,
+        read_type=Some(ReadType.NamedTable(ReadNamedTable(names=[table_name], advanced_extension=None))),
+    )
     return _rel_read(read)
 
 
 pub def read_local_parquet_rel(uri: str) -> Rel:
     """Construct a logical `ReadRel(LocalFiles)` for a Parquet-backed scan."""
-    file_item = FileOrFiles(partition_index=0, start=0, length=0, path_type=Some(PathType.UriFile(uri.to_string())), file_format=Some(FileFormat.Parquet(ParquetReadOptions())))
-    read = ReadRel(common=Some(_direct_common()), base_schema=Some(unknown_named_struct()), filter=None, best_effort_filter=None, projection=None, advanced_extension=None, read_type=Some(ReadType.LocalFiles(LocalFiles(items=[file_item], advanced_extension=None))))
+    file_item = FileOrFiles(
+        partition_index=0,
+        start=0,
+        length=0,
+        path_type=Some(PathType.UriFile(uri.to_string())),
+        file_format=Some(FileFormat.Parquet(ParquetReadOptions())),
+    )
+    read = ReadRel(
+        common=Some(_direct_common()),
+        base_schema=Some(unknown_named_struct()),
+        filter=None,
+        best_effort_filter=None,
+        projection=None,
+        advanced_extension=None,
+        read_type=Some(ReadType.LocalFiles(LocalFiles(items=[file_item], advanced_extension=None))),
+    )
     return _rel_read(read)
 
 
@@ -254,7 +275,15 @@ pub def read_local_files_rel(uri: str) -> Rel:
 pub def read_virtual_table_rel(table_name: str) -> Rel:
     """Construct a logical `ReadRel(VirtualTable)` with one placeholder inline row."""
     row = NestedStruct(fields=[string_expr(table_name)])
-    read = ReadRel(common=Some(_direct_common()), base_schema=Some(unknown_named_struct()), filter=None, best_effort_filter=None, projection=None, advanced_extension=None, read_type=Some(ReadType.VirtualTable(VirtualTable(values=[], expressions=[row]))))
+    read = ReadRel(
+        common=Some(_direct_common()),
+        base_schema=Some(unknown_named_struct()),
+        filter=None,
+        best_effort_filter=None,
+        projection=None,
+        advanced_extension=None,
+        read_type=Some(ReadType.VirtualTable(VirtualTable(values=[], expressions=[row]))),
+    )
     return _rel_read(read)
 
 
@@ -265,7 +294,14 @@ pub def filter_rel(input: Rel, predicate: FilterPredicate) -> Rel:
 
 pub def filter_rel_of_columns(input: Rel, input_columns: list[str], predicate: FilterPredicate) -> Rel:
     """Wrap a child relation in `FilterRel` using explicit input-column names."""
-    return _rel_filter(FilterRel(common=Some(_direct_common()), input=Some(Box.new(input)), condition=Some(Box.new(filter_predicate_expr(input_columns, predicate))), advanced_extension=None))
+    return _rel_filter(
+        FilterRel(
+            common=Some(_direct_common()),
+            input=Some(Box.new(input)),
+            condition=Some(Box.new(filter_predicate_expr(input_columns, predicate))),
+            advanced_extension=None,
+        ),
+    )
 
 
 pub def project_rel(input: Rel) -> Rel:
@@ -276,8 +312,19 @@ pub def project_rel(input: Rel) -> Rel:
 pub def project_rel_of_columns(input: Rel, input_columns: list[str], assignments: list[ProjectionAssignment]) -> Rel:
     """Wrap a child relation in `ProjectRel` using explicit input-column names and ordered add-or-replace assignments."""
     lowered = lower_project(input_columns, assignments)
-    common = RelCommon(hint=None, advanced_extension=None, emit_kind=Some(EmitKind.Emit(Emit(output_mapping=lowered.output_mapping))))
-    return _rel_project(ProjectRel(common=Some(common), input=Some(Box.new(input)), expressions=lowered.expressions, advanced_extension=None))
+    common = RelCommon(
+        hint=None,
+        advanced_extension=None,
+        emit_kind=Some(EmitKind.Emit(Emit(output_mapping=lowered.output_mapping))),
+    )
+    return _rel_project(
+        ProjectRel(
+            common=Some(common),
+            input=Some(Box.new(input)),
+            expressions=lowered.expressions,
+            advanced_extension=None,
+        ),
+    )
 
 
 pub def join_rel(left: Rel, right: Rel, on_predicate: bool) -> Rel:
@@ -287,12 +334,29 @@ pub def join_rel(left: Rel, right: Rel, on_predicate: bool) -> Rel:
 
 pub def join_rel_of_kind(left: Rel, right: Rel, on_predicate: bool, kind: SubstraitJoinKind) -> Rel:
     """Wrap two child relations in `JoinRel` using one explicit Substrait join variant."""
-    return _rel_join(JoinRel(common=Some(_direct_common()), left=Some(Box.new(left)), right=Some(Box.new(right)), expression=Some(Box.new(bool_expr(on_predicate))), post_join_filter=None, type=_join_type_from_kind(kind), advanced_extension=None))
+    return _rel_join(
+        JoinRel(
+            common=Some(_direct_common()),
+            left=Some(Box.new(left)),
+            right=Some(Box.new(right)),
+            expression=Some(Box.new(bool_expr(on_predicate))),
+            post_join_filter=None,
+            type=_join_type_from_kind(kind),
+            advanced_extension=None,
+        ),
+    )
 
 
 pub def cross_rel(left: Rel, right: Rel) -> Rel:
     """Wrap two child relations in `CrossRel`."""
-    return _rel_cross(CrossRel(common=Some(_direct_common()), left=Some(Box.new(left)), right=Some(Box.new(right)), advanced_extension=None))
+    return _rel_cross(
+        CrossRel(
+            common=Some(_direct_common()),
+            left=Some(Box.new(left)),
+            right=Some(Box.new(right)),
+            advanced_extension=None,
+        ),
+    )
 
 
 pub def aggregate_rel(input: Rel, grouping_columns: list[str], measures: list[AggregateMeasure]) -> Rel:
@@ -300,26 +364,56 @@ pub def aggregate_rel(input: Rel, grouping_columns: list[str], measures: list[Ag
     return aggregate_rel_of_columns(input, relation_output_columns(input.clone()), grouping_columns, measures)
 
 
-pub def aggregate_rel_of_columns(input: Rel, input_columns: list[str], grouping_columns: list[str], measures: list[AggregateMeasure]) -> Rel:
+pub def aggregate_rel_of_columns(
+    input: Rel,
+    input_columns: list[str],
+    grouping_columns: list[str],
+    measures: list[AggregateMeasure],
+) -> Rel:
     """Wrap a child relation in `AggregateRel` using explicit input-column names."""
     grouping_indexes = _grouping_indexes(input_columns, grouping_columns)
     grouping_exprs = _grouping_expressions_from_indexes(grouping_indexes)
     grouping_expr_copies = [expr.clone() for expr in grouping_exprs]
-    groupings = [Grouping(grouping_expressions=grouping_expr_copies, expression_references=grouping_reference_indexes(len(grouping_exprs)))]
+    groupings = [Grouping(
+        grouping_expressions=grouping_expr_copies,
+        expression_references=grouping_reference_indexes(len(grouping_exprs)),
+    )]
     resolved_measures = _resolved_measures(input_columns, measures)
     lowered_measures = [_resolved_measure_to_substrait(measure) for measure in resolved_measures]
-    return _rel_aggregate(AggregateRel(common=Some(_direct_common()), input=Some(Box.new(input)), groupings=groupings, measures=lowered_measures, grouping_expressions=grouping_exprs, advanced_extension=None))
+    return _rel_aggregate(
+        AggregateRel(
+            common=Some(_direct_common()),
+            input=Some(Box.new(input)),
+            groupings=groupings,
+            measures=lowered_measures,
+            grouping_expressions=grouping_exprs,
+            advanced_extension=None,
+        ),
+    )
 
 
 pub def sort_rel(input: Rel) -> Rel:
     """Wrap a child relation in `SortRel` with one placeholder ascending sort field."""
-    sort_field = SortField(expr=Some(string_expr("__sort_key__")), sort_kind=Some(SortKind.Direction(SortDirection.AscNullsFirst.into())))
-    return _rel_sort(SortRel(common=Some(_direct_common()), input=Some(Box.new(input)), sorts=[sort_field], advanced_extension=None))
+    sort_field = SortField(
+        expr=Some(string_expr("__sort_key__")),
+        sort_kind=Some(SortKind.Direction(SortDirection.AscNullsFirst.into())),
+    )
+    return _rel_sort(
+        SortRel(common=Some(_direct_common()), input=Some(Box.new(input)), sorts=[sort_field], advanced_extension=None),
+    )
 
 
 pub def fetch_rel(input: Rel, offset: int, count: int) -> Rel:
     """Wrap a child relation in `FetchRel` for offset/count windowing."""
-    return _rel_fetch(FetchRel(common=Some(_direct_common()), input=Some(Box.new(input)), advanced_extension=None, offset_mode=Some(OffsetMode.OffsetExpr(Box.new(i64_expr(offset)))), count_mode=Some(CountMode.CountExpr(Box.new(i64_expr(count))))))
+    return _rel_fetch(
+        FetchRel(
+            common=Some(_direct_common()),
+            input=Some(Box.new(input)),
+            advanced_extension=None,
+            offset_mode=Some(OffsetMode.OffsetExpr(Box.new(i64_expr(offset)))),
+            count_mode=Some(CountMode.CountExpr(Box.new(i64_expr(count)))),
+        ),
+    )
 
 
 pub def set_rel(left: Rel, right: Rel, operation: str) -> Rel:
@@ -329,7 +423,14 @@ pub def set_rel(left: Rel, right: Rel, operation: str) -> Rel:
 
 pub def set_rel_of_kind(left: Rel, right: Rel, operation: SubstraitSetOperation) -> Rel:
     """Wrap two child relations in `SetRel` using one explicit Substrait set-operation enum."""
-    return _rel_set(SetRel(common=Some(_direct_common()), inputs=[left, right], op=set_op_from_kind(operation), advanced_extension=None))
+    return _rel_set(
+        SetRel(
+            common=Some(_direct_common()),
+            inputs=[left, right],
+            op=set_op_from_kind(operation),
+            advanced_extension=None,
+        ),
+    )
 
 
 pub def reference_rel(subtree_ordinal: RustI32) -> Rel:

@@ -1,5 +1,6 @@
 """Structured DataFrame materialization contract for collected bounded results."""
 
+
 @derive(Clone)
 pub model DataFrameMaterialization:
     """Structured result of `Session.collect(...)` used by collected DataFrame carriers."""
