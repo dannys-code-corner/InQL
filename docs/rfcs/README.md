@@ -19,6 +19,18 @@ InQL uses its **own** RFC series (starting at 000), independent of the [Incan la
 | [010][rfc-010] | Draft       | CSV dialect and interpretation contract                                                           |     |
 | [011][rfc-011] | Draft       | Source discovery and parse-unit expansion                                                         |     |
 | [012][rfc-012] | Draft       | Unified scalar expression surface                                                                 |     |
+| [013][rfc-013] | Draft       | Function catalog program                                                                          |     |
+| [014][rfc-014] | Draft       | Function registry and catalog governance                                                          |     |
+| [015][rfc-015] | Draft       | Core scalar functions and operators                                                               |     |
+| [016][rfc-016] | Draft       | Core aggregate functions                                                                          |     |
+| [017][rfc-017] | Draft       | Aggregate modifiers                                                                               |     |
+| [018][rfc-018] | Draft       | Common scalar function catalog                                                                    |     |
+| [019][rfc-019] | Draft       | Window functions                                                                                  |     |
+| [020][rfc-020] | Draft       | Nested data functions                                                                             |     |
+| [021][rfc-021] | Draft       | Generator and table-valued functions                                                              |     |
+| [022][rfc-022] | Draft       | Semi-structured and format functions                                                              |     |
+| [023][rfc-023] | Draft       | Approximate and sketch functions                                                                  |     |
+| [024][rfc-024] | Draft       | Function extension policy                                                                         |     |
 
 <!-- TODO: #7: auto populate this table (like how we do in incan) -->
 
@@ -43,4 +55,16 @@ New RFCs should follow [TEMPLATE.md] (aligned with Incan’s RFC structure, adap
 [rfc-010]: 010_csv_ingestion_contract.md
 [rfc-011]: 011_source_discovery_contract.md
 [rfc-012]: 012_unified_scalar_expression_surface.md
+[rfc-013]: 013_function_catalog_program.md
+[rfc-014]: 014_function_registry.md
+[rfc-015]: 015_core_scalar_functions.md
+[rfc-016]: 016_core_aggregate_functions.md
+[rfc-017]: 017_aggregate_modifiers.md
+[rfc-018]: 018_common_scalar_function_catalog.md
+[rfc-019]: 019_window_functions.md
+[rfc-020]: 020_nested_data_functions.md
+[rfc-021]: 021_generator_table_functions.md
+[rfc-022]: 022_semi_structured_format_functions.md
+[rfc-023]: 023_approximate_sketch_functions.md
+[rfc-024]: 024_function_extension_policy.md
 [incan-rfcs]: https://github.com/dannys-code-corner/incan/tree/main/workspaces/docs-site/docs/RFCs
