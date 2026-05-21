@@ -1,30 +1,30 @@
 """
-Explicit projection-expression builder surface for the current InQL-only projection slice.
+Explicit scalar-expression builder surface for the current InQL-only row-expression slice.
 
-These builders are the semantic target for future compiler sugar such as `.amount * 1.2` and query-block projection
-lowering. Today they provide a library-owned way to express derived-column intent without requiring parser or
-typechecker changes in the Incan compiler.
+These builders are the semantic target for future compiler sugar such as `.amount * 1.2`, predicate expressions,
+grouping keys, aggregate inputs, and query-block lowering. Today they provide a library-owned way to express row-level
+scalar intent without requiring parser or typechecker changes in the Incan compiler.
 """
-
-import std.testing
 
 
 @derive(Clone)
-pub enum ColumnExprKind:
-    """Supported expression kinds for the current projection-builder surface."""
+pub enum ColumnExprKind(str):
+    """Supported expression kinds for the current scalar-expression surface."""
 
-    Column
-    IntLiteral
-    FloatLiteral
-    StringLiteral
-    BoolLiteral
-    Add
-    Multiply
+    Column = "column"
+    IntLiteral = "int_literal"
+    FloatLiteral = "float_literal"
+    StringLiteral = "string_literal"
+    BoolLiteral = "bool_literal"
+    Add = "add"
+    Multiply = "multiply"
+    Eq = "eq"
+    Gt = "gt"
 
 
 @derive(Clone)
 pub model ColumnExpr:
-    """Projection expression description carried through dataset, Prism, and Substrait boundaries."""
+    """Scalar expression description carried through dataset, Prism, and Substrait boundaries."""
 
     pub kind: ColumnExprKind
     pub column_name: str
@@ -108,6 +108,15 @@ pub def bool_expr(value: bool) -> ColumnExpr:
     )
 
 
+pub def lit(value: Union[int, float, str, bool]) -> ColumnExpr:
+    """Build one canonical scalar literal expression."""
+    match value:
+        bool(flag) => return bool_expr(flag)
+        int(number) => return int_expr(number)
+        float(number) => return float_expr(number)
+        str(text) => return str_expr(text)
+
+
 pub def add(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
     """Build one binary addition expression."""
     return ColumnExpr(
@@ -125,6 +134,32 @@ pub def mul(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
     """Build one binary multiply expression."""
     return ColumnExpr(
         kind=ColumnExprKind.Multiply,
+        column_name="",
+        int_value=0,
+        float_value=0.0,
+        string_value="",
+        bool_value=false,
+        arguments=[left, right],
+    )
+
+
+pub def eq(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
+    """Build one equality predicate scalar expression."""
+    return ColumnExpr(
+        kind=ColumnExprKind.Eq,
+        column_name="",
+        int_value=0,
+        float_value=0.0,
+        string_value="",
+        bool_value=false,
+        arguments=[left, right],
+    )
+
+
+pub def gt(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
+    """Build one greater-than predicate scalar expression."""
+    return ColumnExpr(
+        kind=ColumnExprKind.Gt,
         column_name="",
         int_value=0,
         float_value=0.0,
@@ -152,19 +187,23 @@ pub def require_column_expr_name(expr: ColumnExpr, context: str) -> str:
     return expr.column_name
 
 
+pub def scalar_expr_output_name(expr: ColumnExpr, fallback: str) -> str:
+    """Return a stable output name for one scalar expression in positions that expose grouping output columns."""
+    if expr.kind == ColumnExprKind.Column:
+        return expr.column_name
+    return fallback
+
+
 pub def project_output_columns(input_columns: list[str], assignments: list[ProjectionAssignment]) -> list[str]:
     """Apply ordered add-or-replace assignments to one input column list and return the projected output columns."""
     mut output_columns: list[str] = []
     output_columns.extend(input_columns)
     for assignment in assignments:
         existing_idx = _index_of_column(output_columns, assignment.output_name)
-        # TODO(#121): remove this explicit owned-string materialization once v0.3 fixes the borrowed-loop-item field
-        # path structurally instead of case by case.
-        output_name = str(assignment.output_name)
         if existing_idx >= 0:
-            output_columns[existing_idx] = output_name
+            output_columns[existing_idx] = assignment.output_name
         else:
-            output_columns.append(output_name)
+            output_columns.append(assignment.output_name)
     return output_columns
 
 

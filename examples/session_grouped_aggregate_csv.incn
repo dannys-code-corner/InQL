@@ -21,7 +21,7 @@ def main() -> None:
 
 
 def _group_collect_write(mut session: Session, input_uri: str, output_uri: str) -> Result[None, SessionError]:
-    orders = session.read_csv[AggregateOrder]("aggregate_orders", input_uri)?
+    orders = session.read_csv("aggregate_orders", input_uri)?
     session.activate()
 
     grouped = orders.group_by([col("customer_id")]).agg([sum(col("amount")), count()])

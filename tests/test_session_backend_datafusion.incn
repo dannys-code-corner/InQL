@@ -1,6 +1,7 @@
-from std.testing import assert_eq
 from backends import csv_source
+from dataset import LazyFrame
 from session import Session
+from std.testing import assert_is_ok
 from rust::std::path import Path
 
 
@@ -12,37 +13,27 @@ pub model Order:
 def test_session_backend_datafusion__registered_named_table_executes_via_substrait() -> None:
     # -- Arrange --
     mut session = Session.default()
-    fixture_uri = "../../../tests/fixtures/orders.csv"
-    match session.register("orders", csv_source(fixture_uri)):
-        Ok(_) => pass
-        Err(err) => assert_eq(true, false, err.error_message())
+    fixture_uri = "tests/fixtures/orders.csv"
+    assert_is_ok(session.register("orders", csv_source(fixture_uri)), "fixture registration should succeed")
 
     # -- Act --
-    match session.table[Order]("orders"):
-        Ok(lazy) =>
-            match session.execute(lazy):
-                Ok(_) =>
-                    # -- Assert --
-                    pass
-                Err(err) => assert_eq(true, false, err.error_message())
-        Err(err) => assert_eq(true, false, err.error_message())
+    lazy: LazyFrame[Order] = assert_is_ok(session.table("orders"), "registered table lookup should succeed")
+    execute_result = session.execute(lazy)
+
+    # -- Assert --
+    assert_is_ok(execute_result, "registered named-table execution should succeed")
 
 
 def test_session_backend_datafusion__session_write_csv_routes_through_execution_path() -> None:
     # -- Arrange --
     mut session = Session.default()
-    output_uri = "../../../tests/target/session_backend_datafusion_output.csv"
-    fixture_uri = "../../../tests/fixtures/orders.csv"
-    match session.register("orders", csv_source(fixture_uri)):
-        Ok(_) => pass
-        Err(err) => assert_eq(true, false, err.error_message())
+    output_uri = "tests/target/session_backend_datafusion_output.csv"
+    fixture_uri = "tests/fixtures/orders.csv"
+    assert_is_ok(session.register("orders", csv_source(fixture_uri)), "fixture registration should succeed")
 
     # -- Act --
-    match session.table[Order]("orders"):
-        Ok(lazy) =>
-            match session.write_csv(lazy, output_uri):
-                Ok(_) =>
-                    # -- Assert --
-                    assert_eq(Path.new(output_uri).exists(), true, "session.write_csv should produce an output artifact")
-                Err(err) => assert_eq(true, false, err.error_message())
-        Err(err) => assert_eq(true, false, err.error_message())
+    lazy: LazyFrame[Order] = assert_is_ok(session.table("orders"), "registered table lookup should succeed")
+    assert_is_ok(session.write_csv(lazy, output_uri), "session.write_csv should route through execution")
+
+    # -- Assert --
+    assert Path.new(output_uri).exists(), "session.write_csv should produce an output artifact"

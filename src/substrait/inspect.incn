@@ -9,7 +9,6 @@ from rust::std::boxed import Box
 from rust::std::primitive import i32 as RustI32
 from rust::substrait::proto import AggregateRel, Expression, Plan, ReadRel, Rel, RelCommon
 from rust::substrait::proto::aggregate_rel import Measure
-from rust::substrait::proto::expression::literal import LiteralType
 from rust::substrait::proto::function_argument import ArgType
 from rust::substrait::proto::plan_rel import RelType as PlanRelType
 from rust::substrait::proto::read_rel import NamedTable as ReadNamedTable, ReadType
@@ -17,7 +16,8 @@ from rust::substrait::proto::rel import RelType
 from rust::substrait::proto::rel_common import Direct, EmitKind
 from rust::substrait::proto::set_rel import SetOp
 from aggregate_builders import AggregateKind, AggregateMeasure
-from substrait.expr_lowering import field_index_from_expression, project_output_columns_with_emit, to_rust_u32
+from projection_builders import scalar_expr_output_name
+from substrait.expr_lowering import field_index_from_expression, project_output_columns_with_emit
 from substrait.extensions import COUNT_FUNCTION_ANCHOR
 from substrait.schema_registry import named_table_columns, unknown_named_struct
 
@@ -44,8 +44,8 @@ def _set_op_value(value: SetOp) -> RustI32:
 def _measure_output_name(measure: AggregateMeasure) -> str:
     """Return the projected output column name for one aggregate measure."""
     if measure.kind == AggregateKind.Count:
-        return "count"
-    return "sum_" + measure.column_name
+        return measure.kind.value()
+    return measure.kind.value() + "_" + scalar_expr_output_name(measure.expr, "expr")
 
 
 pub def aggregate_measure_output_names(measures: list[AggregateMeasure]) -> list[str]:
@@ -72,10 +72,12 @@ def _aggregate_input_columns(aggregate_rel: AggregateRel) -> list[str]:
 def _grouping_output_columns(input_columns: list[str], grouping_expressions: list[Expression]) -> list[str]:
     """Resolve grouping output names from field-reference expressions against one input-column list."""
     mut columns: list[str] = []
-    for expr in grouping_expressions:
+    for idx, expr in enumerate(grouping_expressions):
         field_index = field_index_from_expression(expr)
         if field_index >= 0 and field_index < len(input_columns):
             columns.append(input_columns[field_index])
+        else:
+            columns.append(f"group_{idx}")
     return columns
 
 
@@ -83,16 +85,19 @@ def _aggregate_measure_output_name(input_columns: list[str], measure: Measure) -
     """Resolve one aggregate output name from the lowered Substrait aggregate measure payload."""
     match measure.measure:
         Some(agg_fn) =>
-            if agg_fn.function_reference == to_rust_u32(COUNT_FUNCTION_ANCHOR):
+            if agg_fn.function_reference == COUNT_FUNCTION_ANCHOR:
                 return "count"
             if len(agg_fn.arguments) == 0:
                 return "sum"
             match agg_fn.arguments[0].arg_type:
-                Some(ArgType.Value(expr)) =>
-                    field_index = field_index_from_expression(expr)
-                    if field_index >= 0 and field_index < len(input_columns):
-                        return "sum_" + input_columns[field_index]
-                    return "sum"
+                Some(arg_type) =>
+                    match arg_type:
+                        ArgType.Value(expr) =>
+                            field_index = field_index_from_expression(expr)
+                            if field_index >= 0 and field_index < len(input_columns):
+                                return "sum_" + input_columns[field_index]
+                            return "sum"
+                        _ => return "sum"
                 _ => return "sum"
         None => return ""
 
@@ -187,11 +192,14 @@ pub def root_rel(plan: Plan) -> Rel:
         return _malformed_root_rel()
     relation = plan.relations[0]
     match relation.rel_type:
-        Some(PlanRelType.Root(root)) =>
-            match root.input:
-                Some(rel) => return rel
-                None => return _malformed_root_rel()
-        Some(PlanRelType.Rel(rel)) => return rel
+        Some(rel_type) =>
+            match rel_type:
+                PlanRelType.Root(root) =>
+                    match root.input:
+                        Some(rel) => return rel
+                        None => return _malformed_root_rel()
+                PlanRelType.Rel(rel) => return rel
+                _ => return _malformed_root_rel()
         _ => return _malformed_root_rel()
 
 
@@ -201,7 +209,10 @@ pub def root_names(plan: Plan) -> list[str]:
         return []
     relation = plan.relations[0]
     match relation.rel_type:
-        Some(PlanRelType.Root(root)) => return root.names
+        Some(rel_type) =>
+            match rel_type:
+                PlanRelType.Root(root) => return root.names
+                _ => return []
         _ => return []
 
 

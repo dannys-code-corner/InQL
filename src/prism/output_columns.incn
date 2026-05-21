@@ -3,14 +3,19 @@
 from prism.store import node_at
 from prism.rewrite import rewritten_node_at
 from prism.types import PrismNodeKind, PrismOptimizedView, PrismStoreId
-from projection_builders import project_output_columns
+from projection_builders import ColumnExpr, project_output_columns, scalar_expr_output_name
 from substrait.inspect import aggregate_measure_output_names
 from substrait.schema_registry import named_table_columns
 
 
 def _is_passthrough_output_kind(kind: PrismNodeKind) -> bool:
     """Return whether a Prism node preserves its input columns unchanged."""
-    return (kind == PrismNodeKind.Filter or kind == PrismNodeKind.OrderBy or kind == PrismNodeKind.Limit or kind == PrismNodeKind.Explode)
+    return (
+        kind == PrismNodeKind.Filter
+        or kind == PrismNodeKind.OrderBy
+        or kind == PrismNodeKind.Limit
+        or kind == PrismNodeKind.Explode
+    )
 
 
 pub def authored_output_columns(store_id: PrismStoreId, tip_id: int) -> list[str]:
@@ -33,7 +38,7 @@ pub def authored_output_columns(store_id: PrismStoreId, tip_id: int) -> list[str
         columns.extend(rhs_columns)
         return columns
     if node.kind == PrismNodeKind.GroupBy:
-        return [column for column in node.group_columns]
+        return _group_output_columns(node.group_columns)
     if node.kind == PrismNodeKind.Aggregate:
         # Aggregate output preserves grouping-prefix columns first,
         # then appends one output column per aggregate measure in declaration order.
@@ -64,7 +69,7 @@ pub def rewritten_output_columns(view: PrismOptimizedView, node_id: int) -> list
         columns.extend(rhs_columns)
         return columns
     if node.kind == PrismNodeKind.GroupBy:
-        return [column for column in node.group_columns]
+        return _group_output_columns(node.group_columns)
     if node.kind == PrismNodeKind.Aggregate:
         # Rewritten aggregate nodes follow the same output contract as authored nodes:
         # grouping-prefix columns first, aggregate measure outputs after that.
@@ -80,7 +85,7 @@ def _authored_aggregate_prefix_columns(store_id: PrismStoreId, tip_id: int) -> l
     """Return grouping-prefix columns that survive into one authored aggregate node output."""
     input_node = node_at(store_id, tip_id)
     if input_node.kind == PrismNodeKind.GroupBy:
-        return [column for column in input_node.group_columns]
+        return _group_output_columns(input_node.group_columns)
     if input_node.kind == PrismNodeKind.Aggregate:
         return _authored_aggregate_prefix_columns(store_id, input_node.input_ids[0])
     return []
@@ -90,7 +95,12 @@ def _rewritten_aggregate_prefix_columns(view: PrismOptimizedView, node_id: int) 
     """Return grouping-prefix columns that survive into one rewritten aggregate node output."""
     input_node = rewritten_node_at(view, node_id)
     if input_node.kind == PrismNodeKind.GroupBy:
-        return [column for column in input_node.group_columns]
+        return _group_output_columns(input_node.group_columns)
     if input_node.kind == PrismNodeKind.Aggregate:
         return _rewritten_aggregate_prefix_columns(view, input_node.input_ids[0])
     return []
+
+
+def _group_output_columns(group_columns: list[ColumnExpr]) -> list[str]:
+    """Return stable output column names for grouping scalar expressions."""
+    return [scalar_expr_output_name(expr, f"group_{idx}") for idx, expr in enumerate(group_columns)]

@@ -147,22 +147,22 @@ async def _register_sources(
 
 async def _register_one(ctx: SessionContext, logical_name: str, source: TableSource) -> Result[None, BackendError]:
     """Register one logical source by kind on the DataFusion context."""
-    if source.source_kind == SourceKind.Csv:
-        csv_opts = CsvReadOptions.new().has_header(true)
-        match await ctx.register_csv(logical_name, source.uri, csv_opts):
-            Ok(_) => return Ok(None)
-            Err(err) => return Err(_backend_error("backend_registration_error", err.to_string()))
-
-    if source.source_kind == SourceKind.Parquet:
-        parquet_opts = ParquetReadOptions.default()
-        match await ctx.register_parquet(logical_name, source.uri, parquet_opts):
-            Ok(_) => return Ok(None)
-            Err(err) => return Err(_backend_error("backend_registration_error", err.to_string()))
-
-    arrow_opts = ArrowReadOptions.default()
-    match await ctx.register_arrow(logical_name, source.uri, arrow_opts):
-        Ok(_) => return Ok(None)
-        Err(err) => return Err(_backend_error("backend_registration_error", err.to_string()))
+    match source.source_kind:
+        SourceKind.Csv =>
+            csv_opts = CsvReadOptions.new().has_header(true)
+            match await ctx.register_csv(logical_name, source.uri, csv_opts):
+                Ok(_) => return Ok(None)
+                Err(err) => return Err(_backend_error("backend_registration_error", err.to_string()))
+        SourceKind.Parquet =>
+            parquet_opts = ParquetReadOptions.default()
+            match await ctx.register_parquet(logical_name, source.uri, parquet_opts):
+                Ok(_) => return Ok(None)
+                Err(err) => return Err(_backend_error("backend_registration_error", err.to_string()))
+        SourceKind.Arrow =>
+            arrow_opts = ArrowReadOptions.default()
+            match await ctx.register_arrow(logical_name, source.uri, arrow_opts):
+                Ok(_) => return Ok(None)
+                Err(err) => return Err(_backend_error("backend_registration_error", err.to_string()))
 
 
 def _consumer_plan_from_current_plan(plan: Plan) -> Result[ConsumerPlan, BackendError]:

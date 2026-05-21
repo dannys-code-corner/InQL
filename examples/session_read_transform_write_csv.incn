@@ -1,6 +1,6 @@
 """Example: Session read -> transform -> write CSV using LazyFrame."""
 
-from functions import col, display, eq, int_lit
+from functions import col, display, eq, lit
 from session import Session, SessionError, report_session_error
 
 
@@ -21,12 +21,12 @@ def main() -> None:
 
 def _read_transform_write(mut session: Session, input_uri: str, output_uri: str) -> Result[None, SessionError]:
     # Read path stays deferred: this returns LazyFrame, not local materialized data.
-    orders = session.read_csv[CsvOrder]("orders", input_uri)?
+    orders = session.read_csv("orders", input_uri)?
     # Activate after registration so LazyFrame.collect/display sees the registered sources.
     session.activate()
 
     # Keep transform simple and schema-safe for the current fixture.
-    transformed = orders.filter(eq(col("id"), int_lit(1))).limit(2)
+    transformed = orders.filter(eq(col("id"), lit(1))).limit(2)
     session.write_csv(transformed, output_uri)?
     display(transformed)
     return Ok(None)

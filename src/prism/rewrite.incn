@@ -1,8 +1,9 @@
 """Prism optimized-view derivation, canonical rewrite rules, and explain artifacts."""
 
-from filter_builders import FilterPredicateKind, always_true
+from filter_builders import always_true
 from prism.types import PrismNode, PrismNodeKind, PrismOptimizedView, PrismRewriteExplain, PrismStoreId
 from prism.store import node_at, reachable_node_ids, remap_input_ids, store_nodes
+from projection_builders import ColumnExprKind
 
 
 model PrismRewriteResult:
@@ -133,7 +134,11 @@ def _derive_rewrite_result(store_id: PrismStoreId, tip_id: int) -> PrismRewriteR
 
 def _can_eliminate_filter_true(node: PrismNode) -> bool:
     """Return whether a filter node is a no-op `filter(true)` and can be erased."""
-    return node.kind == PrismNodeKind.Filter and node.filter_predicate.kind == FilterPredicateKind.AlwaysTrue
+    return (
+        node.kind == PrismNodeKind.Filter
+        and node.filter_predicate.kind == ColumnExprKind.BoolLiteral
+        and node.filter_predicate.bool_value
+    )
 
 
 def _can_collapse_adjacent_limit(node: PrismNode, remapped_inputs: list[int], rewritten_nodes: list[PrismNode]) -> bool:

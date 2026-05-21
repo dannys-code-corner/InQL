@@ -1,6 +1,6 @@
 # Execution context (Reference)
 
-This page documents the current public execution surface in the InQL package. It describes the API as implemented today. Normative design intent still lives in [RFC 004][rfc-004].
+This page documents the public execution surface in the InQL package. Normative design intent lives in [RFC 004][rfc-004].
 
 ## Core types
 
@@ -22,10 +22,10 @@ This page documents the current public execution surface in the InQL package. It
 | API                                  | Returns                              | Notes                                                    |
 | ------------------------------------ | ------------------------------------ | -------------------------------------------------------- |
 | `session.register(name, source)`     | `Result[None, SessionError]`         | Bind a logical relation name to a source definition      |
-| `session.table[T](name)`             | `Result[LazyFrame[T], SessionError]` | Resolve a registered logical relation by name            |
-| `session.read_csv[T](name, uri)`     | `Result[LazyFrame[T], SessionError]` | Register and return a deferred CSV-backed relation       |
-| `session.read_parquet[T](name, uri)` | `Result[LazyFrame[T], SessionError]` | Register and return a deferred Parquet-backed relation   |
-| `session.read_arrow[T](name, uri)`   | `Result[LazyFrame[T], SessionError]` | Register and return a deferred Arrow IPC-backed relation |
+| `session.table(name)`             | `Result[LazyFrame[T], SessionError]` | Resolve a registered logical relation by name            |
+| `session.read_csv(name, uri)`     | `Result[LazyFrame[T], SessionError]` | Register and return a deferred CSV-backed relation       |
+| `session.read_parquet(name, uri)` | `Result[LazyFrame[T], SessionError]` | Register and return a deferred Parquet-backed relation   |
+| `session.read_arrow(name, uri)`   | `Result[LazyFrame[T], SessionError]` | Register and return a deferred Arrow IPC-backed relation |
 
 All read APIs return `LazyFrame[T]`. They create deferred logical work; they do not fetch rows immediately.
 
@@ -66,15 +66,15 @@ If no active session exists when a convenience API needs one, the operation fail
 
 - `LazyFrame[T]` is the deferred carrier for bounded work.
 - `DataFrame[T]` is the materialized local carrier.
-- Current `collect(...)` materialization stores structured metadata plus preview text:
+- `collect(...)` materialization stores structured metadata plus preview text:
   - resolved output columns
   - row count
   - preview text for display/debugging
-- Row-level user APIs remain follow-on work; preview text is not the canonical schema contract.
+- Preview text is for display/debugging; resolved output columns are the schema contract surfaced by collection.
 
-## Current backend note
+## Backend note
 
-DataFusion is the only implemented execution backend today. The public builder/configuration surface is designed so additional backends can be added later without changing the `Session` entry point.
+DataFusion is the implemented execution backend. The public builder/configuration surface is designed so additional backends can be added without changing the `Session` entry point.
 
 ## Related docs
 

@@ -81,7 +81,10 @@ def _merge_primitive_kind(current: SubstraitPrimitiveKind, incoming: SubstraitPr
         return SubstraitPrimitiveKind.String
     if current == incoming:
         return current
-    if (current == SubstraitPrimitiveKind.I64 and incoming == SubstraitPrimitiveKind.F64) or (current == SubstraitPrimitiveKind.F64 and incoming == SubstraitPrimitiveKind.I64):
+    if (current == SubstraitPrimitiveKind.I64 and incoming == SubstraitPrimitiveKind.F64) or (
+        current == SubstraitPrimitiveKind.F64
+        and incoming == SubstraitPrimitiveKind.I64
+    ):
         return SubstraitPrimitiveKind.F64
     return SubstraitPrimitiveKind.String
 

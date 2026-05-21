@@ -18,7 +18,7 @@ state (`LazyFrame.collect()`) intentionally route through Session-owned active-s
 
 The current method-chain surface in this module is the explicit builder-based API:
 
-- `filter(predicate: FilterPredicate)`
+- `filter(predicate: ColumnExpr)`
 - `with_column(name: str, expr: ColumnExpr)`
 - `group_by(columns: list[ColumnExpr])`
 - `agg(measures: list[AggregateMeasure])`
@@ -28,14 +28,14 @@ Illustrative current-shape examples:
 
 ```incan
 from pub::inql import LazyFrame
-from pub::inql.functions import col, gt, int_lit, add, int_expr, sum, count
+from pub::inql.functions import add, col, count, gt, lit, sum
 from models import Order, OrderSummary
 
 def high_value_orders(orders: LazyFrame[Order]) -> LazyFrame[Order]:
-    return orders.filter(gt(col("amount"), int_lit(100)))
+    return orders.filter(gt(col("amount"), lit(100)))
 
 def enrich_orders(orders: LazyFrame[Order]) -> LazyFrame[Order]:
-    return orders.with_column("amount_x2", add(col("amount"), int_expr(2)))
+    return orders.with_column("amount_x2", add(col("amount"), lit(2)))
 
 def summarize_orders(orders: LazyFrame[Order]) -> LazyFrame[OrderSummary]:
     return orders.group_by([col("customer_id")]).agg([sum(col("amount")), count()])
@@ -53,9 +53,9 @@ See also:
 
 from rust::substrait::proto import Plan, Rel
 from aggregate_builders import AggregateMeasure
-from filter_builders import FilterPredicate
 from projection_builders import ColumnExpr
 from dataset.materialization import DataFrameMaterialization
+from substrait.errors import SubstraitLoweringError
 from substrait.schema_registry import named_table_columns
 from substrait.plans import plan_from_root_relation
 from substrait.inspect import relation_output_columns, root_rel, source_named_table_name
@@ -89,20 +89,19 @@ from prism import (
 
 # ---- DataSet trait ----
 pub trait DataSet[T with Clone]:
-    def to_substrait_plan(self) -> Plan: ...
-    def filter(self, predicate: FilterPredicate) -> Self: ...
-    # TODO(InQL RFC 004): Replace the temporary Self-only join surface with heterogeneous join typing plus an explicit output-schema contract.
-    def join(self, other: Self, on: bool) -> Self: ...
-    def select(self) -> Self: ...
-    def with_column(self, name: str, expr: ColumnExpr) -> Self: ...
-    def group_by(self, columns: list[ColumnExpr]) -> Self: ...
-    def agg(self, measures: list[AggregateMeasure]) -> Self: ...
-    def order_by(self) -> Self: ...
-    def limit(self, n: int) -> Self: ...
-    def explode(self) -> Self: ...
+    def to_substrait_plan(self) -> Plan
+    def try_to_substrait_plan(self) -> Result[Plan, SubstraitLoweringError]
+    def filter(self, predicate: ColumnExpr) -> Self
+    def join(self, other: Self, on: bool) -> Self
+    def select(self) -> Self
+    def with_column(self, name: str, expr: ColumnExpr) -> Self
+    def group_by(self, columns: list[ColumnExpr]) -> Self
+    def agg(self, measures: list[AggregateMeasure]) -> Self
+    def order_by(self) -> Self
+    def limit(self, n: int) -> Self
+    def explode(self) -> Self
 
 
-# ---- BoundedDataSet trait and concrete types ----
 pub trait BoundedDataSet[T with Clone] with DataSet[T]:
     pass
 
@@ -122,10 +121,7 @@ pub model CarrierSchema:
 
 
 pub class DataFrame[T with Clone] with BoundedDataSet:
-    # Generic witness so runtime representation still carries T in the generated Rust type.
     pub _type_witness: list[T]
-    # Structured materialization produced by Session.collect(...).
-    # Preview text is display-oriented; resolved columns and row count are the canonical collected metadata.
     pub _materialization: DataFrameMaterialization
     pub _substrait_rel: Rel
 
@@ -172,51 +168,55 @@ pub class DataFrame[T with Clone] with BoundedDataSet:
         """Rebuild a one-root Substrait plan from this frame's root relation."""
         return plan_from_root_relation(self._substrait_rel, self.planned_columns())
 
-    def filter(self, predicate: FilterPredicate) -> Self:
+    def try_to_substrait_plan(self) -> Result[Plan, SubstraitLoweringError]:
+        """Fallibly rebuild a one-root Substrait plan from this frame's already-lowered root relation."""
+        return Ok(self.to_substrait_plan())
+
+    def filter(self, predicate: ColumnExpr) -> Self:
         """Return one new DataFrame with a filter stage appended and stale materialization cleared."""
-        return _data_frame_with_invalidated_materialization[T](
+        return _data_frame_with_invalidated_materialization(
             filter_ds_of_columns(self._substrait_rel, self.planned_columns(), predicate),
         )
 
     def join(self, other: Self, on: bool) -> Self:
         """Return one new DataFrame with a join stage and stale materialization cleared."""
-        return _data_frame_with_invalidated_materialization[T](join_ds(self._substrait_rel, other._substrait_rel, on))
+        return _data_frame_with_invalidated_materialization(join_ds(self._substrait_rel, other._substrait_rel, on))
 
     def select(self) -> Self:
         """Return one new DataFrame with an identity projection stage and stale materialization cleared."""
-        return _data_frame_with_invalidated_materialization[T](
+        return _data_frame_with_invalidated_materialization(
             select_ds_of_columns(self._substrait_rel, self.planned_columns()),
         )
 
     def with_column(self, name: str, expr: ColumnExpr) -> Self:
         """Return one new DataFrame with an add-or-replace projection stage and stale materialization cleared."""
-        return _data_frame_with_invalidated_materialization[T](
+        return _data_frame_with_invalidated_materialization(
             with_column_ds(self._substrait_rel, self.planned_columns(), name, expr),
         )
 
     def group_by(self, columns: list[ColumnExpr]) -> Self:
         """Return one new DataFrame with a grouping stage and stale materialization cleared."""
-        return _data_frame_with_invalidated_materialization[T](
+        return _data_frame_with_invalidated_materialization(
             group_by_ds_of_columns(self._substrait_rel, self.planned_columns(), columns),
         )
 
     def agg(self, measures: list[AggregateMeasure]) -> Self:
         """Return one new DataFrame with an aggregation stage and stale materialization cleared."""
-        return _data_frame_with_invalidated_materialization[T](
+        return _data_frame_with_invalidated_materialization(
             agg_ds_of_columns(self._substrait_rel, self.planned_columns(), measures),
         )
 
     def order_by(self) -> Self:
         """Return one new DataFrame with an ordering stage and stale materialization cleared."""
-        return _data_frame_with_invalidated_materialization[T](order_by_ds(self._substrait_rel))
+        return _data_frame_with_invalidated_materialization(order_by_ds(self._substrait_rel))
 
     def limit(self, n: int) -> Self:
         """Return one new DataFrame with a row-limit stage and stale materialization cleared."""
-        return _data_frame_with_invalidated_materialization[T](limit_ds(self._substrait_rel, n))
+        return _data_frame_with_invalidated_materialization(limit_ds(self._substrait_rel, n))
 
     def explode(self) -> Self:
         """Return one new DataFrame with an explode/unnest stage and stale materialization cleared."""
-        return _data_frame_with_invalidated_materialization[T](explode_ds(self._substrait_rel))
+        return _data_frame_with_invalidated_materialization(explode_ds(self._substrait_rel))
 
 
 pub class LazyFrame[T with Clone] with BoundedDataSet:
@@ -257,7 +257,11 @@ pub class LazyFrame[T with Clone] with BoundedDataSet:
         """Lower this lazy pipeline to a Substrait `Plan` at the boundary."""
         return plan_from_root_relation(self._cursor.lower_to_rel(), self.planned_columns())
 
-    def filter(self, predicate: FilterPredicate) -> Self:
+    def try_to_substrait_plan(self) -> Result[Plan, SubstraitLoweringError]:
+        """Fallibly lower this lazy pipeline to a Substrait `Plan` at the boundary."""
+        return Ok(plan_from_root_relation(self._cursor.try_lower_to_rel()?, self.planned_columns()))
+
+    def filter(self, predicate: ColumnExpr) -> Self:
         """Return one new lazy carrier with an appended filter stage."""
         return LazyFrame(_cursor=prism_cursor_apply_filter(self._cursor, predicate))
 
@@ -295,12 +299,12 @@ pub class LazyFrame[T with Clone] with BoundedDataSet:
 
     def collect(self) -> Result[DataFrame[T], SessionError]:
         """Collect through the currently active Session and return one materialized DataFrame."""
-        return collect_with_active_session[T](self.clone())
+        return collect_with_active_session(self.clone())
 
 
 pub def lazy_frame_named_table[T with Clone](table_name: str) -> LazyFrame[T]:
     """Create one deferred lazy carrier rooted at one logical named-table read."""
-    return LazyFrame(_cursor=prism_cursor_named_table[T](table_name))
+    return LazyFrame(_cursor=prism_cursor_named_table(table_name))
 
 
 def _empty_type_witness[T with Clone]() -> list[T]:
@@ -310,8 +314,8 @@ def _empty_type_witness[T with Clone]() -> list[T]:
 
 def _data_frame_with_invalidated_materialization[T with Clone](rel: Rel) -> DataFrame[T]:
     """Build one DataFrame whose logical relation changed and whose prior collected materialization is no longer valid."""
-    return DataFrame[T](
-        _type_witness=_empty_type_witness[T](),
+    return DataFrame(
+        _type_witness=_empty_type_witness(),
         _materialization=DataFrameMaterialization.empty(),
         _substrait_rel=rel,
     )
@@ -325,7 +329,6 @@ def _declared_columns_from_rel(rel: Rel) -> list[str]:
     return named_table_columns(table_name)
 
 
-# ---- UnboundedDataSet trait and concrete types ----
 pub trait UnboundedDataSet[T with Clone] with DataSet[T]:
     pass
 
@@ -358,7 +361,11 @@ pub class DataStream[T with Clone] with UnboundedDataSet:
         """Rebuild a one-root Substrait plan from this stream relation."""
         return plan_from_root_relation(self._substrait_rel, self.planned_columns())
 
-    def filter(self, predicate: FilterPredicate) -> Self:
+    def try_to_substrait_plan(self) -> Result[Plan, SubstraitLoweringError]:
+        """Fallibly rebuild a one-root Substrait plan from this stream's already-lowered root relation."""
+        return Ok(self.to_substrait_plan())
+
+    def filter(self, predicate: ColumnExpr) -> Self:
         """Return one new DataStream with a filter stage."""
         return DataStream(
             _row_schema_marker=self._row_schema_marker.clone(),
@@ -440,3 +447,9 @@ pub class DataStream[T with Clone] with UnboundedDataSet:
             _row_schema_marker=self._row_schema_marker.clone(),
             _substrait_rel=explode_ds(self._substrait_rel),
         )
+    # TODO(InQL RFC 004): Replace the temporary Self-only join surface with heterogeneous join typing plus an explicit output-schema contract.
+# ---- BoundedDataSet trait and concrete types ----
+    # Generic witness so runtime representation still carries T in the generated Rust type.
+    # Structured materialization produced by Session.collect(...).
+    # Preview text is display-oriented; resolved columns and row count are the canonical collected metadata.
+# ---- UnboundedDataSet trait and concrete types ----

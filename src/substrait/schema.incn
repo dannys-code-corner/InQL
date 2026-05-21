@@ -31,12 +31,12 @@ pub model DemoCustomer:
 
 
 @derive(Clone)
-pub enum SubstraitPrimitiveKind:
-    Bool
-    I64
-    F64
-    Timestamp
-    String
+pub enum SubstraitPrimitiveKind(str):
+    Bool = "bool"
+    I64 = "i64"
+    F64 = "f64"
+    Timestamp = "timestamp"
+    String = "string"
 
 
 @derive(Clone)
@@ -74,22 +74,23 @@ def _type_from_primitive(kind: SubstraitPrimitiveKind, nullable: bool) -> Type:
     mut n = Nullability.Required
     if nullable:
         n = Nullability.Nullable
-    # `incan fmt` currently rewrites `match`/`case` into invalid Rust-style patterns; use branches.
-    if kind == SubstraitPrimitiveKind.Bool:
-        return Type(kind=Some(Kind.Bool(Boolean(type_variation_reference=0, nullability=n.into()))))
-    if kind == SubstraitPrimitiveKind.I64:
-        return Type(kind=Some(Kind.I64(I64(type_variation_reference=0, nullability=n.into()))))
-    if kind == SubstraitPrimitiveKind.F64:
-        return Type(kind=Some(Kind.Fp64(Fp64(type_variation_reference=0, nullability=n.into()))))
-    if kind == SubstraitPrimitiveKind.Timestamp:
-        return Type(
-            kind=Some(
-                Kind.PrecisionTimestamp(
-                    PrecisionTimestamp(type_variation_reference=0, nullability=n.into(), precision=6),
+    match kind:
+        SubstraitPrimitiveKind.Bool =>
+            return Type(kind=Some(Kind.Bool(Boolean(type_variation_reference=0, nullability=n.into()))))
+        SubstraitPrimitiveKind.I64 =>
+            return Type(kind=Some(Kind.I64(I64(type_variation_reference=0, nullability=n.into()))))
+        SubstraitPrimitiveKind.F64 =>
+            return Type(kind=Some(Kind.Fp64(Fp64(type_variation_reference=0, nullability=n.into()))))
+        SubstraitPrimitiveKind.Timestamp =>
+            return Type(
+                kind=Some(
+                    Kind.PrecisionTimestamp(
+                        PrecisionTimestamp(type_variation_reference=0, nullability=n.into(), precision=6),
+                    ),
                 ),
-            ),
-        )
-    return Type(kind=Some(Kind.String(SubstraitString(type_variation_reference=0, nullability=n.into()))))
+            )
+        SubstraitPrimitiveKind.String =>
+            return Type(kind=Some(Kind.String(SubstraitString(type_variation_reference=0, nullability=n.into()))))
 
 
 def _row_shape_field_types(shape: RowShapeSpec) -> list[Type]:

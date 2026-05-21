@@ -1,7 +1,8 @@
 """
 Example: Bounded vs unbounded type signatures (RFC 001).
 
-This example focuses on compile-time type signatures and keeps runtime bodies as placeholders.
+This example focuses on compile-time type signatures; function bodies are intentionally minimal so the boundedness
+relationships stay visible.
 
 ## Patterns shown
 
@@ -61,7 +62,7 @@ def safe_filter[T](data: DataSet[T]) -> DataSet[T]:
 
 def safe_join[T](data: DataSet[T], other: DataSet[T]) -> DataSet[T]:
     """Join uses `other: Self` (same carrier type at the trait level; logical row typing per RFC 003)."""
-    # Intended shape when stubs are executable: data.join(other, ...)
+    # Concrete relation logic would call data.join(other, ...)
     _ = other
     return data
 

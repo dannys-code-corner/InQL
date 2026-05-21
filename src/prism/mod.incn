@@ -12,9 +12,13 @@ This façade keeps one stable internal import surface while the implementation i
 
 from rust::substrait::proto import Plan, Rel
 from aggregate_builders import AggregateMeasure
-from filter_builders import FilterPredicate, always_true
-from projection_builders import ColumnExpr, ProjectionAssignment, require_column_expr_name, with_column_assignment
-from prism.lower import lower_prism_tip as lower_prism_tip_impl, prism_rel_to_plan
+from filter_builders import always_true
+from projection_builders import ColumnExpr, ProjectionAssignment, with_column_assignment
+from prism.lower import (
+    lower_prism_tip as lower_prism_tip_impl,
+    prism_rel_to_plan,
+    try_lower_prism_tip as try_lower_prism_tip_impl,
+)
 from prism.output_columns import rewritten_output_columns
 from prism.rewrite import (
     derive_optimized_view as derive_optimized_view_impl,
@@ -32,6 +36,7 @@ from prism.store import (
     store_nodes,
 )
 from prism.types import authored_node_kind_name, PrismNodeKind, PrismOptimizedView, PrismRewriteExplain, PrismStoreId
+from substrait.errors import SubstraitLoweringError
 
 
 pub class PrismCursor[T with Clone]:
@@ -51,7 +56,7 @@ pub class PrismCursor[T with Clone]:
         """Return one cloned cursor handle to the same store and tip."""
         return PrismCursor(store_id=self.store_id, tip_id=self.tip_id, _type_marker=[])
 
-    def filter(self, predicate: FilterPredicate) -> Self:
+    def filter(self, predicate: ColumnExpr) -> Self:
         """Append one filter node in the shared authored store and return the derived tip."""
         next_tip_id = append_node(
             store_id=self.store_id,
@@ -132,7 +137,6 @@ pub class PrismCursor[T with Clone]:
 
     def group_by(self, columns: list[ColumnExpr]) -> Self:
         """Append one grouping node and return the derived tip."""
-        column_names = [require_column_expr_name(column, str("group_by(...)")) for column in columns]
         next_tip_id = append_node(
             store_id=self.store_id,
             kind=PrismNodeKind.GroupBy,
@@ -141,7 +145,7 @@ pub class PrismCursor[T with Clone]:
             join_predicate=false,
             filter_predicate=always_true(),
             limit_count=0,
-            group_columns=column_names,
+            group_columns=columns,
             aggregate_measures=[],
             projection_assignments=[],
         )
@@ -223,9 +227,17 @@ pub class PrismCursor[T with Clone]:
         """Lower the current tip through canonical rewrites to one Substrait root relation."""
         return lower_prism_tip(self.store_id, self.tip_id)
 
+    def try_lower_to_rel(self) -> Result[Rel, SubstraitLoweringError]:
+        """Fallibly lower the current tip through canonical rewrites to one Substrait root relation."""
+        return try_lower_prism_tip(self.store_id, self.tip_id)
+
     def to_substrait_plan(self) -> Plan:
         """Lower the current tip all the way to one Substrait plan."""
         return prism_rel_to_plan(self.lower_to_rel())
+
+    def try_to_substrait_plan(self) -> Result[Plan, SubstraitLoweringError]:
+        """Fallibly lower the current tip all the way to one Substrait plan."""
+        return Ok(prism_rel_to_plan(self.try_lower_to_rel()?))
 
 
 pub def prism_cursor_named_table[T with Clone](table_name: str) -> PrismCursor[T]:
@@ -246,7 +258,7 @@ pub def prism_cursor_named_table[T with Clone](table_name: str) -> PrismCursor[T
     return PrismCursor(store_id=store_id, tip_id=tip_id, _type_marker=[])
 
 
-pub def prism_cursor_apply_filter[T with Clone](cursor: PrismCursor[T], predicate: FilterPredicate) -> PrismCursor[T]:
+pub def prism_cursor_apply_filter[T with Clone](cursor: PrismCursor[T], predicate: ColumnExpr) -> PrismCursor[T]:
     """Apply dataset-level filter intent through Prism's shared authored store."""
     return cursor.filter(predicate)
 
@@ -310,6 +322,11 @@ pub def prism_cursor_output_columns[T with Clone](cursor: PrismCursor[T]) -> lis
 pub def lower_prism_tip(store_id: PrismStoreId, tip_id: int) -> Rel:
     """Lower one authored Prism tip through canonical rewrite view to the `Rel` boundary."""
     return lower_prism_tip_impl(store_id, tip_id)
+
+
+pub def try_lower_prism_tip(store_id: PrismStoreId, tip_id: int) -> Result[Rel, SubstraitLoweringError]:
+    """Fallibly lower one authored Prism tip through canonical rewrite view to the `Rel` boundary."""
+    return try_lower_prism_tip_impl(store_id, tip_id)
 
 
 pub def derive_optimized_view(store_id: PrismStoreId, tip_id: int) -> PrismOptimizedView:

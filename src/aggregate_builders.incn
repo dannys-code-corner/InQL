@@ -6,15 +6,15 @@ Today they provide a library-owned way to express grouping columns and aggregate
 typechecker changes in the Incan compiler.
 """
 
-from projection_builders import ColumnExpr, col as col_expr, require_column_expr_name
+from projection_builders import ColumnExpr, col as col_expr
 
 
 @derive(Clone)
-pub enum AggregateKind:
+pub enum AggregateKind(str):
     """Supported aggregate function kinds in the current package slice."""
 
-    Sum
-    Count
+    Sum = "sum"
+    Count = "count"
 
 
 @derive(Clone)
@@ -22,7 +22,7 @@ pub model AggregateMeasure:
     """Aggregate measure description carried through dataset, Prism, and Substrait boundaries."""
 
     pub kind: AggregateKind
-    pub column_name: str
+    pub expr: ColumnExpr
 
 
 pub def col(name: str) -> ColumnExpr:
@@ -31,10 +31,10 @@ pub def col(name: str) -> ColumnExpr:
 
 
 pub def sum(expr: ColumnExpr) -> AggregateMeasure:
-    """Build one `sum` aggregate measure over a named column reference."""
-    return AggregateMeasure(kind=AggregateKind.Sum, column_name=require_column_expr_name(expr, str("sum(...)")))
+    """Build one `sum` aggregate measure over a scalar expression."""
+    return AggregateMeasure(kind=AggregateKind.Sum, expr=expr)
 
 
 pub def count() -> AggregateMeasure:
     """Build one zero-argument `count` aggregate measure."""
-    return AggregateMeasure(kind=AggregateKind.Count, column_name="")
+    return AggregateMeasure(kind=AggregateKind.Count, expr=col_expr(""))

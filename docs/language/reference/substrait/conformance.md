@@ -16,10 +16,10 @@ The corpus uses typed models/enums (`SubstraitConformanceScenario`, `Conformance
 
 Canonical operation semantics flow through `src/dataset/ops.incn`, while proto-backed Substrait relation building, plan assembly, and plan inspection now live in the focused `src/substrait/*.incn` helper modules.
 
-For the current package-level profile, conformance checks are intentionally split between:
+For the package-level profile, conformance checks are split between:
 
-- real boundary facts that the package can prove now (relation kind, read kind, join variant, set operation, reference ordinal, extension URI presence)
-- richer planning semantics that remain deferred to future `query {}` lowering and Prism work
+- relation boundary facts that the package validates directly (relation kind, read kind, join variant, set operation, reference ordinal, extension URI presence)
+- expression and planning semantics that are validated through package tests for the implemented method-chain surface
 
 ## Representation contract
 
@@ -73,7 +73,7 @@ Downstream tooling should consume scenario catalog and validator functions from 
 
 Conformance validation for the v1 profile is expected to run against canonical operation functions in `src/dataset/ops.incn`, emitted proto-backed plans from the current `src/substrait/*.incn` helper surface, and typed model/schema helpers where needed.
 
-The current `ProjectRel` and `AggregateRel` scenarios are boundary-shape scaffolds, not proof that full computed-column, window, grouping-set, or distinct semantics are already implemented in package code.
+`ProjectRel` and `AggregateRel` scenarios validate the Substrait relation boundary. Package tests cover the implemented scalar computed-column and grouped-aggregate method-chain behavior; windows, grouping sets, and distinct semantics have their own capability rows in the operator catalog.
 
 Historical design context is captured in [InQL RFC 002][rfc-002], but this page is the source of truth for the current conformance corpus representation.
 

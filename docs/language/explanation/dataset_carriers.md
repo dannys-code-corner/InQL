@@ -56,11 +56,11 @@ Use `LazyFrame[T]` when you want to compose operations before execution:
 
 ```incan
 from pub::inql import LazyFrame
-from pub::inql.functions import col, gt, int_lit
+from pub::inql.functions import col, gt, lit
 from models import Order
 
 def high_value_orders(orders: LazyFrame[Order]) -> LazyFrame[Order]:
-    return orders.filter(gt(col("amount"), int_lit(100)))
+    return orders.filter(gt(col("amount"), lit(100)))
 ```
 
 ### `DataStream[T]` — streaming
@@ -69,11 +69,11 @@ Use `DataStream[T]` for streaming/unbounded data:
 
 ```incan
 from pub::inql import DataStream
-from pub::inql.functions import col, eq, str_lit
+from pub::inql.functions import col, eq, lit
 from models import Event
 
 def important_events(events: DataStream[Event]) -> DataStream[Event]:
-    return events.filter(eq(col("severity"), str_lit("critical")))
+    return events.filter(eq(col("severity"), lit("critical")))
 ```
 
 `DataStream[T]` shares the same operation API as batch carriers, but signals that its source is unbounded. Static streaming constraints are specified in RFC 001 and enforced as the compiler gains analysis for `UnboundedDataSet[T]`.
@@ -122,9 +122,9 @@ Current relational authoring is explicit and builder-based. That is deliberate: 
 
 Today there are three concrete builder families:
 
-- filters: `eq(...)`, `gt(...)`, `int_lit(...)`, `str_lit(...)`
+- filters: `eq(...)`, `gt(...)`, `lit(...)`
 - aggregates: `col(...)`, `sum(...)`, `count()`
-- projections: `with_column(...)`, `add(...)`, `mul(...)`, `int_expr(...)`, `str_expr(...)`, `bool_expr(...)`
+- projections: `with_column(...)`, `add(...)`, `mul(...)`, `lit(...)`
 
 ### Aggregate helpers
 
@@ -148,15 +148,15 @@ That is the current semantic target for future sugar such as `.customer_id` or `
 Computed columns now have one real entrypoint: `with_column(name, expr)`.
 
 ```incan
-from pub::inql.functions import add, col, int_expr, mul
+from pub::inql.functions import add, col, lit, mul
 from pub::inql import LazyFrame
 from models import Order
 
 def enrich_orders(orders: LazyFrame[Order]) -> LazyFrame[Order]:
     return (
         orders
-            .with_column("amount_x2", mul(col("amount"), int_expr(2)))
-            .with_column("amount_plus_one", add(col("amount"), int_expr(1)))
+            .with_column("amount_x2", mul(col("amount"), lit(2)))
+            .with_column("amount_plus_one", add(col("amount"), lit(1)))
     )
 ```
 
@@ -177,14 +177,14 @@ The most useful way to read the current surface is to separate:
 This is real current InQL, not aspirational pseudocode:
 
 ```incan
-from pub::inql.functions import add, col, count, int_expr, sum
+from pub::inql.functions import add, col, count, lit, sum
 from pub::inql import LazyFrame
 from models import Order
 
 def summarize_orders(orders: LazyFrame[Order]) -> LazyFrame[Order]:
     grouped = (
         orders
-            .with_column("amount_plus_one", add(col("amount"), int_expr(1)))
+            .with_column("amount_plus_one", add(col("amount"), lit(1)))
             .group_by([col("customer_id")])
             .agg([sum(col("amount")), count()])
     )

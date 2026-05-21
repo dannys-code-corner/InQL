@@ -31,7 +31,7 @@ def _read_transform_collect_display_write(
     input_uri: str,
     output_uri: str,
 ) -> Result[None, SessionError]:
-    raw = session.read_csv[OrderLine]("order_lines", input_uri)?
+    raw = session.read_csv("order_lines", input_uri)?
     # Activate after registration so LazyFrame.collect/display sees the registered sources.
     session.activate()
 

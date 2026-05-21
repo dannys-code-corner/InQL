@@ -45,7 +45,7 @@ The execution context ([InQL RFC 004][rfc-004] `Session`) **must**:
 
 ## Adapter boundary
 
-Product SDKs and higher operational layers **may** provide convenience read APIs (for example, `session.read_csv[T](name, uri)` wrapping registration + `ReadRel` resolution). These convenience surfaces:
+Product SDKs and higher operational layers **may** provide convenience read APIs (for example, `session.read_csv(name, uri)` returning a typed `LazyFrame[T]` by inference) wrapping registration + `ReadRel` resolution. These convenience surfaces:
 
 - **Must** produce a `ReadRel` in the normative Substrait interchange with the logical identity encoded appropriately for the variant.
 - **Must not** embed execution-context state — resolved credentials, session tokens, resolved endpoint URLs — in the `ReadRel` payload of the normative plan.
@@ -59,10 +59,10 @@ The following table summarizes how each `Session` read method maps to a `ReadRel
 
 | `Session` method                     | Returns        | `ReadRel` variant                                 |
 | ------------------------------------ | -------------- | ------------------------------------------------- |
-| `session.table[T](name)`             | `LazyFrame[T]` | `NamedTable`                                      |
-| `session.read_csv[T](name, uri)`     | `LazyFrame[T]` | `NamedTable` (via Session registration + binding) |
-| `session.read_parquet[T](name, uri)` | `LazyFrame[T]` | `NamedTable` (via Session registration + binding) |
-| `session.read_arrow[T](name, uri)`   | `LazyFrame[T]` | `NamedTable` (via Session registration + binding) |
+| `session.table(name)`             | `LazyFrame[T]` | `NamedTable`                                      |
+| `session.read_csv(name, uri)`     | `LazyFrame[T]` | `NamedTable` (via Session registration + binding) |
+| `session.read_parquet(name, uri)` | `LazyFrame[T]` | `NamedTable` (via Session registration + binding) |
+| `session.read_arrow(name, uri)`   | `LazyFrame[T]` | `NamedTable` (via Session registration + binding) |
 
 In all cases the `LazyFrame[T]` holds a deferred plan — no data is fetched until Session execution is triggered by `session.execute(...)`, `session.collect(...)`, a convenience call such as `lazy.collect()`, or a Session-owned write. The `ReadRel` in the deferred plan carries only the logical identity; resolution to a physical source happens at execution time per the execution context obligations described above.
 

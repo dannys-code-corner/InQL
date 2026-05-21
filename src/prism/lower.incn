@@ -1,19 +1,21 @@
 """Lowering from Prism optimized views into Substrait relations and plans."""
 
 from rust::substrait::proto import Plan, Rel
+from rust::incan_stdlib::errors import raise_value_error
 from prism.output_columns import rewritten_output_columns
 from substrait.extensions import explode_extension_uri
 from substrait.plans import plan_from_root_relation
 from substrait.relations import (
-    aggregate_rel_of_columns,
     extension_single_rel,
     fetch_rel,
-    filter_rel_of_columns,
     join_rel,
-    project_rel_of_columns,
     read_named_table_rel,
     sort_rel,
+    try_aggregate_rel_of_columns,
+    try_filter_rel_of_columns,
+    try_project_rel_of_columns,
 )
+from substrait.errors import SubstraitLoweringError
 from prism.rewrite import derive_rewritten_view, rewritten_node_at
 from prism.types import PrismNodeKind, PrismOptimizedView, PrismStoreId
 
@@ -24,12 +26,26 @@ pub def lower_prism_tip(store_id: PrismStoreId, tip_id: int) -> Rel:
 
     This is the stable boundary from Prism's internal graph representation into concrete Substrait relations.
     """
-    return lower_optimized_view(derive_rewritten_view(store_id, tip_id))
+    return _lowered_rel_or_raise(try_lower_prism_tip(store_id, tip_id))
+
+
+pub def try_lower_prism_tip(store_id: PrismStoreId, tip_id: int) -> Result[Rel, SubstraitLoweringError]:
+    """
+    Fallibly lower one authored Prism tip through the canonical rewrite view.
+
+    User-authored scalar-expression errors are reported through `SubstraitLoweringError` instead of assertion failure.
+    """
+    return try_lower_optimized_view(derive_rewritten_view(store_id, tip_id))
 
 
 pub def lower_optimized_view(view: PrismOptimizedView) -> Rel:
     """Lower one rewritten Prism view to its root Substrait relation."""
-    return _lower_node(view, view.root_tip_id)
+    return _lowered_rel_or_raise(try_lower_optimized_view(view))
+
+
+pub def try_lower_optimized_view(view: PrismOptimizedView) -> Result[Rel, SubstraitLoweringError]:
+    """Fallibly lower one rewritten Prism view to its root Substrait relation."""
+    return _try_lower_node(view, view.root_tip_id)
 
 
 pub def prism_rel_to_plan(rel: Rel) -> Plan:
@@ -43,30 +59,46 @@ pub def prism_rel_to_plan(rel: Rel) -> Plan:
 
 def _lower_node(view: PrismOptimizedView, node_id: int) -> Rel:
     """Lower one Prism node to its corresponding Substrait relation."""
+    return _lowered_rel_or_raise(_try_lower_node(view, node_id))
+
+
+def _lowered_rel_or_raise(result: Result[Rel, SubstraitLoweringError]) -> Rel:
+    """Return one lowered relation or raise the structured lowering diagnostic in infallible compatibility paths."""
+    match result:
+        Ok(rel) => return rel
+        Err(err) =>
+            message = err.error_message()
+            return raise_value_error(message)
+
+
+def _try_lower_node(view: PrismOptimizedView, node_id: int) -> Result[Rel, SubstraitLoweringError]:
+    """Fallibly lower one Prism node to its corresponding Substrait relation."""
     node = rewritten_node_at(view, node_id)
     match node.kind:
-        PrismNodeKind.ReadNamedTable => return read_named_table_rel(node.named_table)
+        PrismNodeKind.ReadNamedTable => return Ok(read_named_table_rel(node.named_table))
         PrismNodeKind.Filter =>
-            return filter_rel_of_columns(
-                _lower_node(view, node.input_ids[0]),
+            return try_filter_rel_of_columns(
+                _try_lower_node(view, node.input_ids[0])?,
                 rewritten_output_columns(view, node.input_ids[0]),
                 node.filter_predicate,
             )
         PrismNodeKind.Join =>
-            return join_rel(
-                _lower_node(view, node.input_ids[0]),
-                _lower_node(view, node.input_ids[1]),
-                node.join_predicate,
+            return Ok(
+                join_rel(
+                    _try_lower_node(view, node.input_ids[0])?,
+                    _try_lower_node(view, node.input_ids[1])?,
+                    node.join_predicate,
+                ),
             )
         PrismNodeKind.Project =>
-            return project_rel_of_columns(
-                _lower_node(view, node.input_ids[0]),
+            return try_project_rel_of_columns(
+                _try_lower_node(view, node.input_ids[0])?,
                 rewritten_output_columns(view, node.input_ids[0]),
                 node.projection_assignments,
             )
         PrismNodeKind.GroupBy =>
-            return aggregate_rel_of_columns(
-                _lower_node(view, node.input_ids[0]),
+            return try_aggregate_rel_of_columns(
+                _try_lower_node(view, node.input_ids[0])?,
                 rewritten_output_columns(view, node.input_ids[0]),
                 node.group_columns,
                 [],
@@ -74,19 +106,19 @@ def _lower_node(view: PrismOptimizedView, node_id: int) -> Rel:
         PrismNodeKind.Aggregate =>
             input_node = rewritten_node_at(view, node.input_ids[0])
             if input_node.kind == PrismNodeKind.GroupBy:
-                return aggregate_rel_of_columns(
-                    _lower_node(view, input_node.input_ids[0]),
+                return try_aggregate_rel_of_columns(
+                    _try_lower_node(view, input_node.input_ids[0])?,
                     rewritten_output_columns(view, input_node.input_ids[0]),
                     input_node.group_columns,
                     node.aggregate_measures,
                 )
-            return aggregate_rel_of_columns(
-                _lower_node(view, node.input_ids[0]),
+            return try_aggregate_rel_of_columns(
+                _try_lower_node(view, node.input_ids[0])?,
                 rewritten_output_columns(view, node.input_ids[0]),
                 [],
                 node.aggregate_measures,
             )
-        PrismNodeKind.OrderBy => return sort_rel(_lower_node(view, node.input_ids[0]))
-        PrismNodeKind.Limit => return fetch_rel(_lower_node(view, node.input_ids[0]), 0, node.limit_count)
+        PrismNodeKind.OrderBy => return Ok(sort_rel(_try_lower_node(view, node.input_ids[0])?))
+        PrismNodeKind.Limit => return Ok(fetch_rel(_try_lower_node(view, node.input_ids[0])?, 0, node.limit_count))
         PrismNodeKind.Explode =>
-            return extension_single_rel(_lower_node(view, node.input_ids[0]), explode_extension_uri())
+            return Ok(extension_single_rel(_try_lower_node(view, node.input_ids[0])?, explode_extension_uri()))

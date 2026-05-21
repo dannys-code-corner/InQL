@@ -19,15 +19,15 @@ pub class DataFusion:
 
 
 @derive(Clone)
-pub enum BackendKind:
-    DataFusionEngine
+pub enum BackendKind(str):
+    DataFusionEngine = "datafusion"
 
 
 @derive(Clone)
-pub enum SourceKind:
-    Csv
-    Parquet
-    Arrow
+pub enum SourceKind(str):
+    Csv = "csv"
+    Parquet = "parquet"
+    Arrow = "arrow"
 
 
 @derive(Clone)
@@ -51,10 +51,7 @@ pub class BackendSelection:
 
     def clone(self) -> Self:
         """Return one cloned backend selection preserving engine-specific options."""
-        mut kind = BackendKind.DataFusionEngine
-        if self.kind == BackendKind.DataFusionEngine:
-            kind = BackendKind.DataFusionEngine
-        return BackendSelection(kind=kind, datafusion=self.datafusion)
+        return BackendSelection(kind=self.kind, datafusion=self.datafusion)
 
 
 pub def default_backend_selection() -> BackendSelection:
@@ -64,18 +61,12 @@ pub def default_backend_selection() -> BackendSelection:
 
 pub def backend_kind_name(selection: BackendSelection) -> str:
     """Return one stable backend name for diagnostics and UX."""
-    if selection.kind == BackendKind.DataFusionEngine:
-        return str("datafusion")
-    return str("unknown")
+    return selection.kind.value()
 
 
 pub def source_kind_name(kind: SourceKind) -> str:
     """Return one stable source-kind name for diagnostics and UX."""
-    if kind == SourceKind.Csv:
-        return "csv"
-    if kind == SourceKind.Parquet:
-        return "parquet"
-    return "arrow"
+    return kind.value()
 
 
 pub def csv_source(uri: str) -> TableSource:

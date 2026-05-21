@@ -8,4 +8,6 @@ Today the concrete shipped surfaces are documented here:
 - [Aggregate builders](../builders/aggregates.md)
 - [Projection builders](../builders/projections.md)
 
+The canonical scalar literal helper is `lit(...)`. Typed literal helpers construct the same scalar-expression representation.
+
 Future ANSI-style families should grow under this section instead of bloating `dataset_types` or `dataset_methods`.
