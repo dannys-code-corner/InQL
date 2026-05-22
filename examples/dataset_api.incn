@@ -26,17 +26,16 @@ def active_high_value_orders(orders: LazyFrame[Order]) -> LazyFrame[Order]:
     return filter_high_value_orders(filter_active_orders(orders))
 
 
-def keep_customer_model_visible(customers: LazyFrame[Customer]) -> LazyFrame[Customer]:
-    return customers.select().limit(25)
+def customer_dimension(customers: LazyFrame[Customer]) -> LazyFrame[Customer]:
+    return customers.select()
 
 
 def join_orders_with_revision(orders: LazyFrame[Order], revised_orders: LazyFrame[Order]) -> LazyFrame[Order]:
     return orders.join(revised_orders, true)
 
 
-def keep_customer_dimension_available(customers: LazyFrame[Customer]) -> int:
-    _ = customers
-    return 0
+def customer_dimension_preview(customers: LazyFrame[Customer]) -> LazyFrame[Customer]:
+    return customer_dimension(customers).limit(25)
 
 
 def select_order_fields(orders: LazyFrame[Order]) -> LazyFrame[Order]:
