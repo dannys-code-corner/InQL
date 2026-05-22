@@ -5,10 +5,8 @@ These symbols **must** be imported by authors. The current package slice uses ex
 semantic target for future compiler sugar and query-block lowering.
 """
 
-from aggregate_builders import AggregateMeasure, count as count_builder, sum as sum_builder
+from aggregate_builders import count as count_builder, sum as sum_builder
 from filter_builders import (
-    FilterLiteral,
-    FilterPredicate,
     bool_lit as bool_lit_builder,
     always_false as always_false_builder,
     always_true as always_true_builder,
@@ -18,96 +16,34 @@ from filter_builders import (
     str_lit as str_lit_builder,
 )
 from projection_builders import (
-    ColumnExpr,
     add as add_builder,
     bool_expr as bool_expr_builder,
     col as col_builder,
     float_expr as float_expr_builder,
     int_expr as int_expr_builder,
+    lit as lit_builder,
     mul as mul_builder,
     str_expr as str_expr_builder,
 )
 from dataset import DataFrame, LazyFrame
 
-
-pub def col(name: str) -> ColumnExpr:
-    """Build one named column reference expression."""
-    return col_builder(name)
-
-
-pub def sum(expr: ColumnExpr) -> AggregateMeasure:
-    """Build one `sum` aggregate measure over a named column reference."""
-    return sum_builder(expr)
-
-
-pub def count() -> AggregateMeasure:
-    """Build one zero-argument `count` aggregate measure."""
-    return count_builder()
-
-
-pub def int_expr(value: int) -> ColumnExpr:
-    """Build one integer literal expression for projection builders."""
-    return int_expr_builder(value)
-
-
-pub def float_expr(value: float) -> ColumnExpr:
-    """Build one float literal expression for projection builders."""
-    return float_expr_builder(value)
-
-
-pub def str_expr(value: str) -> ColumnExpr:
-    """Build one string literal expression for projection builders."""
-    return str_expr_builder(value)
-
-
-pub def bool_expr(value: bool) -> ColumnExpr:
-    """Build one boolean literal expression for projection builders."""
-    return bool_expr_builder(value)
-
-
-pub def add(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
-    """Build one binary addition projection expression."""
-    return add_builder(left, right)
-
-
-pub def mul(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
-    """Build one binary multiply projection expression."""
-    return mul_builder(left, right)
-
-
-pub def int_lit(value: int) -> FilterLiteral:
-    """Build one integer literal for filter expressions."""
-    return int_lit_builder(value)
-
-
-pub def str_lit(value: str) -> FilterLiteral:
-    """Build one string literal for filter expressions."""
-    return str_lit_builder(value)
-
-
-pub def bool_lit(value: bool) -> FilterLiteral:
-    """Build one boolean literal for filter expressions."""
-    return bool_lit_builder(value)
-
-
-pub def always_true() -> FilterPredicate:
-    """Build one filter predicate that canonical rewrite can eliminate."""
-    return always_true_builder()
-
-
-pub def always_false() -> FilterPredicate:
-    """Build one filter predicate that rejects every row."""
-    return always_false_builder()
-
-
-pub def eq(column: ColumnExpr, literal: FilterLiteral) -> FilterPredicate:
-    """Build one equality predicate over a named column and literal."""
-    return eq_builder(column, literal)
-
-
-pub def gt(column: ColumnExpr, literal: FilterLiteral) -> FilterPredicate:
-    """Build one greater-than predicate over a named column and literal."""
-    return gt_builder(column, literal)
+pub col = alias col_builder
+pub lit = alias lit_builder
+pub sum = alias sum_builder
+pub count = alias count_builder
+pub int_expr = alias int_expr_builder
+pub float_expr = alias float_expr_builder
+pub str_expr = alias str_expr_builder
+pub bool_expr = alias bool_expr_builder
+pub add = alias add_builder
+pub mul = alias mul_builder
+pub int_lit = alias int_lit_builder
+pub str_lit = alias str_lit_builder
+pub bool_lit = alias bool_lit_builder
+pub always_true = alias always_true_builder
+pub always_false = alias always_false_builder
+pub eq = alias eq_builder
+pub gt = alias gt_builder
 
 
 pub def display[T with Clone](data: LazyFrame[T]) -> None:

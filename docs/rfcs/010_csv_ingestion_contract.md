@@ -61,7 +61,7 @@ Authors should think of CSV reads as a contract between their program and the ru
 The public surface should therefore expose one structured options value for CSV reads.
 
 ```incan
-from pub::inql import Session
+from pub::inql import LazyFrame, Session
 from pub::inql.formats import (
     CsvDialect,
     CsvHeaderMode,
@@ -74,7 +74,7 @@ from models import Order
 
 session = Session.default()
 
-orders = session.read_csv[Order](
+orders: LazyFrame[Order] = session.read_csv(
     "orders",
     "s3://warehouse/orders.csv",
     CsvReadOptions(
@@ -96,7 +96,7 @@ orders = session.read_csv[Order](
 The same contract should be reachable through the generic format-dispatch path. `read_csv` is convenience API surface, not a separate semantic contract.
 
 ```incan
-orders = session.read_format[Order](
+orders: LazyFrame[Order] = session.read_format(
     logical_name="orders",
     source="s3://warehouse/orders.csv",
     format="csv",
@@ -119,7 +119,7 @@ orders = session.read_format[Order](
 If an author does not provide options, InQL still has a defined default contract rather than an implementation accident.
 
 ```incan
-orders = session.read_csv[Order]("orders", "s3://warehouse/orders.csv")
+orders: LazyFrame[Order] = session.read_csv("orders", "s3://warehouse/orders.csv")
 ```
 
 That default should mean "standard CSV with headers, quoted-field support, strict malformed-row handling, and deterministic type interpretation rules", not "whatever the current backend happened to do this week."
@@ -129,7 +129,7 @@ Headerless CSV is still allowed, but it should be explicit because it changes ho
 ```incan
 from pub::inql.formats import CsvDialect, CsvHeaderMode, CsvReadOptions
 
-rows = session.read_csv[Order](
+rows: LazyFrame[Order] = session.read_csv(
     "orders",
     "file:///tmp/orders_no_header.csv",
     CsvReadOptions(
@@ -183,7 +183,7 @@ CSV ingestion must distinguish three schema layers:
 - **planned schema**: the schema InQL can establish before execution from configuration, headers, and compatible schema analysis
 - **resolved schema**: the schema observed from materialized output after execution
 
-When `T` is supplied in `read_csv[T](...)`, `T` is the declared schema contract. CSV ingestion must validate compatibility between the file and `T` according to the configured header and inference policy. A backend must not silently reorder columns or reinterpret field names in a way that breaks the declared schema.
+When the call context requires `LazyFrame[T]`, `T` is the declared schema contract. CSV ingestion must validate compatibility between the file and `T` according to the configured header and inference policy. A backend must not silently reorder columns or reinterpret field names in a way that breaks the declared schema.
 
 When CSV options require token interpretation beyond raw strings, `CsvInference` must control that behavior. At minimum it must define:
 

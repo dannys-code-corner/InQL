@@ -16,6 +16,16 @@ from substrait.inspect import root_names
 
 
 @derive(Clone)
+pub enum BackendErrorKind(str):
+    """Stable categories for DataFusion backend failures."""
+
+    BackendPlanningError = "backend_planning_error"
+    BackendExecutionError = "backend_execution_error"
+    BackendSinkError = "backend_sink_error"
+    BackendRegistrationError = "backend_registration_error"
+
+
+@derive(Clone)
 pub class BackendRegistration:
     pub logical_name: str
     pub source: TableSource
@@ -26,11 +36,11 @@ pub class BackendRegistration:
 
 
 pub model BackendError:
-    pub kind: str
+    pub kind: BackendErrorKind
     pub message: str
 
 
-def _backend_error(kind: str, message: str) -> BackendError:
+def _backend_error(kind: BackendErrorKind, message: str) -> BackendError:
     """Build one backend error with stable kind/message fields."""
     return BackendError(kind=kind, message=message)
 
@@ -49,11 +59,11 @@ pub async def datafusion_execute_async(
         Ok(logical_plan) => match await ctx.execute_logical_plan(logical_plan):
             Ok(df) => match await df.collect():
                 Ok(_) => return Ok(None)
-                Err(err) => return Err(_backend_error("backend_execution_error", err.to_string()))
+                Err(err) => return Err(_backend_error(BackendErrorKind.BackendExecutionError, err.to_string()))
 
-            Err(err) => return Err(_backend_error("backend_execution_error", err.to_string()))
+            Err(err) => return Err(_backend_error(BackendErrorKind.BackendExecutionError, err.to_string()))
 
-        Err(err) => return Err(_backend_error("backend_planning_error", err.to_string()))
+        Err(err) => return Err(_backend_error(BackendErrorKind.BackendPlanningError, err.to_string()))
 
 
 pub async def datafusion_collect_materialization_async(
@@ -74,7 +84,7 @@ pub async def datafusion_collect_materialization_async(
                     Ok(rendered) =>
                         mut row_count = 0
                         for batch in batches:
-                            row_count += _rust_usize_to_int(batch.num_rows())
+                            row_count += _rust_usize_to_int(batch.num_rows())?
                         return Ok(
                             DataFrameMaterialization(
                                 resolved_columns=resolved_columns,
@@ -82,13 +92,13 @@ pub async def datafusion_collect_materialization_async(
                                 preview_text=rendered,
                             ),
                         )
-                    Err(err) => return Err(_backend_error("backend_execution_error", err.to_string()))
+                    Err(err) => return Err(_backend_error(BackendErrorKind.BackendExecutionError, err.to_string()))
 
-                Err(err) => return Err(_backend_error("backend_execution_error", err.to_string()))
+                Err(err) => return Err(_backend_error(BackendErrorKind.BackendExecutionError, err.to_string()))
 
-            Err(err) => return Err(_backend_error("backend_execution_error", err.to_string()))
+            Err(err) => return Err(_backend_error(BackendErrorKind.BackendExecutionError, err.to_string()))
 
-        Err(err) => return Err(_backend_error("backend_planning_error", err.to_string()))
+        Err(err) => return Err(_backend_error(BackendErrorKind.BackendPlanningError, err.to_string()))
 
 
 pub async def datafusion_write_csv_async(
@@ -106,11 +116,11 @@ pub async def datafusion_write_csv_async(
         Ok(logical_plan) => match await ctx.execute_logical_plan(logical_plan):
             Ok(df) => match await df.write_csv(uri, DataFrameWriteOptions.new(), None):
                 Ok(_) => return Ok(None)
-                Err(err) => return Err(_backend_error("backend_sink_error", err.to_string()))
+                Err(err) => return Err(_backend_error(BackendErrorKind.BackendSinkError, err.to_string()))
 
-            Err(err) => return Err(_backend_error("backend_execution_error", err.to_string()))
+            Err(err) => return Err(_backend_error(BackendErrorKind.BackendExecutionError, err.to_string()))
 
-        Err(err) => return Err(_backend_error("backend_planning_error", err.to_string()))
+        Err(err) => return Err(_backend_error(BackendErrorKind.BackendPlanningError, err.to_string()))
 
 
 pub async def datafusion_write_parquet_async(
@@ -128,11 +138,11 @@ pub async def datafusion_write_parquet_async(
         Ok(logical_plan) => match await ctx.execute_logical_plan(logical_plan):
             Ok(df) => match await df.write_parquet(uri, DataFrameWriteOptions.new(), None):
                 Ok(_) => return Ok(None)
-                Err(err) => return Err(_backend_error("backend_sink_error", err.to_string()))
+                Err(err) => return Err(_backend_error(BackendErrorKind.BackendSinkError, err.to_string()))
 
-            Err(err) => return Err(_backend_error("backend_execution_error", err.to_string()))
+            Err(err) => return Err(_backend_error(BackendErrorKind.BackendExecutionError, err.to_string()))
 
-        Err(err) => return Err(_backend_error("backend_planning_error", err.to_string()))
+        Err(err) => return Err(_backend_error(BackendErrorKind.BackendPlanningError, err.to_string()))
 
 
 async def _register_sources(
@@ -147,22 +157,22 @@ async def _register_sources(
 
 async def _register_one(ctx: SessionContext, logical_name: str, source: TableSource) -> Result[None, BackendError]:
     """Register one logical source by kind on the DataFusion context."""
-    if source.source_kind == SourceKind.Csv:
-        csv_opts = CsvReadOptions.new().has_header(true)
-        match await ctx.register_csv(logical_name, source.uri, csv_opts):
-            Ok(_) => return Ok(None)
-            Err(err) => return Err(_backend_error("backend_registration_error", err.to_string()))
-
-    if source.source_kind == SourceKind.Parquet:
-        parquet_opts = ParquetReadOptions.default()
-        match await ctx.register_parquet(logical_name, source.uri, parquet_opts):
-            Ok(_) => return Ok(None)
-            Err(err) => return Err(_backend_error("backend_registration_error", err.to_string()))
-
-    arrow_opts = ArrowReadOptions.default()
-    match await ctx.register_arrow(logical_name, source.uri, arrow_opts):
-        Ok(_) => return Ok(None)
-        Err(err) => return Err(_backend_error("backend_registration_error", err.to_string()))
+    match source.source_kind:
+        SourceKind.Csv =>
+            csv_opts = CsvReadOptions.new().has_header(true)
+            match await ctx.register_csv(logical_name, source.uri, csv_opts):
+                Ok(_) => return Ok(None)
+                Err(err) => return Err(_backend_error(BackendErrorKind.BackendRegistrationError, err.to_string()))
+        SourceKind.Parquet =>
+            parquet_opts = ParquetReadOptions.default()
+            match await ctx.register_parquet(logical_name, source.uri, parquet_opts):
+                Ok(_) => return Ok(None)
+                Err(err) => return Err(_backend_error(BackendErrorKind.BackendRegistrationError, err.to_string()))
+        SourceKind.Arrow =>
+            arrow_opts = ArrowReadOptions.default()
+            match await ctx.register_arrow(logical_name, source.uri, arrow_opts):
+                Ok(_) => return Ok(None)
+                Err(err) => return Err(_backend_error(BackendErrorKind.BackendRegistrationError, err.to_string()))
 
 
 def _consumer_plan_from_current_plan(plan: Plan) -> Result[ConsumerPlan, BackendError]:
@@ -170,11 +180,11 @@ def _consumer_plan_from_current_plan(plan: Plan) -> Result[ConsumerPlan, Backend
     encoded = plan.encode_to_vec()
     match ConsumerPlan.decode(encoded.as_slice()):
         Ok(decoded) => return Ok(decoded)
-        Err(err) => return Err(_backend_error("backend_planning_error", err.to_string()))
+        Err(err) => return Err(_backend_error(BackendErrorKind.BackendPlanningError, err.to_string()))
 
 
-def _rust_usize_to_int(value: RustUsize) -> int:
+def _rust_usize_to_int(value: RustUsize) -> Result[int, BackendError]:
     """Convert one Rust `usize` count into Incan `int` through a checked `i64` boundary."""
     match RustI64.try_from(value):
-        Ok(converted) => return converted.into()
-        Err(_) => return 0
+        Ok(converted) => return Ok(converted.into())
+        Err(_) => return Err(_backend_error(BackendErrorKind.BackendExecutionError, "row count does not fit Incan int"))

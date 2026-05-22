@@ -45,6 +45,9 @@ pnpm-debug.log*
 # Local AI agent instructions
 .github/copilot-instructions.md
 
+# Local agent state
+.agents/state/
+
 # MkDocs build output
 site/
 

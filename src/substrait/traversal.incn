@@ -1,0 +1,53 @@
+"""Shared relation traversal helpers for Substrait tree walks."""
+
+from rust::substrait::proto import Rel
+from rust::substrait::proto::rel import RelType
+
+
+pub def relation_children(rel: Rel) -> list[Rel]:
+    """Return direct child relations for one relation node."""
+    match rel.rel_type:
+        Some(RelType.Filter(filter)) =>
+            match filter.input:
+                Some(child) => return [child.as_ref().clone()]
+                None => return []
+        Some(RelType.Project(project)) =>
+            match project.input:
+                Some(child) => return [child.as_ref().clone()]
+                None => return []
+        Some(RelType.Join(join)) =>
+            mut children: list[Rel] = []
+            match join.left:
+                Some(left) => children.append(left.as_ref().clone())
+                None => pass
+            match join.right:
+                Some(right) => children.append(right.as_ref().clone())
+                None => pass
+            return children
+        Some(RelType.Cross(cross)) =>
+            mut children: list[Rel] = []
+            match cross.left:
+                Some(left) => children.append(left.as_ref().clone())
+                None => pass
+            match cross.right:
+                Some(right) => children.append(right.as_ref().clone())
+                None => pass
+            return children
+        Some(RelType.Aggregate(aggregate)) =>
+            match aggregate.input:
+                Some(child) => return [child.as_ref().clone()]
+                None => return []
+        Some(RelType.Sort(sort)) =>
+            match sort.input:
+                Some(child) => return [child.as_ref().clone()]
+                None => return []
+        Some(RelType.Fetch(fetch)) =>
+            match fetch.input:
+                Some(child) => return [child.as_ref().clone()]
+                None => return []
+        Some(RelType.Set(set_rel)) => return set_rel.inputs
+        Some(RelType.ExtensionSingle(extension)) =>
+            match extension.input:
+                Some(child) => return [child.as_ref().clone()]
+                None => return []
+        _ => return []

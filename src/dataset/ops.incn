@@ -1,5 +1,5 @@
 """
-Canonical dataset-operation seam over concrete relation builders.
+Canonical dataset-operation layer over concrete relation builders.
 
 These helpers keep carrier-level operation names (`filter`, `join`, `group_by`, ...) distinct from the exact Substrait
 builder functions used underneath. Projection now flows through explicit input-column lists so carrier-level schema
@@ -8,8 +8,7 @@ views stay aligned with the lowered relation tree.
 
 from rust::substrait::proto import Rel
 from aggregate_builders import AggregateMeasure
-from filter_builders import FilterPredicate
-from projection_builders import ColumnExpr, ProjectionAssignment, require_column_expr_name, with_column_assignment
+from projection_builders import ColumnExpr, ProjectionAssignment, with_column_assignment
 from substrait.extensions import explode_extension_uri
 from substrait.inspect import relation_output_columns
 from substrait.relations import (
@@ -23,13 +22,13 @@ from substrait.relations import (
 )
 
 
-pub def filter_ds(rel: Rel, predicate: FilterPredicate) -> Rel:
+pub def filter_ds(rel: Rel, predicate: ColumnExpr) -> Rel:
     """
     Apply dataset-level filter intent to one relation.
 
-    Args:
-        rel: Input relation to filter.
-        predicate: Filter predicate for the current package slice.
+        Args:
+            rel: Input relation to filter.
+            predicate: Boolean scalar expression to apply.
 
     Returns:
         A relation shaped as a filter over the input relation.
@@ -37,7 +36,7 @@ pub def filter_ds(rel: Rel, predicate: FilterPredicate) -> Rel:
     return filter_ds_of_columns(rel, relation_output_columns(rel.clone()), predicate)
 
 
-pub def filter_ds_of_columns(rel: Rel, input_columns: list[str], predicate: FilterPredicate) -> Rel:
+pub def filter_ds_of_columns(rel: Rel, input_columns: list[str], predicate: ColumnExpr) -> Rel:
     """Apply dataset-level filter intent using explicit input-column names."""
     return filter_rel_of_columns(rel, input_columns, predicate)
 
@@ -49,7 +48,7 @@ pub def join_ds(left_rel: Rel, right_rel: Rel, on: bool) -> Rel:
     Args:
         left_rel: Left input relation.
         right_rel: Right input relation.
-        on: Placeholder join condition for the current package slice.
+        on: Boolean join condition accepted by the current join builder.
 
     Returns:
         A relation shaped as a join over the two input relations.
@@ -91,6 +90,7 @@ pub def group_by_ds(rel: Rel, columns: list[ColumnExpr]) -> Rel:
 
     Args:
         rel: Input relation to group.
+        columns: Scalar expressions that define grouping keys.
 
     Returns:
         A relation shaped as the grouping form of aggregate over the input relation.
@@ -100,8 +100,7 @@ pub def group_by_ds(rel: Rel, columns: list[ColumnExpr]) -> Rel:
 
 pub def group_by_ds_of_columns(rel: Rel, input_columns: list[str], columns: list[ColumnExpr]) -> Rel:
     """Apply dataset-level grouping intent using explicit input-column names."""
-    column_names = [require_column_expr_name(column, str("group_by(...)")) for column in columns]
-    return aggregate_rel_of_columns(rel, input_columns, column_names, [])
+    return aggregate_rel_of_columns(rel, input_columns, columns, [])
 
 
 pub def agg_ds(rel: Rel, measures: list[AggregateMeasure]) -> Rel:
@@ -110,6 +109,7 @@ pub def agg_ds(rel: Rel, measures: list[AggregateMeasure]) -> Rel:
 
     Args:
         rel: Input relation to aggregate.
+        measures: Aggregate measures to apply over the relation or grouping.
 
     Returns:
         A relation shaped as the aggregating form of aggregate over the input relation.

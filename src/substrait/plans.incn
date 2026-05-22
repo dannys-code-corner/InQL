@@ -85,7 +85,7 @@ pub def plan_from_local_parquet(uri: str) -> Plan:
 
 
 pub def plan_from_local_files(uri: str) -> Plan:
-    """Compatibility wrapper for the current Parquet-backed local-files plan helper."""
+    """Build a minimal local-files plan through the current Parquet-backed helper."""
     return plan_from_root_relation(read_local_files_rel(uri), [])
 
 

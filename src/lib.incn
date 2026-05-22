@@ -8,8 +8,22 @@ Consumers depend on this package via `[dependencies]` and import with `from pub:
 pub from dataset import BoundedDataSet, DataFrame, DataSet, DataStream, LazyFrame, UnboundedDataSet
 pub from dataset.ops import agg_ds, explode_ds, filter_ds, group_by_ds, join_ds, limit_ds, order_by_ds, select_ds
 pub from aggregate_builders import AggregateKind, AggregateMeasure
-pub from filter_builders import FilterLiteral, FilterLiteralKind, FilterPredicate, FilterPredicateKind
-pub from projection_builders import ColumnExpr, ColumnExprKind, ProjectionAssignment
+pub from projection_builders import (
+    AddExpr,
+    BoolLiteralExpr,
+    ColumnExpr,
+    ColumnExprKind,
+    ColumnRefExpr,
+    EqExpr,
+    FloatLiteralExpr,
+    GtExpr,
+    IntLiteralExpr,
+    MultiplyExpr,
+    ProjectionAssignment,
+    StringLiteralExpr,
+    column_expr_kind,
+    column_expr_name,
+)
 pub from functions import (
     add,
     always_false,
@@ -24,6 +38,7 @@ pub from functions import (
     gt,
     int_expr,
     int_lit,
+    lit,
     mul,
     str_expr,
     str_lit,
@@ -32,7 +47,8 @@ pub from functions import (
 pub from backends import BackendKind, DataFusion, TableSource, csv_source, parquet_source
 pub from metadata import inql_version
 pub from session.types import Session, SessionBuilder
-pub from session.errors import SessionError, format_session_diagnostic, report_session_error
+pub from session.errors import SessionError, SessionErrorKind, format_session_diagnostic, report_session_error
+pub from substrait.errors import SubstraitLoweringError, SubstraitLoweringErrorKind
 pub from substrait.schema import (
     DemoCustomer,
     RowColumnSpec,

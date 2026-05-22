@@ -11,4 +11,4 @@ Module layout:
 """
 
 pub from session.types import Session, SessionBuilder
-pub from session.errors import SessionError, format_session_diagnostic, report_session_error
+pub from session.errors import SessionError, SessionErrorKind, format_session_diagnostic, report_session_error

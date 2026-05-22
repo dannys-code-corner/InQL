@@ -129,40 +129,40 @@ Session is intentionally outside RFC 002’s normative emitted contract. It cons
 
 For current package behavior, see [Execution context (Reference)][execution-ref] and [Execution context (Explanation)][execution-expl].
 
-## Current implementation shape
+## Package implementation shape
 
-The package currently uses the following implementation shape:
+The package uses the following implementation shape:
 
 - author-facing carrier types live in [mod.incn](../src/dataset/mod.incn)
 - canonical relational operator helpers live in [ops.incn](../src/dataset/ops.incn)
 - Substrait emission lives under [substrait/](../src/substrait/)
 - Prism internals live under [prism/](../src/prism/)
-- `LazyFrame[T]` currently routes through a backend-native `PrismCursor[T]`
-- `DataFrame[T]` and `DataStream[T]` are not yet fully converged on the same internal backing model as `LazyFrame[T]`
+- `LazyFrame[T]` routes through a backend-native `PrismCursor[T]`
+- `DataFrame[T]` and `DataStream[T]` keep their carrier-specific backing shapes while sharing the public dataset surface
 
-This is enough to explain the package architecture while keeping current API behavior in language docs and follow-on gaps in RFCs, issues, and release notes.
+This keeps package architecture in this document while detailed API behavior lives in language docs and future surface expansion stays in RFCs, issues, and release notes.
 
 ## Repository layout
 
-| Path                             | Role                                               |
-| -------------------------------- | -------------------------------------------------- |
-| `incan.toml`                     | Package metadata and Rust dependency declarations  |
-| `src/lib.incn`                   | Public package exports                             |
-| `src/dataset/mod.incn`           | Carrier types and trait surface                    |
-| `src/dataset/ops.incn`           | Canonical relational operator helpers              |
-| `src/prism/mod.incn`             | Internal Prism graph, cursor, and lowering logic   |
-| `src/substrait/relations.incn`   | Concrete `Rel` builders and relation lowering      |
-| `src/substrait/plans.incn`       | Top-level `Plan` assembly helpers                  |
-| `src/substrait/inspect.incn`     | Relation/plan inspection and output-column helpers |
-| `src/substrait/schema_registry.incn` | Named-table schema registration and lookup     |
-| `src/substrait/extensions.incn`  | Extension anchors, URIs, and declaration helpers   |
-| `src/substrait/expr_lowering.incn` | Builder-to-Substrait expression lowering         |
-| `src/substrait/conformance.incn` | Typed conformance facade over catalog + validators |
-| `src/substrait/schema.incn`      | Model/schema to Substrait type bridging            |
-| `tests/`                         | Package tests run through `incan test`             |
-| `docs/language/`                 | Current package docs                               |
-| `docs/rfcs/`                     | Normative RFC series                               |
-| `docs/release_notes/`            | Release-facing notes                               |
+| Path                                 | Role                                               |
+| ------------------------------------ | -------------------------------------------------- |
+| `incan.toml`                         | Package metadata and Rust dependency declarations  |
+| `src/lib.incn`                       | Public package exports                             |
+| `src/dataset/mod.incn`               | Carrier types and trait surface                    |
+| `src/dataset/ops.incn`               | Canonical relational operator helpers              |
+| `src/prism/mod.incn`                 | Internal Prism graph, cursor, and lowering logic   |
+| `src/substrait/relations.incn`       | Concrete `Rel` builders and relation lowering      |
+| `src/substrait/plans.incn`           | Top-level `Plan` assembly helpers                  |
+| `src/substrait/inspect.incn`         | Relation/plan inspection and output-column helpers |
+| `src/substrait/schema_registry.incn` | Named-table schema registration and lookup         |
+| `src/substrait/extensions.incn`      | Extension anchors, URIs, and declaration helpers   |
+| `src/substrait/expr_lowering.incn`   | Builder-to-Substrait expression lowering           |
+| `src/substrait/conformance.incn`     | Typed conformance facade over catalog + validators |
+| `src/substrait/schema.incn`          | Model/schema to Substrait type bridging            |
+| `tests/`                             | Package tests run through `incan test`             |
+| `docs/language/`                     | Current package docs                               |
+| `docs/rfcs/`                         | Normative RFC series                               |
+| `docs/release_notes/`                | Release-facing notes                               |
 
 Normative behavior lives in the RFC series first. Current package behavior and usage belong in the language docs. If code and RFCs disagree, treat that as a bug or transition state to resolve explicitly.
 

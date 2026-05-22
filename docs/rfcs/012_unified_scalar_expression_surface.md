@@ -1,6 +1,6 @@
 # InQL RFC 012: Unified scalar expression surface
 
-- **Status:** Draft
+- **Status:** Implemented
 - **Created:** 2026-04-22
 - **Author(s):** Danny Meijer (@dannymeijer)
 - **Related:**
@@ -8,12 +8,15 @@
   - InQL RFC 003 (`query {}` blocks and relational authoring)
   - InQL RFC 004 (execution context and backend execution boundary)
   - InQL RFC 007 (Prism logical planning and optimization engine)
+  - Incan RFC 025 (multi-instantiation trait dispatch)
+  - Incan RFC 028 (trait-based operator overloading)
+  - Incan RFC 029 (union types and type narrowing)
   - Incan RFC 040 (scoped DSL glyph surfaces)
   - Incan RFC 045 (scoped DSL symbol surfaces)
 - **Issue:** [InQL #25](https://github.com/dannys-code-corner/InQL/issues/25)
 - **RFC PR:** —
-- **Written against:** Incan v0.2
-- **Shipped in:** —
+- **Written against:** Incan v0.3.0
+- **Shipped in:** v0.1
 
 ## Summary
 
@@ -52,7 +55,7 @@ This RFC is also needed before InQL can take proper advantage of the scoped DSL 
 
 Authors should be able to think in terms of one row-level expression language.
 
-The exact public literal helper spelling is still unresolved in this Draft. The examples below use `lit(...)` illustratively to show the semantic model, not to settle the final helper name.
+The canonical public literal helper is `lit(...)`. Typed literal helpers are entrypoints over the same scalar-literal representation rather than a separate predicate-only or projection-only literal family.
 
 If an author filters rows or computes a new column, those operations should be using the same underlying scalar expression model:
 
@@ -120,7 +123,7 @@ At minimum, the canonical scalar expression model must be able to represent:
 - scalar literals
 - scalar function or operator application over scalar-expression inputs
 
-Separate public wrapper types may exist during migration, but they must lower into the same canonical scalar expression model rather than remaining semantically independent systems.
+Separate public wrapper types may exist as implementation details, but they must lower into the same canonical scalar expression model rather than remaining semantically independent systems.
 
 ### Row-level consumers
 
@@ -160,11 +163,13 @@ The following behaviors are forbidden:
 
 ### Canonical literal concept
 
-The semantic concept of a scalar literal must be unified. InQL may expose one canonical helper such as `lit(...)`, or a migration family of typed helpers that all lower into the same scalar-literal representation, but the system must not preserve separate literal hierarchies for filters, projections, and other row-level positions.
+The semantic concept of a scalar literal must be unified. InQL standardizes `lit(...)` as the canonical public helper for scalar literals. Because Incan RFC 029 gives Incan first-class union types, `lit(...)` may accept a closed union of supported literal input types such as `int | float | str | bool` while still returning one scalar-expression representation.
+
+Typed helpers such as `int_expr(...)`, `float_expr(...)`, `str_expr(...)`, `bool_expr(...)`, `int_lit(...)`, `str_lit(...)`, and `bool_lit(...)` must lower into the same scalar-literal representation as `lit(...)`. The system must not preserve separate literal hierarchies for filters, projections, and other row-level positions.
 
 ### Lowering target for future authoring surfaces
 
-If InQL adopts future concise method-chain sugar or richer `query {}` syntax using RFC 040 and RFC 045 facilities, those surfaces must lower into the canonical scalar expression model for row-level meaning and the canonical aggregate-measure model for aggregate meaning.
+If InQL adopts future concise method-chain sugar or richer `query {}` syntax using Incan RFC 025, RFC 028, RFC 029, RFC 040, and RFC 045 facilities, those surfaces must lower into the canonical scalar expression model for row-level meaning and the canonical aggregate-measure model for aggregate meaning.
 
 ## Design details
 
@@ -183,7 +188,7 @@ The core semantic split is:
 
 Boolean predicates are ordinary scalar expressions whose result type is `bool`; they are not a separate semantic species.
 
-Grouping keys belong on the scalar-expression side. They determine grouping identity by evaluating one scalar expression per input row. InQL may initially support only a subset of scalar expressions for grouping, but if so, that restriction must be explicit and diagnosable.
+Grouping keys belong on the scalar-expression side. They determine grouping identity by evaluating one scalar expression per input row. The north-star contract allows deterministic, row-level scalar expressions as grouping keys when their result type is valid for grouping. InQL may initially support only a subset of scalar expressions for grouping, but if so, that restriction must be explicit and diagnosable, not a permanent semantic narrowing and not a silent fallback to direct-column grouping.
 
 ### Interaction with other InQL surfaces
 
@@ -193,18 +198,18 @@ Grouping keys belong on the scalar-expression side. They determine grouping iden
 - **Prism (InQL RFC 007):** Prism should represent row-level expression meaning once and reuse it across logical operators instead of duplicating per-surface expression semantics.
 - **Incan `model` types and lexical scope:** model fields remain the source of column naming and typing, and ordinary lexical scope rules still govern explicit helper references until scoped DSL facilities are adopted.
 
-### Compatibility / migration
+### Surface cleanup
 
-This RFC is additive as a design direction, but it may require cleanup of existing public builder families.
+This RFC consolidates builder families before InQL's first released API.
 
-The expected migration shape is:
+The expected cleanup shape is:
 
-- legacy typed literal helpers may remain temporarily as compatibility shims
-- legacy predicate-specific wrappers may remain temporarily if they lower into the same scalar-expression model
+- typed literal helpers must not create separate scalar-literal hierarchies
+- predicate-specific wrappers must lower into the same scalar-expression model when they are exposed
 - docs and diagnostics should steer authors toward one canonical scalar-expression concept
-- split row-level helper families should be deprecated and eventually removed once compatibility windows close
+- split row-level helper families should be collapsed before release
 
-Correctness takes precedence over convenience during migration. If a permissive compatibility path would silently change semantics, InQL should reject that path instead.
+Correctness takes precedence over convenience. If a permissive helper path would silently change semantics, InQL should reject that path instead.
 
 ## Alternatives considered
 
@@ -215,7 +220,7 @@ Correctness takes precedence over convenience during migration. If a permissive 
 
 ## Drawbacks
 
-- Existing InQL surfaces that grew independently may need migration and deprecation work.
+- InQL surfaces that grew independently may need cleanup before release.
 - Tooling and diagnostics become more demanding because the system must enforce the scalar-versus-aggregate boundary more consistently.
 - Some previously tolerated expression shapes may need to become hard errors if they only "worked" through accidental or degraded behavior.
 - The RFC makes inconsistencies more visible, which can force earlier cleanup across docs, examples, planning, and lowering.
@@ -228,11 +233,90 @@ Correctness takes precedence over convenience during migration. If a permissive 
 - **Execution / interchange** — Prism and Substrait lowering must preserve the scalar-versus-aggregate boundary and must not silently rewrite unsupported expression shapes.
 - **Documentation** — user docs and reference pages should describe one row-level expression model instead of multiple parallel mini-DSLs.
 
-## Unresolved questions
+## Implementation Plan
 
-- Should InQL standardize a canonical public literal helper spelling such as `lit(...)`, or only standardize the semantic concept and allow multiple helper spellings during a long compatibility period?
-- Should grouping keys eventually accept all scalar expressions that projections accept, or should InQL permanently support a narrower grouping subset?
-- Should aggregate outputs remain completely disallowed inside row-level scalar expressions, or is there future design space for explicitly scoped mixed aggregate projections?
-- How much of this contract should be represented as shared InQL conventions versus first-class vocabulary metadata that tooling can inspect directly?
+### Phase 1: Canonical scalar expression model
 
-<!-- When every question is resolved, rename this section to **Design Decisions**, group answers under ### Resolved, and remove this comment. -->
+- Introduce one canonical scalar-expression model that can represent column references, scalar literals, and scalar function/operator applications.
+- Add `lit(...)` as the canonical literal helper using the Incan RFC 029 union-type surface for supported literal input types.
+- Keep typed literal helpers as constructors that lower into the canonical scalar-expression model.
+- Keep public helper names aligned with the canonical scalar-expression model.
+
+### Phase 2: Row-level consumers
+
+- Make `filter(...)` consume a scalar expression whose result contract is boolean.
+- Make `with_column(...)` and projection assignment helpers consume row-level scalar expressions.
+- Make `group_by(...)` consume grouping-key scalar expressions, with explicit errors for scalar expression shapes that the current implementation cannot yet lower faithfully.
+- Make aggregate helpers consume scalar expressions as inputs while continuing to produce aggregate measures.
+
+### Phase 3: Prism and Substrait lowering
+
+- Store scalar expressions consistently in Prism filter, projection, grouping, and aggregate-input positions.
+- Lower scalar expressions through one shared Substrait expression lowering path where the target position supports the expression.
+- Preserve aggregate measures as a distinct group-level representation rather than collapsing them into row-level scalar expressions.
+- Replace silent fallback or direct-column-only assumptions with explicit diagnostics or planning errors for unsupported expression shapes.
+
+### Phase 4: Tests, docs, and surface coherence
+
+- Add package tests covering `lit(...)` and typed literal helpers across filters, computed projections, grouping keys, and aggregate inputs.
+- Add negative tests for unsupported scalar-expression shapes in grouping and aggregate positions when the implementation cannot lower them faithfully.
+- Update reference and explanation docs so users see one scalar expression model instead of separate filter/projection literal families.
+- Decide whether this user-visible package change requires an InQL package version bump, and if so keep `incan.toml` and `src/metadata.incn` synchronized.
+
+## Implementation Log
+
+### Spec / design
+
+- [x] Resolve canonical literal helper spelling as `lit(...)`.
+- [x] Resolve grouping keys as broad scalar-expression positions with explicit temporary capability errors allowed.
+- [x] Resolve aggregate outputs as distinct aggregate measures, not row-level scalar expressions.
+- [x] Resolve first-class metadata as a registry/tooling north star owned by the function registry RFCs rather than by RFC 012 alone.
+- [x] Verify Incan RFC 025, RFC 028, and RFC 029 dependencies against Incan `origin/main`.
+
+### Scalar expression model
+
+- [x] Define the canonical scalar-expression model in package code.
+- [x] Represent column references, scalar literals, and scalar function/operator applications in that model.
+- [x] Add canonical `lit(...)` helper for supported literal input types.
+- [x] Convert typed literal helpers into constructors over the canonical model.
+- [x] Keep public helper imports aligned with the canonical scalar-expression model.
+
+### Row-level consumers
+
+- [x] Update filter APIs to consume scalar expressions.
+- [x] Update computed projection APIs to consume scalar expressions.
+- [x] Update grouping APIs to consume grouping-key scalar expressions.
+- [x] Update aggregate helpers to consume scalar-expression inputs and produce aggregate measures.
+- [x] Add explicit errors for accepted expression shapes that cannot yet be represented or lowered faithfully in a target position.
+
+### Prism and Substrait
+
+- [x] Store scalar expressions consistently in Prism filter, projection, grouping, and aggregate-input nodes.
+- [x] Lower scalar expressions through one shared Substrait expression-lowering path.
+- [x] Preserve aggregate-measure lowering as a separate group-level path.
+- [x] Add coverage for direct-column grouping and computed grouping expressions.
+- [x] Add coverage for aggregate inputs that are scalar expressions rather than direct column names only.
+
+### Tests
+
+- [x] Add package tests for `lit(...)` in filters.
+- [x] Add package tests for `lit(...)` in computed projections.
+- [x] Add package tests for scalar-expression grouping keys or explicit unsupported-shape diagnostics.
+- [x] Add package tests for aggregate scalar-expression inputs or explicit unsupported-shape diagnostics.
+- [x] Keep typed helper tests passing as shared-model coverage.
+
+### Documentation and release
+
+- [x] Update `docs/language/reference/dataset_methods.md`.
+- [x] Update builder/function reference docs to teach canonical scalar expressions and typed helper entrypoints.
+- [x] Update explanation docs and examples that currently teach separate filter/projection literal families.
+- [x] Add release notes if package behavior changes are user-visible.
+- [x] No package version bump was required for this pre-release v0.1 slice.
+
+## Design Decisions
+
+- **Canonical literal helper:** `lit(...)` is the canonical public scalar-literal helper. Typed literal helpers construct the same scalar-literal representation and are not separate semantic systems.
+- **Incan dependency boundary:** Incan RFC 029 enables a clean union-typed `lit(...)` input surface. Incan RFC 025 and RFC 028 are relevant to later operator-heavy expression sugar, including multiple operator trait instantiations for different right-hand operand types. Those RFCs do not replace the canonical scalar-expression model; they provide authoring surfaces that lower into it.
+- **Grouping keys:** Grouping keys are scalar expressions in the north-star contract. Implementations may temporarily reject unsupported grouping expression shapes, but they must do so explicitly and must not permanently encode direct-column grouping as the only semantic model.
+- **Aggregate boundary:** Aggregate outputs remain aggregate measures, not row-level scalar expressions. Mixed aggregate/scalar expression semantics require a later RFC.
+- **Metadata boundary:** RFC 012 defines the semantic scalar-versus-aggregate contract. First-class function and vocabulary metadata belongs to the function registry and catalog RFCs, but implementations should avoid prose-only or helper-name-only behavior that tooling cannot eventually inspect.

@@ -6,8 +6,8 @@ relation variants. It depends on schema lookup, expression lowering, and output-
 plan assembly or plan inspection.
 """
 
-import std.testing
 from rust::prost_types import Any
+from rust::incan_stdlib::errors import raise_value_error
 from rust::std::boxed import Box
 from rust::std::primitive import i32 as RustI32
 from rust::substrait::proto import (
@@ -44,19 +44,17 @@ from rust::substrait::proto::rel_common import Direct, Emit, EmitKind
 from rust::substrait::proto::set_rel import SetOp
 from rust::substrait::proto::sort_field import SortDirection, SortKind
 from aggregate_builders import AggregateKind, AggregateMeasure
-from filter_builders import FilterPredicate
-from projection_builders import ProjectionAssignment
+from projection_builders import ColumnExpr, ProjectionAssignment
 from substrait.expr_lowering import (
     bool_expr,
-    field_ref_expr,
     filter_predicate_expr,
     grouping_reference_indexes,
     i64_expr,
-    index_of_column,
     lower_project,
+    scalar_expr,
     string_expr,
-    to_rust_u32,
 )
+from substrait.errors import SubstraitLoweringError, invalid_scalar_expression
 from substrait.extensions import COUNT_FUNCTION_ANCHOR, SUM_FUNCTION_ANCHOR
 from substrait.inspect import relation_output_columns
 from substrait.schema_registry import named_table_base_schema, unknown_named_struct
@@ -64,7 +62,14 @@ from substrait.schema_registry import named_table_base_schema, unknown_named_str
 
 model ResolvedAggregateMeasure:
     kind: AggregateKind
-    column_index: int
+    expr: Expression
+
+
+@derive(Clone)
+model ResolvedRelationExpression:
+    """One relation expression payload kept appendable before extracting the proto expression list."""
+
+    expr: Expression
 
 
 pub enum SubstraitJoinKind:
@@ -173,15 +178,17 @@ pub def set_op_from_kind(operation: SubstraitSetOperation) -> RustI32:
         SubstraitSetOperation.UnionAll => return SetOp.UnionAll.into()
 
 
-def _set_operation_from_legacy_name(operation: str) -> SubstraitSetOperation:
-    """Map legacy set-operation names to typed Substrait set-operation enums."""
+def _set_operation_from_name(operation: str) -> Result[SubstraitSetOperation, SubstraitLoweringError]:
+    """Map string set-operation names to typed Substrait set-operation enums."""
     if operation == "Union":
-        return SubstraitSetOperation.UnionDistinct
+        return Ok(SubstraitSetOperation.UnionDistinct)
     elif operation == "UnionAll":
-        return SubstraitSetOperation.UnionAll
+        return Ok(SubstraitSetOperation.UnionAll)
     elif operation == "Intersect":
-        return SubstraitSetOperation.IntersectPrimary
-    return SubstraitSetOperation.MinusPrimary
+        return Ok(SubstraitSetOperation.IntersectPrimary)
+    elif operation == "Minus":
+        return Ok(SubstraitSetOperation.MinusPrimary)
+    return Err(invalid_scalar_expression(f"unknown set operation '{operation}'"))
 
 
 def _resolved_measure_to_substrait(measure: ResolvedAggregateMeasure) -> Measure:
@@ -190,12 +197,11 @@ def _resolved_measure_to_substrait(measure: ResolvedAggregateMeasure) -> Measure
     mut function_reference = COUNT_FUNCTION_ANCHOR
     if measure.kind == AggregateKind.Sum:
         function_reference = SUM_FUNCTION_ANCHOR
-        if measure.column_index >= 0:
-            arguments.append(FunctionArgument(arg_type=Some(ArgType.Value(field_ref_expr(measure.column_index)))))
+        arguments = [FunctionArgument(arg_type=Some(ArgType.Value(measure.expr.clone())))]
     return Measure(
         measure=Some(
             AggregateFunction(
-                function_reference=to_rust_u32(function_reference),
+                function_reference=function_reference,
                 arguments=arguments,
                 sorts=[],
                 output_type=None,
@@ -209,27 +215,23 @@ def _resolved_measure_to_substrait(measure: ResolvedAggregateMeasure) -> Measure
     )
 
 
-def _grouping_indexes(input_columns: list[str], grouping_columns: list[str]) -> list[int]:
-    """Resolve grouping column names to input-column indexes, keeping only the lookup phase here."""
-    return [index_of_column(input_columns, column_name) for column_name in grouping_columns]
-
-
-def _grouping_expressions_from_indexes(grouping_indexes: list[int]) -> list[Expression]:
-    """Build field-reference expressions for grouping indexes that resolved successfully."""
-    return [field_ref_expr(index) for index in grouping_indexes if index >= 0]
-
-
-def _resolved_measure(measure: AggregateMeasure, input_columns: list[str]) -> ResolvedAggregateMeasure:
+def _resolved_measure(
+    measure: AggregateMeasure,
+    input_columns: list[str],
+) -> Result[ResolvedAggregateMeasure, SubstraitLoweringError]:
     """Resolve one aggregate measure against the current input-column list."""
     if measure.kind == AggregateKind.Count:
-        return ResolvedAggregateMeasure(kind=measure.kind, column_index=-1)
-    assert len(measure.column_name) > 0, "sum(...) currently requires a direct col(\"name\") reference"
-    return ResolvedAggregateMeasure(kind=measure.kind, column_index=index_of_column(input_columns, measure.column_name))
+        return Ok(ResolvedAggregateMeasure(kind=measure.kind, expr=bool_expr(true)))
+    return Ok(ResolvedAggregateMeasure(kind=measure.kind, expr=scalar_expr(input_columns, measure.expr)?))
 
 
-def _resolved_measures(input_columns: list[str], measures: list[AggregateMeasure]) -> list[ResolvedAggregateMeasure]:
-    """Resolve all aggregate measures before lowering them into Substrait measure payloads."""
-    return [_resolved_measure(measure, input_columns) for measure in measures]
+def _lowered_rel_or_raise(result: Result[Rel, SubstraitLoweringError]) -> Rel:
+    """Return one lowered relation or raise the structured lowering diagnostic for infallible call sites."""
+    match result:
+        Ok(rel) => return rel
+        Err(err) =>
+            message = err.error_message()
+            return raise_value_error(message)
 
 
 pub def read_named_table_rel(table_name: str) -> Rel:
@@ -268,7 +270,7 @@ pub def read_local_parquet_rel(uri: str) -> Rel:
 
 
 pub def read_local_files_rel(uri: str) -> Rel:
-    """Compatibility wrapper for the current Parquet-backed `LocalFiles` read helper."""
+    """Construct a logical `ReadRel(LocalFiles)` through the current Parquet-backed helper."""
     return read_local_parquet_rel(uri)
 
 
@@ -287,42 +289,75 @@ pub def read_virtual_table_rel(table_name: str) -> Rel:
     return _rel_read(read)
 
 
-pub def filter_rel(input: Rel, predicate: FilterPredicate) -> Rel:
+pub def filter_rel(input: Rel, predicate: ColumnExpr) -> Rel:
     """Wrap a child relation in `FilterRel` with one builder-backed predicate."""
-    return filter_rel_of_columns(input, relation_output_columns(input.clone()), predicate)
+    return _lowered_rel_or_raise(try_filter_rel(input, predicate))
 
 
-pub def filter_rel_of_columns(input: Rel, input_columns: list[str], predicate: FilterPredicate) -> Rel:
+pub def try_filter_rel(input: Rel, predicate: ColumnExpr) -> Result[Rel, SubstraitLoweringError]:
+    """Fallibly wrap a child relation in `FilterRel` with one builder-backed predicate."""
+    return try_filter_rel_of_columns(input.clone(), relation_output_columns(input), predicate)
+
+
+pub def filter_rel_of_columns(input: Rel, input_columns: list[str], predicate: ColumnExpr) -> Rel:
     """Wrap a child relation in `FilterRel` using explicit input-column names."""
-    return _rel_filter(
-        FilterRel(
-            common=Some(_direct_common()),
-            input=Some(Box.new(input)),
-            condition=Some(Box.new(filter_predicate_expr(input_columns, predicate))),
-            advanced_extension=None,
+    return _lowered_rel_or_raise(try_filter_rel_of_columns(input, input_columns, predicate))
+
+
+pub def try_filter_rel_of_columns(
+    input: Rel,
+    input_columns: list[str],
+    predicate: ColumnExpr,
+) -> Result[Rel, SubstraitLoweringError]:
+    """Fallibly wrap a child relation in `FilterRel` using explicit input-column names."""
+    condition = filter_predicate_expr(input_columns, predicate)?
+    return Ok(
+        _rel_filter(
+            FilterRel(
+                common=Some(_direct_common()),
+                input=Some(Box.new(input)),
+                condition=Some(Box.new(condition)),
+                advanced_extension=None,
+            ),
         ),
     )
 
 
 pub def project_rel(input: Rel) -> Rel:
     """Wrap a child relation in an identity `ProjectRel` over all current input columns."""
-    return project_rel_of_columns(input, relation_output_columns(input.clone()), [])
+    return _lowered_rel_or_raise(try_project_rel(input))
+
+
+pub def try_project_rel(input: Rel) -> Result[Rel, SubstraitLoweringError]:
+    """Fallibly wrap a child relation in an identity `ProjectRel` over all current input columns."""
+    return try_project_rel_of_columns(input.clone(), relation_output_columns(input), [])
 
 
 pub def project_rel_of_columns(input: Rel, input_columns: list[str], assignments: list[ProjectionAssignment]) -> Rel:
     """Wrap a child relation in `ProjectRel` using explicit input-column names and ordered add-or-replace assignments."""
-    lowered = lower_project(input_columns, assignments)
+    return _lowered_rel_or_raise(try_project_rel_of_columns(input, input_columns, assignments))
+
+
+pub def try_project_rel_of_columns(
+    input: Rel,
+    input_columns: list[str],
+    assignments: list[ProjectionAssignment],
+) -> Result[Rel, SubstraitLoweringError]:
+    """Fallibly wrap a child relation in `ProjectRel` using explicit input-column names and assignments."""
+    lowered = lower_project(input_columns, assignments)?
     common = RelCommon(
         hint=None,
         advanced_extension=None,
         emit_kind=Some(EmitKind.Emit(Emit(output_mapping=lowered.output_mapping))),
     )
-    return _rel_project(
-        ProjectRel(
-            common=Some(common),
-            input=Some(Box.new(input)),
-            expressions=lowered.expressions,
-            advanced_extension=None,
+    return Ok(
+        _rel_project(
+            ProjectRel(
+                common=Some(common),
+                input=Some(Box.new(input)),
+                expressions=lowered.expressions,
+                advanced_extension=None,
+            ),
         ),
     )
 
@@ -359,35 +394,58 @@ pub def cross_rel(left: Rel, right: Rel) -> Rel:
     )
 
 
-pub def aggregate_rel(input: Rel, grouping_columns: list[str], measures: list[AggregateMeasure]) -> Rel:
+pub def aggregate_rel(input: Rel, grouping_columns: list[ColumnExpr], measures: list[AggregateMeasure]) -> Rel:
     """Wrap a child relation in `AggregateRel` with explicit grouping columns and aggregate measures."""
-    return aggregate_rel_of_columns(input, relation_output_columns(input.clone()), grouping_columns, measures)
+    return _lowered_rel_or_raise(try_aggregate_rel(input, grouping_columns, measures))
+
+
+pub def try_aggregate_rel(
+    input: Rel,
+    grouping_columns: list[ColumnExpr],
+    measures: list[AggregateMeasure],
+) -> Result[Rel, SubstraitLoweringError]:
+    """Fallibly wrap a child relation in `AggregateRel` with grouping columns and aggregate measures."""
+    return try_aggregate_rel_of_columns(input.clone(), relation_output_columns(input), grouping_columns, measures)
 
 
 pub def aggregate_rel_of_columns(
     input: Rel,
     input_columns: list[str],
-    grouping_columns: list[str],
+    grouping_columns: list[ColumnExpr],
     measures: list[AggregateMeasure],
 ) -> Rel:
     """Wrap a child relation in `AggregateRel` using explicit input-column names."""
-    grouping_indexes = _grouping_indexes(input_columns, grouping_columns)
-    grouping_exprs = _grouping_expressions_from_indexes(grouping_indexes)
+    return _lowered_rel_or_raise(try_aggregate_rel_of_columns(input, input_columns, grouping_columns, measures))
+
+
+pub def try_aggregate_rel_of_columns(
+    input: Rel,
+    input_columns: list[str],
+    grouping_columns: list[ColumnExpr],
+    measures: list[AggregateMeasure],
+) -> Result[Rel, SubstraitLoweringError]:
+    """Fallibly wrap a child relation in `AggregateRel` using explicit input-column names."""
+    mut resolved_grouping_exprs: list[ResolvedRelationExpression] = []
+    for column in grouping_columns:
+        grouping_expr = scalar_expr(input_columns, column)?
+        resolved_grouping_exprs.append(ResolvedRelationExpression(expr=grouping_expr.clone()))
+    grouping_exprs = [resolved.expr.clone() for resolved in resolved_grouping_exprs]
     grouping_expr_copies = [expr.clone() for expr in grouping_exprs]
     groupings = [Grouping(
         grouping_expressions=grouping_expr_copies,
         expression_references=grouping_reference_indexes(len(grouping_exprs)),
     )]
-    resolved_measures = _resolved_measures(input_columns, measures)
-    lowered_measures = [_resolved_measure_to_substrait(measure) for measure in resolved_measures]
-    return _rel_aggregate(
-        AggregateRel(
-            common=Some(_direct_common()),
-            input=Some(Box.new(input)),
-            groupings=groupings,
-            measures=lowered_measures,
-            grouping_expressions=grouping_exprs,
-            advanced_extension=None,
+    lowered_measures = [_resolved_measure_to_substrait(_resolved_measure(measure, input_columns)?) for measure in measures]
+    return Ok(
+        _rel_aggregate(
+            AggregateRel(
+                common=Some(_direct_common()),
+                input=Some(Box.new(input)),
+                groupings=groupings,
+                measures=lowered_measures,
+                grouping_expressions=grouping_exprs,
+                advanced_extension=None,
+            ),
         ),
     )
 
@@ -417,8 +475,13 @@ pub def fetch_rel(input: Rel, offset: int, count: int) -> Rel:
 
 
 pub def set_rel(left: Rel, right: Rel, operation: str) -> Rel:
-    """Compatibility wrapper for `SetRel` using the historic string-based operation name."""
-    return set_rel_of_kind(left, right, _set_operation_from_legacy_name(operation))
+    """Wrap two child relations in `SetRel` using a string operation name."""
+    return _lowered_rel_or_raise(try_set_rel(left, right, operation))
+
+
+pub def try_set_rel(left: Rel, right: Rel, operation: str) -> Result[Rel, SubstraitLoweringError]:
+    """Fallibly wrap two child relations in `SetRel` using a string operation name."""
+    return Ok(set_rel_of_kind(left, right, _set_operation_from_name(operation)?))
 
 
 pub def set_rel_of_kind(left: Rel, right: Rel, operation: SubstraitSetOperation) -> Rel:

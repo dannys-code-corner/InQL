@@ -44,7 +44,7 @@ A handler registry makes format support extensible without destabilizing Session
 Authors should be able to register a handler and then read data through that format key.
 
 ```incan
-from session import Session
+from pub::inql import LazyFrame, Session
 from session.formats import SessionFormatHandler
 
 class FooFormatHandler with SessionFormatHandler:
@@ -60,14 +60,14 @@ class FooFormatHandler with SessionFormatHandler:
 def main() -> None:
     mut session = Session.default()
     session.register_format_handler(FooFormatHandler())?
-    rows = session.read_format[OrderLine]("orders", "foo://bucket/orders.foo", "foo")?
+    rows: LazyFrame[OrderLine] = session.read_format("orders", "foo://bucket/orders.foo", "foo")?
 ```
 
 Built-ins should follow the same path:
 
 ```incan
 session = Session.default()
-rows = session.read_format[OrderLine]("orders", "tests/fixtures/orders.csv", "csv")?
+rows: LazyFrame[OrderLine] = session.read_format("orders", "tests/fixtures/orders.csv", "csv")?
 ```
 
 Convenience APIs like `read_csv` remain available and delegate to `read_format(..., "csv")`.

@@ -1,18 +1,26 @@
 """
-Placeholder models for InQL examples.
+Compact schemas used by the InQL examples.
 
-These are simplified models for demonstration purposes. In real code, these would
-be defined in a separate module with proper field definitions.
+Each executable example binds source reads to `LazyFrame[Model]` so the row contract is visible at the boundary where
+data enters InQL.
 
 ## Models
 
-- `Order`: Represents an order with id, customer_id, amount, status
-- `Customer`: Represents a customer with id, name, email
-- `Event`: Represents an event with id, type, severity
+- `OrderId`: One-column order-id fixture row
+- `Order`: General order row used by API-shape examples
+- `AggregateOrder`: Compact aggregate fixture row
+- `OrderLine`: Multi-column order-line fixture row
+- `Customer`: Customer dimension row
+- `Event`: Streaming/event row
 """
 
 
-# In real code, these would have proper field definitions:
+@derive(Clone)
+pub model OrderId:
+    pub id: int
+
+
+@derive(Clone)
 pub model Order:
     pub id: int
     pub customer_id: int
@@ -20,12 +28,32 @@ pub model Order:
     pub status: str
 
 
+@derive(Clone)
+pub model AggregateOrder:
+    pub customer_id: str
+    pub amount: int
+
+
+@derive(Clone)
+pub model OrderLine:
+    pub order_id: int
+    pub line_id: int
+    pub sku: str
+    pub qty: int
+    pub unit_price: float
+    pub currency: str
+    pub status: str
+    pub created_at: str
+
+
+@derive(Clone)
 pub model Customer:
     pub id: int
     pub name: str
     pub email: str
 
 
+@derive(Clone)
 pub model Event:
     pub id: int
     pub event_type: str

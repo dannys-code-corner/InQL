@@ -18,7 +18,7 @@ InQL uses its **own** RFC series (starting at 000), independent of the [Incan la
 | [009][rfc-009] | Draft       | Session format handler registry (plugin-style source format registration)                         |     |
 | [010][rfc-010] | Draft       | CSV dialect and interpretation contract                                                           |     |
 | [011][rfc-011] | Draft       | Source discovery and parse-unit expansion                                                         |     |
-| [012][rfc-012] | Draft       | Unified scalar expression surface                                                                 |     |
+| [012][rfc-012] | Implemented | Unified scalar expression surface                                                                 |     |
 | [013][rfc-013] | Draft       | Function catalog program                                                                          |     |
 | [014][rfc-014] | Draft       | Function registry and catalog governance                                                          |     |
 | [015][rfc-015] | Draft       | Core scalar functions and operators                                                               |     |

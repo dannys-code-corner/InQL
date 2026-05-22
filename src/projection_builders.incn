@@ -1,38 +1,93 @@
 """
-Explicit projection-expression builder surface for the current InQL-only projection slice.
+Explicit scalar-expression builder surface for the current InQL-only row-expression slice.
 
-These builders are the semantic target for future compiler sugar such as `.amount * 1.2` and query-block projection
-lowering. Today they provide a library-owned way to express derived-column intent without requiring parser or
-typechecker changes in the Incan compiler.
+These builders are the semantic target for future compiler sugar such as `.amount * 1.2`, predicate expressions,
+grouping keys, aggregate inputs, and query-block lowering. Today they provide a library-owned way to express row-level
+scalar intent without requiring parser or typechecker changes in the Incan compiler.
 """
 
-import std.testing
+from rust::incan_stdlib::errors import raise_value_error
 
 
 @derive(Clone)
-pub enum ColumnExprKind:
-    """Supported expression kinds for the current projection-builder surface."""
+pub enum ColumnExprKind(str):
+    """Supported expression kinds for the current scalar-expression surface."""
 
-    Column
-    IntLiteral
-    FloatLiteral
-    StringLiteral
-    BoolLiteral
-    Add
-    Multiply
+    Column = "column"
+    IntLiteral = "int_literal"
+    FloatLiteral = "float_literal"
+    StringLiteral = "string_literal"
+    BoolLiteral = "bool_literal"
+    Add = "add"
+    Multiply = "multiply"
+    Eq = "eq"
+    Gt = "gt"
 
 
 @derive(Clone)
-pub model ColumnExpr:
-    """Projection expression description carried through dataset, Prism, and Substrait boundaries."""
+pub model ColumnRefExpr:
+    """Named column reference expression."""
 
-    pub kind: ColumnExprKind
     pub column_name: str
-    pub int_value: int
-    pub float_value: float
-    pub string_value: str
-    pub bool_value: bool
+
+
+@derive(Clone)
+pub model IntLiteralExpr:
+    """Integer literal scalar expression."""
+
+    pub value: int
+
+
+@derive(Clone)
+pub model FloatLiteralExpr:
+    """Float literal scalar expression."""
+
+    pub value: float
+
+
+@derive(Clone)
+pub model StringLiteralExpr:
+    """String literal scalar expression."""
+
+    pub value: str
+
+
+@derive(Clone)
+pub model BoolLiteralExpr:
+    """Boolean literal scalar expression."""
+
+    pub value: bool
+
+
+@derive(Clone)
+pub model AddExpr:
+    """Binary addition scalar expression."""
+
     pub arguments: list[ColumnExpr]
+
+
+@derive(Clone)
+pub model MultiplyExpr:
+    """Binary multiplication scalar expression."""
+
+    pub arguments: list[ColumnExpr]
+
+
+@derive(Clone)
+pub model EqExpr:
+    """Binary equality scalar expression."""
+
+    pub arguments: list[ColumnExpr]
+
+
+@derive(Clone)
+pub model GtExpr:
+    """Binary greater-than scalar expression."""
+
+    pub arguments: list[ColumnExpr]
+
+
+pub type ColumnExpr = Union[ColumnRefExpr, IntLiteralExpr, FloatLiteralExpr, StringLiteralExpr, BoolLiteralExpr, AddExpr, MultiplyExpr, EqExpr, GtExpr]
 
 
 @derive(Clone)
@@ -45,93 +100,56 @@ pub model ProjectionAssignment:
 
 pub def col(name: str) -> ColumnExpr:
     """Build one named column reference expression."""
-    return ColumnExpr(
-        kind=ColumnExprKind.Column,
-        column_name=name,
-        int_value=0,
-        float_value=0.0,
-        string_value="",
-        bool_value=false,
-        arguments=[],
-    )
+    return ColumnRefExpr(column_name=name)
 
 
 pub def int_expr(value: int) -> ColumnExpr:
     """Build one integer literal expression."""
-    return ColumnExpr(
-        kind=ColumnExprKind.IntLiteral,
-        column_name="",
-        int_value=value,
-        float_value=0.0,
-        string_value="",
-        bool_value=false,
-        arguments=[],
-    )
+    return IntLiteralExpr(value=value)
 
 
 pub def float_expr(value: float) -> ColumnExpr:
     """Build one float literal expression."""
-    return ColumnExpr(
-        kind=ColumnExprKind.FloatLiteral,
-        column_name="",
-        int_value=0,
-        float_value=value,
-        string_value="",
-        bool_value=false,
-        arguments=[],
-    )
+    return FloatLiteralExpr(value=value)
 
 
 pub def str_expr(value: str) -> ColumnExpr:
     """Build one string literal expression."""
-    return ColumnExpr(
-        kind=ColumnExprKind.StringLiteral,
-        column_name="",
-        int_value=0,
-        float_value=0.0,
-        string_value=value,
-        bool_value=false,
-        arguments=[],
-    )
+    return StringLiteralExpr(value=value)
 
 
 pub def bool_expr(value: bool) -> ColumnExpr:
     """Build one boolean literal expression."""
-    return ColumnExpr(
-        kind=ColumnExprKind.BoolLiteral,
-        column_name="",
-        int_value=0,
-        float_value=0.0,
-        string_value="",
-        bool_value=value,
-        arguments=[],
-    )
+    return BoolLiteralExpr(value=value)
+
+
+pub def lit(value: Union[int, float, str, bool]) -> ColumnExpr:
+    """Build one canonical scalar literal expression."""
+    match value:
+        bool(flag) => return bool_expr(flag)
+        int(number) => return int_expr(number)
+        float(number) => return float_expr(number)
+        str(text) => return str_expr(text)
 
 
 pub def add(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
     """Build one binary addition expression."""
-    return ColumnExpr(
-        kind=ColumnExprKind.Add,
-        column_name="",
-        int_value=0,
-        float_value=0.0,
-        string_value="",
-        bool_value=false,
-        arguments=[left, right],
-    )
+    return AddExpr(arguments=[left, right])
 
 
 pub def mul(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
     """Build one binary multiply expression."""
-    return ColumnExpr(
-        kind=ColumnExprKind.Multiply,
-        column_name="",
-        int_value=0,
-        float_value=0.0,
-        string_value="",
-        bool_value=false,
-        arguments=[left, right],
-    )
+    return MultiplyExpr(arguments=[left, right])
+
+
+pub def eq(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
+    """Build one equality predicate scalar expression."""
+    return EqExpr(arguments=[left, right])
+
+
+pub def gt(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
+    """Build one greater-than predicate scalar expression."""
+    return GtExpr(arguments=[left, right])
 
 
 pub def with_column_assignment(name: str, expr: ColumnExpr) -> ProjectionAssignment:
@@ -141,15 +159,46 @@ pub def with_column_assignment(name: str, expr: ColumnExpr) -> ProjectionAssignm
 
 pub def column_expr_name(expr: ColumnExpr) -> str:
     """Return the referenced column name when the expression is a direct column reference, otherwise empty."""
-    if expr.kind == ColumnExprKind.Column:
-        return expr.column_name
-    return ""
+    match expr:
+        ColumnRefExpr(column) => return column.column_name
+        _ => return ""
 
 
 pub def require_column_expr_name(expr: ColumnExpr, context: str) -> str:
     """Return one direct column name or fail with a clear message for unsupported expression shapes."""
-    assert expr.kind == ColumnExprKind.Column, f"{context} currently requires a direct col(\"name\") reference"
-    return expr.column_name
+    match expr:
+        ColumnRefExpr(column) => return column.column_name
+        _ =>
+            message = f"{context} currently requires a direct col(\"name\") reference"
+            return raise_value_error(message)
+
+
+pub def scalar_expr_output_name(expr: ColumnExpr, fallback: str) -> str:
+    """Return a stable output name for one scalar expression in positions that expose grouping output columns."""
+    match expr:
+        ColumnRefExpr(column) => return column.column_name
+        _ => return fallback
+
+
+pub def column_expr_kind(expr: ColumnExpr) -> ColumnExprKind:
+    """Return the public expression-kind label for one scalar expression."""
+    match expr:
+        ColumnRefExpr(_) => return ColumnExprKind.Column
+        IntLiteralExpr(_) => return ColumnExprKind.IntLiteral
+        FloatLiteralExpr(_) => return ColumnExprKind.FloatLiteral
+        StringLiteralExpr(_) => return ColumnExprKind.StringLiteral
+        BoolLiteralExpr(_) => return ColumnExprKind.BoolLiteral
+        AddExpr(_) => return ColumnExprKind.Add
+        MultiplyExpr(_) => return ColumnExprKind.Multiply
+        EqExpr(_) => return ColumnExprKind.Eq
+        GtExpr(_) => return ColumnExprKind.Gt
+
+
+pub def is_bool_literal_expr(expr: ColumnExpr, expected: bool) -> bool:
+    """Return whether one scalar expression is the requested boolean literal."""
+    match expr:
+        BoolLiteralExpr(literal) => return literal.value == expected
+        _ => return false
 
 
 pub def project_output_columns(input_columns: list[str], assignments: list[ProjectionAssignment]) -> list[str]:
@@ -158,13 +207,10 @@ pub def project_output_columns(input_columns: list[str], assignments: list[Proje
     output_columns.extend(input_columns)
     for assignment in assignments:
         existing_idx = _index_of_column(output_columns, assignment.output_name)
-        # TODO(#121): remove this explicit owned-string materialization once v0.3 fixes the borrowed-loop-item field
-        # path structurally instead of case by case.
-        output_name = str(assignment.output_name)
         if existing_idx >= 0:
-            output_columns[existing_idx] = output_name
+            output_columns[existing_idx] = assignment.output_name
         else:
-            output_columns.append(output_name)
+            output_columns.append(assignment.output_name)
     return output_columns
 
 

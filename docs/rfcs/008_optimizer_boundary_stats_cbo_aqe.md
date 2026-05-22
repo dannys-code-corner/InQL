@@ -81,8 +81,8 @@ from models import Customer, Order, RegionalSummary
 
 session = Session.default()
 
-orders: LazyFrame[Order] = session.table[Order]("orders")?
-customers: LazyFrame[Customer] = session.table[Customer]("customers")?
+orders: LazyFrame[Order] = session.table("orders")?
+customers: LazyFrame[Customer] = session.table("customers")?
 
 summary: LazyFrame[RegionalSummary] = query {
     FROM orders

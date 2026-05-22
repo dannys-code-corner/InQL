@@ -1,69 +1,69 @@
 """
-Example: DataSet[T] operation API patterns (RFC 001).
+Example: typed DataSet[T] operation API patterns.
 
-This file stays compile-safe today, but it now uses the parts of the method-chain surface that are already real:
+These helpers read like ordinary application code: model types mark row contracts, while explicit builder expressions
+describe portable relational intent.
 
-- builder-based filters via `eq(...)`, `gt(...)`, `int_lit(...)`, and `str_lit(...)`
-- builder-based projection via `with_column(...)`, `add(...)`, `mul(...)`, and `int_expr(...)`
+- builder-based filters via `eq(...)`, `gt(...)`, and `lit(...)`
+- builder-based projection via `with_column(...)`, `add(...)`, `mul(...)`, and `lit(...)`
 - builder-based grouping and aggregation via `col(...)`, `sum(...)`, and `count()`
-
-Query-expression sugar such as `.amount > 100` and rich `select/order_by` expressions still depend on later compiler
-work, so those remain documented as intended shapes rather than executable examples.
 """
 
-from functions import add, col, count, eq, gt, int_expr, int_lit, mul, str_lit, sum
+from functions import add, col, count, eq, gt, lit, mul, sum
 from dataset import DataSet, BoundedDataSet, DataFrame, LazyFrame
-from models import Order, Customer
+from models import AggregateOrder, Customer, Order, OrderLine
 
 
 def filter_high_value_orders(orders: LazyFrame[Order]) -> LazyFrame[Order]:
-    return orders.filter(gt(col("amount"), int_lit(100)))
+    return orders.filter(gt(col("amount"), lit(100.0)))
 
 
 def filter_active_orders(orders: LazyFrame[Order]) -> LazyFrame[Order]:
-    return orders.filter(eq(col("status"), str_lit("active")))
+    return orders.filter(eq(col("status"), lit("active")))
 
 
-def filter_combined(orders: LazyFrame[Order]) -> LazyFrame[Order]:
-    return orders.filter(gt(col("amount"), int_lit(100))).filter(eq(col("status"), str_lit("active")))
+def active_high_value_orders(orders: LazyFrame[Order]) -> LazyFrame[Order]:
+    return filter_high_value_orders(filter_active_orders(orders))
 
 
-def join_orders_with_customers(orders: LazyFrame[Order], customers: LazyFrame[Customer]) -> LazyFrame[Order]:
-    # Trait join uses `other: Self`; heterogeneous Order/Customer join is a logical/RFC 003 concern.
-    # Same-schema illustration: orders.join(orders, True) when both are LazyFrame[Order].
-    _ = customers
-    return orders.join(orders, true)
+def customer_dimension(customers: LazyFrame[Customer]) -> LazyFrame[Customer]:
+    return customers.select()
 
 
-def select_basic_fields(orders: LazyFrame[Order]) -> LazyFrame[Order]:
-    # Intended shape: orders.select(.id, .amount, .status)
-    return orders
+def join_orders_with_revision(orders: LazyFrame[Order], revised_orders: LazyFrame[Order]) -> LazyFrame[Order]:
+    return orders.join(revised_orders, true)
 
 
-def derive_double_amount(orders: LazyFrame[Order]) -> LazyFrame[Order]:
-    return orders.with_column("amount_x2", mul(col("amount"), int_expr(2)))
+def customer_dimension_preview(customers: LazyFrame[Customer]) -> LazyFrame[Customer]:
+    return customer_dimension(customers).limit(25)
 
 
-def derive_amount_plus_one(orders: LazyFrame[Order]) -> LazyFrame[Order]:
-    return orders.with_column("amount_plus_one", add(col("amount"), int_expr(1)))
+def select_order_fields(orders: LazyFrame[Order]) -> LazyFrame[Order]:
+    return orders.select()
 
 
-def group_by_customer_sum_amount(orders: LazyFrame[Order]) -> LazyFrame[Order]:
+def derive_amount_with_tax(orders: LazyFrame[Order]) -> LazyFrame[Order]:
+    return orders.with_column("amount_with_tax", mul(col("amount"), lit(1.21)))
+
+
+def derive_amount_plus_shipping(orders: LazyFrame[Order]) -> LazyFrame[Order]:
+    return orders.with_column("amount_plus_shipping", add(col("amount"), lit(4.95)))
+
+
+def customer_amount_rollup(orders: LazyFrame[AggregateOrder]) -> LazyFrame[AggregateOrder]:
     return orders.group_by([col("customer_id")]).agg([sum(col("amount"))])
 
 
-def group_by_multiple_keys(orders: LazyFrame[Order]) -> LazyFrame[Order]:
+def customer_status_rollup(orders: LazyFrame[Order]) -> LazyFrame[Order]:
     return orders.group_by([col("customer_id"), col("status")]).agg([sum(col("amount")), count()])
 
 
-def order_by_amount_desc(orders: LazyFrame[Order]) -> LazyFrame[Order]:
-    # Intended shape: orders.order_by(.amount.desc())
-    return orders
+def open_order_lines(lines: LazyFrame[OrderLine]) -> LazyFrame[OrderLine]:
+    return lines.filter(eq(col("status"), lit("open")))
 
 
-def order_by_limit_top_10(orders: LazyFrame[Order]) -> LazyFrame[Order]:
-    # Today only the `limit(...)` half is executable without richer order expressions.
-    return orders.limit(10)
+def priced_order_lines(lines: LazyFrame[OrderLine]) -> LazyFrame[OrderLine]:
+    return open_order_lines(lines).with_column("discounted_unit_price", mul(col("unit_price"), lit(0.9)))
 
 
 def process_orders_batch(orders: DataFrame[Order]) -> DataFrame[Order]:

@@ -1,0 +1,39 @@
+"""Structured errors for Substrait relation and expression lowering."""
+
+
+@derive(Clone)
+pub enum SubstraitLoweringErrorKind(str):
+    """Stable categories for Substrait lowering failures."""
+
+    InvalidScalarExpression = "invalid_scalar_expression"
+    UnknownScalarColumn = "unknown_scalar_column"
+    UnsupportedScalarExpression = "unsupported_scalar_expression"
+
+
+pub model SubstraitLoweringError:
+    """Typed error envelope for failures while lowering author-facing builders into Substrait."""
+
+    pub kind: SubstraitLoweringErrorKind
+    pub message: str
+
+    def error_message(self) -> str:
+        """Return one stable `kind: message` string for diagnostics."""
+        return f"{self.kind.value()}: {self.message}"
+
+
+pub def invalid_scalar_expression(message: str) -> SubstraitLoweringError:
+    """Create one scalar-expression validation error."""
+    return SubstraitLoweringError(kind=SubstraitLoweringErrorKind.InvalidScalarExpression, message=message)
+
+
+pub def unknown_scalar_column(name: str) -> SubstraitLoweringError:
+    """Create one unknown-column scalar-expression error."""
+    return SubstraitLoweringError(
+        kind=SubstraitLoweringErrorKind.UnknownScalarColumn,
+        message=f"unknown scalar expression column '{name}'",
+    )
+
+
+pub def unsupported_scalar_expression(message: str) -> SubstraitLoweringError:
+    """Create one unsupported scalar-expression validation error."""
+    return SubstraitLoweringError(kind=SubstraitLoweringErrorKind.UnsupportedScalarExpression, message=message)

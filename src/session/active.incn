@@ -9,6 +9,13 @@ from backends import BackendSelection, TableSource, default_backend_selection
 
 
 @derive(Clone)
+pub enum ActiveSessionErrorKind(str):
+    """Stable categories for active-session lookup failures."""
+
+    NoActiveSession = "no_active_session"
+
+
+@derive(Clone)
 pub class ActiveRegistration:
     pub logical_name: str
     pub source: TableSource
@@ -29,7 +36,7 @@ pub class ActiveSessionState:
 
 
 pub model ActiveSessionError:
-    pub kind: str
+    pub kind: ActiveSessionErrorKind
     pub message: str
 
 
@@ -63,7 +70,7 @@ pub def get_active_session_state() -> Result[ActiveSessionState, ActiveSessionEr
         latest_has_active = flag
         found_flag = true
     if found_flag is false or latest_has_active is false:
-        return Err(ActiveSessionError(kind="no_active_session", message=err_msg))
+        return Err(ActiveSessionError(kind=ActiveSessionErrorKind.NoActiveSession, message=err_msg))
 
     # State snapshots are also append-only.
     # The latest entry is the active snapshot payload associated with the most recent lifecycle marker.
@@ -73,6 +80,6 @@ pub def get_active_session_state() -> Result[ActiveSessionState, ActiveSessionEr
         active = candidate.clone()
         found_state = true
     if found_state is false:
-        return Err(ActiveSessionError(kind="no_active_session", message=err_msg))
+        return Err(ActiveSessionError(kind=ActiveSessionErrorKind.NoActiveSession, message=err_msg))
 
     return Ok(active)

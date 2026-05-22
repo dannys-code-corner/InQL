@@ -1,12 +1,9 @@
-"""Example: Session read -> transform -> write CSV using LazyFrame."""
+"""Example: typed Session read -> transform -> write CSV."""
 
-from functions import col, display, eq, int_lit
+from dataset import LazyFrame
+from functions import col, display, eq, lit
+from models import OrderId
 from session import Session, SessionError, report_session_error
-
-
-@derive(Clone)
-pub model CsvOrder:
-    pub id: int
 
 
 def main() -> None:
@@ -20,13 +17,21 @@ def main() -> None:
 
 
 def _read_transform_write(mut session: Session, input_uri: str, output_uri: str) -> Result[None, SessionError]:
-    # Read path stays deferred: this returns LazyFrame, not local materialized data.
-    orders = session.read_csv[CsvOrder]("orders", input_uri)?
-    # Activate after registration so LazyFrame.collect/display sees the registered sources.
+    orders: LazyFrame[OrderId] = session.read_csv("orders", input_uri)?
     session.activate()
 
-    # Keep transform simple and schema-safe for the current fixture.
-    transformed = orders.filter(eq(col("id"), int_lit(1))).limit(2)
+    transformed = first_order_ids(orders)
+    print_lazy_schema("orders", transformed)
     session.write_csv(transformed, output_uri)?
     display(transformed)
     return Ok(None)
+
+
+def first_order_ids(orders: LazyFrame[OrderId]) -> LazyFrame[OrderId]:
+    return orders.filter(eq(col("id"), lit(1))).limit(2)
+
+
+def print_lazy_schema(label: str, frame: LazyFrame[OrderId]) -> None:
+    schema = frame.schema()
+    println(f"{label} declared columns: {schema.declared_columns:?}")
+    println(f"{label} planned columns: {schema.planned_columns:?}")

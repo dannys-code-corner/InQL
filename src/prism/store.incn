@@ -1,8 +1,19 @@
 """Append-only Prism store allocation, storage, reachability, and cross-store adoption."""
 
 from aggregate_builders import AggregateMeasure
-from filter_builders import FilterLiteralKind, FilterPredicate, FilterPredicateKind
-from projection_builders import ColumnExpr, ProjectionAssignment
+from projection_builders import (
+    AddExpr,
+    BoolLiteralExpr,
+    ColumnExpr,
+    ColumnRefExpr,
+    EqExpr,
+    FloatLiteralExpr,
+    GtExpr,
+    IntLiteralExpr,
+    MultiplyExpr,
+    ProjectionAssignment,
+    StringLiteralExpr,
+)
 from prism.types import PrismNode, PrismNodeKind, PrismStoreAdoption, PrismStoreId
 
 
@@ -36,9 +47,9 @@ pub def append_node(
     input_ids: list[int],
     named_table: str,
     join_predicate: bool,
-    filter_predicate: FilterPredicate,
+    filter_predicate: ColumnExpr,
     limit_count: int,
-    group_columns: list[str],
+    group_columns: list[ColumnExpr],
     aggregate_measures: list[AggregateMeasure],
     projection_assignments: list[ProjectionAssignment],
 ) -> int:
@@ -91,6 +102,7 @@ pub def adopt_cursor_subgraph(
         # Inputs are remapped first so structural equality is evaluated in the target store's id space.
         remapped_input_ids = remap_input_ids(source_node.input_ids, id_map)
 
+        # Dedup is intentionally local to the nodes adopted during this pass.
         reused_adopted_id = _find_existing_adopted_node_id(
             target_store_nodes,
             source_node,
@@ -135,6 +147,8 @@ pub def adopt_cursor_subgraph(
             id_map[source_node_id] = adopted_id
             adopted_node_ids.append(adopted_id)
             adopted_node_count += 1
+
+    # The source tip is guaranteed reachable, so its remapped target-store id is the adopted tip for the caller.
     return PrismStoreAdoption(adopted_tip_id=id_map[tip_id], adopted_node_count=adopted_node_count)
 
 
@@ -150,6 +164,7 @@ pub def reachable_node_ids(store_id: PrismStoreId, tip_id: int) -> list[int]:
     mut visited: list[bool] = [false for _node in store_nodes_for_id]
     mut pending: list[int] = [tip_id]
     mut cursor = 0
+    # Walk outward through inputs from the tip so later passes only see the live authored slice.
     while cursor < len(pending):
         node_id = pending[cursor]
         cursor += 1
@@ -159,6 +174,8 @@ pub def reachable_node_ids(store_id: PrismStoreId, tip_id: int) -> list[int]:
         node = store_nodes_for_id[node_id]
         for input_id in node.input_ids:
             pending.append(input_id)
+
+    # Return reachable node ids in store order for stable iteration in later passes.
     ordered = [node.node_id for node in store_nodes_for_id if visited[node.node_id]]
     return ordered
 
@@ -197,21 +214,21 @@ def _nodes_structurally_equal(candidate: PrismNode, source_node: PrismNode, rema
         return false
     if candidate.join_predicate != source_node.join_predicate:
         return false
-    if not _filter_predicates_structurally_equal(
-        candidate.filter_predicate.clone(),
-        source_node.filter_predicate.clone(),
-    ):
+    if not _filter_predicates_structurally_equal(candidate.filter_predicate, source_node.filter_predicate):
         return false
     if candidate.limit_count != source_node.limit_count:
         return false
-    if candidate.group_columns != source_node.group_columns:
+    if not _column_expr_lists_structurally_equal(candidate.group_columns, source_node.group_columns):
         return false
     if len(candidate.aggregate_measures) != len(source_node.aggregate_measures):
         return false
     for idx in range(len(candidate.aggregate_measures)):
         if candidate.aggregate_measures[idx].kind != source_node.aggregate_measures[idx].kind:
             return false
-        if candidate.aggregate_measures[idx].column_name != source_node.aggregate_measures[idx].column_name:
+        if not _column_exprs_structurally_equal(
+            candidate.aggregate_measures[idx].expr,
+            source_node.aggregate_measures[idx].expr,
+        ):
             return false
     if not _projection_assignments_structurally_equal(
         candidate.projection_assignments,
@@ -221,21 +238,9 @@ def _nodes_structurally_equal(candidate: PrismNode, source_node: PrismNode, rema
     return candidate.input_ids == remapped_input_ids
 
 
-def _filter_predicates_structurally_equal(left: FilterPredicate, right: FilterPredicate) -> bool:
-    """Return whether two filter predicates are structurally equivalent."""
-    if left.kind != right.kind:
-        return false
-    if left.column_name != right.column_name:
-        return false
-    if left.literal.kind != right.literal.kind:
-        return false
-    if left.literal.kind == FilterLiteralKind.Int:
-        return left.literal.int_value == right.literal.int_value
-    if left.literal.kind == FilterLiteralKind.String:
-        return left.literal.string_value == right.literal.string_value
-    if left.literal.kind == FilterLiteralKind.Bool:
-        return left.literal.bool_value == right.literal.bool_value
-    return true
+def _filter_predicates_structurally_equal(left: ColumnExpr, right: ColumnExpr) -> bool:
+    """Return whether two filter scalar expressions are structurally equivalent."""
+    return _column_exprs_structurally_equal(left, right)
 
 
 def _projection_assignments_structurally_equal(
@@ -253,26 +258,75 @@ def _projection_assignments_structurally_equal(
     return true
 
 
-def _column_exprs_structurally_equal(left: ColumnExpr, right: ColumnExpr) -> bool:
-    """Return whether two projection expressions are structurally equivalent."""
-    if left.kind != right.kind:
+def _column_expr_lists_structurally_equal(left: list[ColumnExpr], right: list[ColumnExpr]) -> bool:
+    """Return whether two scalar-expression lists are structurally equivalent."""
+    if len(left) != len(right):
         return false
-    if left.column_name != right.column_name:
-        return false
-    if left.int_value != right.int_value:
-        return false
-    if left.float_value != right.float_value:
-        return false
-    if left.string_value != right.string_value:
-        return false
-    if left.bool_value != right.bool_value:
-        return false
-    if len(left.arguments) != len(right.arguments):
-        return false
-    for idx in range(len(left.arguments)):
-        if not _column_exprs_structurally_equal(left.arguments[idx], right.arguments[idx]):
+    for idx in range(len(left)):
+        if not _column_exprs_structurally_equal(left[idx], right[idx]):
             return false
     return true
+
+
+def _column_exprs_structurally_equal(left: ColumnExpr, right: ColumnExpr) -> bool:
+    """Return whether two projection expressions are structurally equivalent."""
+    match left:
+        ColumnRefExpr(left_column) =>
+            match right:
+                ColumnRefExpr(right_column) => return left_column.column_name == right_column.column_name
+                _ => return false
+        IntLiteralExpr(left_literal) =>
+            match right:
+                IntLiteralExpr(right_literal) => return left_literal.value == right_literal.value
+                _ => return false
+        FloatLiteralExpr(left_literal) =>
+            match right:
+                FloatLiteralExpr(right_literal) => return left_literal.value == right_literal.value
+                _ => return false
+        StringLiteralExpr(left_literal) =>
+            match right:
+                StringLiteralExpr(right_literal) => return left_literal.value == right_literal.value
+                _ => return false
+        BoolLiteralExpr(left_literal) =>
+            match right:
+                BoolLiteralExpr(right_literal) => return left_literal.value == right_literal.value
+                _ => return false
+        AddExpr(left_add) =>
+            match right:
+                AddExpr(right_add) =>
+                    if len(left_add.arguments) != 2 or len(right_add.arguments) != 2:
+                        return false
+                    if not _column_exprs_structurally_equal(left_add.arguments[0], right_add.arguments[0]):
+                        return false
+                    return _column_exprs_structurally_equal(left_add.arguments[1], right_add.arguments[1])
+                _ => return false
+        MultiplyExpr(left_multiply) =>
+            match right:
+                MultiplyExpr(right_multiply) =>
+                    if len(left_multiply.arguments) != 2 or len(right_multiply.arguments) != 2:
+                        return false
+                    if not _column_exprs_structurally_equal(left_multiply.arguments[0], right_multiply.arguments[0]):
+                        return false
+                    return _column_exprs_structurally_equal(left_multiply.arguments[1], right_multiply.arguments[1])
+                _ => return false
+        EqExpr(left_eq) =>
+            match right:
+                EqExpr(right_eq) =>
+                    if len(left_eq.arguments) != 2 or len(right_eq.arguments) != 2:
+                        return false
+                    if not _column_exprs_structurally_equal(left_eq.arguments[0], right_eq.arguments[0]):
+                        return false
+                    return _column_exprs_structurally_equal(left_eq.arguments[1], right_eq.arguments[1])
+                _ => return false
+        GtExpr(left_gt) =>
+            match right:
+                GtExpr(right_gt) =>
+                    if len(left_gt.arguments) != 2 or len(right_gt.arguments) != 2:
+                        return false
+                    if not _column_exprs_structurally_equal(left_gt.arguments[0], right_gt.arguments[0]):
+                        return false
+                    return _column_exprs_structurally_equal(left_gt.arguments[1], right_gt.arguments[1])
+                _ => return false
 
 
 def _latest_store_next_node_id(store_id: PrismStoreId) -> int:
@@ -287,11 +341,4 @@ def _latest_store_next_node_id(store_id: PrismStoreId) -> int:
         candidate = prism_store_node_counts[idx]
         if candidate.store_id_raw == store_id.0:
             return candidate.next_node_id
-
-        # Dedup is intentionally local to this adoption pass. We do not attempt global memoization across stores yet.
-
     return 0
-    # The source tip is guaranteed reachable, so its remapped target-store id is the adopted tip for the caller.
-    # Walk backward through inputs from the tip so later lowering/rewrite steps only see the live authored slice.
-    # Compute reachable node ids in store order for stable iteration in later passes.
-    # Only scan nodes appended during this adoption pass; older target-store nodes are out of scope for this slice.

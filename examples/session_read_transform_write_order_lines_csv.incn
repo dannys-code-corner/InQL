@@ -1,19 +1,9 @@
 """Example: Session read -> transform -> collect/display -> write CSV with multi-column order lines."""
 
-from functions import display
+from dataset import LazyFrame
+from functions import col, display, eq, lit, mul
+from models import OrderLine
 from session import Session, SessionError, report_session_error
-
-
-@derive(Clone)
-pub model OrderLine:
-    pub order_id: int
-    pub line_id: int
-    pub sku: str
-    pub qty: int
-    pub unit_price: float
-    pub currency: str
-    pub status: str
-    pub created_at: str
 
 
 def main() -> None:
@@ -31,14 +21,25 @@ def _read_transform_collect_display_write(
     input_uri: str,
     output_uri: str,
 ) -> Result[None, SessionError]:
-    raw = session.read_csv[OrderLine]("order_lines", input_uri)?
-    # Activate after registration so LazyFrame.collect/display sees the registered sources.
+    lines: LazyFrame[OrderLine] = session.read_csv("order_lines", input_uri)?
     session.activate()
 
-    # Apply one concrete transform with visible effect: reduce to top-2 rows.
-    # (Note: More expressive predicates/order keys are tracked as separate surface work.)
-    transformed = raw.limit(2)
+    transformed = open_eur_lines_with_discount(lines)
+    print_lazy_schema("order lines", transformed)
 
     session.write_csv(transformed, output_uri)?
     display(transformed)
     return Ok(None)
+
+
+def open_eur_lines_with_discount(lines: LazyFrame[OrderLine]) -> LazyFrame[OrderLine]:
+    return lines.filter(eq(col("status"), lit("open"))).filter(eq(col("currency"), lit("EUR"))).with_column(
+        "discounted_unit_price",
+        mul(col("unit_price"), lit(0.9)),
+    )
+
+
+def print_lazy_schema(label: str, frame: LazyFrame[OrderLine]) -> None:
+    schema = frame.schema()
+    println(f"{label} declared columns: {schema.declared_columns:?}")
+    println(f"{label} planned columns: {schema.planned_columns:?}")

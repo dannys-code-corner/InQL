@@ -58,6 +58,10 @@ pub def named_table_base_schema(table_name: str) -> NamedStruct:
 
 pub def register_named_table_schema(table_name: str, columns: list[RowColumnSpec]) -> None:
     """Register one logical named-table schema used to bind `ReadRel` base_schema."""
+    for idx, entry in enumerate(_named_table_schema_registry):
+        if entry.table_name == table_name:
+            _named_table_schema_registry[idx] = NamedTableSchemaEntry(table_name=table_name, columns=columns)
+            return
     _named_table_schema_registry.append(NamedTableSchemaEntry(table_name=table_name, columns=columns))
     return
 

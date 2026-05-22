@@ -58,13 +58,13 @@ For the common path, authors should not have to restate obvious discovery behavi
 For a single file, the discovery contract is trivial.
 
 ```incan
-from pub::inql import Session
+from pub::inql import LazyFrame, Session
 from pub::inql.sources import SourceDiscovery, SourceTarget
 from models import Order
 
 session = Session.default()
 
-orders = session.read_format[Order](
+orders: LazyFrame[Order] = session.read_format(
     logical_name="orders",
     source=SourceTarget.file("s3://warehouse/orders.csv"),
     format="csv",
@@ -76,7 +76,7 @@ For a directory or prefix, the discovery contract becomes explicit: discover mul
 ```incan
 from pub::inql.sources import ParseUnitExpansion, SourceDiscovery, SourceTarget
 
-orders = session.read_format[Order](
+orders: LazyFrame[Order] = session.read_format(
     logical_name="orders",
     source=SourceTarget.directory("s3://warehouse/orders/"),
     format="csv",

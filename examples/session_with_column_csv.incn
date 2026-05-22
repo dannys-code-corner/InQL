@@ -1,13 +1,9 @@
-"""Example: Session read -> with_column -> collect/display -> write CSV using a real fixture."""
+"""Example: typed Session read -> with_column -> display -> write CSV."""
 
-from functions import col, display, int_expr, mul
+from dataset import LazyFrame
+from functions import col, display, lit, mul
+from models import AggregateOrder
 from session import Session, SessionError, report_session_error
-
-
-@derive(Clone)
-pub model AggregateOrder:
-    pub customer_id: str
-    pub amount: int
 
 
 def main() -> None:
@@ -21,10 +17,20 @@ def main() -> None:
 
 
 def _read_transform_write(mut session: Session, input_uri: str, output_uri: str) -> Result[None, SessionError]:
-    orders = session.read_csv[AggregateOrder]("aggregate_orders", input_uri)?
+    orders: LazyFrame[AggregateOrder] = session.read_csv("aggregate_orders", input_uri)?
     session.activate()
-    # add a column with double the amount, using a simple multiply expression over the "amount" column and an integer literal
-    projected = orders.with_column("double_amount", mul(col("amount"), int_expr(2)))
+    projected = add_double_amount(orders)
+    print_lazy_schema("projected orders", projected)
     display(projected)
     session.write_csv(projected, output_uri)?
     return Ok(None)
+
+
+def add_double_amount(orders: LazyFrame[AggregateOrder]) -> LazyFrame[AggregateOrder]:
+    return orders.with_column("double_amount", mul(col("amount"), lit(2)))
+
+
+def print_lazy_schema(label: str, frame: LazyFrame[AggregateOrder]) -> None:
+    schema = frame.schema()
+    println(f"{label} declared columns: {schema.declared_columns:?}")
+    println(f"{label} planned columns: {schema.planned_columns:?}")

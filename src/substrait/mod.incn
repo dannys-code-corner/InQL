@@ -4,6 +4,7 @@ Substrait support for InQL.
 The implementation is split into focused owner modules:
 
 - `substrait.schema_registry` for named-table schema binding
+- `substrait.errors` for structured lowering errors
 - `substrait.expr_lowering` for builder-to-expression lowering
 - `substrait.extensions` for extension anchors and declaration collection
 - `substrait.relations` for concrete `Rel` construction
@@ -13,6 +14,7 @@ The implementation is split into focused owner modules:
 
 from rust::prost import Message
 from rust::substrait::proto import Plan
+pub from substrait.errors import SubstraitLoweringError, SubstraitLoweringErrorKind
 pub from substrait.schema_registry import named_table_columns, register_named_table_schema
 pub from substrait.relations import (
     SubstraitJoinKind,

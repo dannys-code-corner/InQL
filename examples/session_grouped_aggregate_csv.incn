@@ -1,13 +1,9 @@
-"""Example: Session grouped aggregate over one CSV fixture using real builder-based aggregation."""
+"""Example: typed Session grouped aggregate over a CSV fixture."""
 
+from dataset import LazyFrame
 from functions import col, count, display, sum
+from models import AggregateOrder
 from session import Session, SessionError, report_session_error
-
-
-@derive(Clone)
-pub model AggregateOrder:
-    pub customer_id: str
-    pub amount: int
 
 
 def main() -> None:
@@ -21,10 +17,21 @@ def main() -> None:
 
 
 def _group_collect_write(mut session: Session, input_uri: str, output_uri: str) -> Result[None, SessionError]:
-    orders = session.read_csv[AggregateOrder]("aggregate_orders", input_uri)?
+    orders: LazyFrame[AggregateOrder] = session.read_csv("aggregate_orders", input_uri)?
     session.activate()
 
-    grouped = orders.group_by([col("customer_id")]).agg([sum(col("amount")), count()])
+    grouped = customer_amount_rollup(orders)
+    print_lazy_schema("customer rollup", grouped)
     display(grouped.clone())
     session.write_csv(grouped, output_uri)?
     return Ok(None)
+
+
+def customer_amount_rollup(orders: LazyFrame[AggregateOrder]) -> LazyFrame[AggregateOrder]:
+    return orders.group_by([col("customer_id")]).agg([sum(col("amount")), count()])
+
+
+def print_lazy_schema(label: str, frame: LazyFrame[AggregateOrder]) -> None:
+    schema = frame.schema()
+    println(f"{label} declared columns: {schema.declared_columns:?}")
+    println(f"{label} planned columns: {schema.planned_columns:?}")

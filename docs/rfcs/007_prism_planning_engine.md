@@ -55,7 +55,7 @@ This matters for more than simple query lowering. Complex multi-hop pipelines, f
 From an author's point of view, Prism is not something they use directly. Authors work with InQL carriers such as `LazyFrame[T]`, `DataFrame[T]`, and (later) `DataStream[T]`. Those carriers build or operate over logical work that Prism stores and optimizes internally.
 
 ```incan
-orders = session.table[Order]("orders")?
+orders: LazyFrame[Order] = session.table("orders")?
 cutoff = ...  # some appropriate value
 
 high_value = orders.filter(.amount > 1000)

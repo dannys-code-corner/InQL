@@ -1,15 +1,35 @@
 """Session error model and diagnostics helpers."""
 
 
+@derive(Clone)
+pub enum SessionErrorKind(str):
+    """Stable categories for Session-facing failures."""
+
+    InvalidRegistration = "invalid_registration"
+    InvalidSink = "invalid_sink"
+    DuplicateRegistration = "duplicate_registration"
+    UnknownTable = "unknown_table"
+    NoActiveSession = "no_active_session"
+    RuntimeInitError = "runtime_init_error"
+    UnsupportedBackend = "unsupported_backend"
+    BackendPlanningError = "backend_planning_error"
+    BackendExecutionError = "backend_execution_error"
+    BackendSinkError = "backend_sink_error"
+    BackendRegistrationError = "backend_registration_error"
+    InvalidScalarExpression = "invalid_scalar_expression"
+    UnknownScalarColumn = "unknown_scalar_column"
+    UnsupportedScalarExpression = "unsupported_scalar_expression"
+
+
 pub model SessionError:
     """Typed error envelope for Session-facing APIs."""
 
-    pub kind: str
+    pub kind: SessionErrorKind
     pub message: str
 
     def error_message(self) -> str:
         """Return one stable `kind: message` string for diagnostics."""
-        return f"{self.kind}: {self.message}"
+        return f"{self.kind.value()}: {self.message}"
 
 
 pub def format_session_diagnostic(stage: str, err: SessionError) -> str:
@@ -24,9 +44,9 @@ pub def report_session_error(stage: str, err: SessionError) -> None:
 
 pub def invalid_registration(message: str) -> SessionError:
     """Create one stable `invalid_registration` Session error."""
-    return SessionError(kind=str("invalid_registration"), message=message)
+    return SessionError(kind=SessionErrorKind.InvalidRegistration, message=message)
 
 
 pub def invalid_sink(message: str) -> SessionError:
     """Create one stable `invalid_sink` Session error."""
-    return SessionError(kind=str("invalid_sink"), message=message)
+    return SessionError(kind=SessionErrorKind.InvalidSink, message=message)

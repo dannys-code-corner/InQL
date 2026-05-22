@@ -33,7 +33,7 @@ InQL RFCs 000–003 define a typed query language that produces portable logical
 
 Choosing Apache DataFusion as the reference backend is a pragmatic decision: it is Rust-native, Substrait-aware, provides serious query optimization, and operates on Apache Arrow — the de facto columnar data interchange format in the modern data ecosystem. Naming it explicitly avoids the trap of an abstract "pluggable backend" with no concrete implementation.
 
-The `Session` surface should also feel familiar to users coming from established data runtimes such as Spark: one obvious entry point for reading data, registering logical names, executing plans, and writing results. That familiarity is an ergonomic goal, but not a semantic dependency. InQL keeps its own typed `DataSet[T]` model, explicit execution boundary, and RFC-defined semantics rather than inheriting historical API baggage from other systems.
+The `Session` surface should also feel familiar to users coming from established data runtimes such as Spark: one obvious entry point for reading data, registering logical names, executing plans, and writing results. That familiarity is an ergonomic goal, but not a semantic dependency. InQL keeps its own typed `DataSet[T]` model, explicit execution boundary, and RFC-defined semantics rather than inheriting runtime-specific API details from other systems.
 
 ## Goals
 

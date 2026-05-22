@@ -1,8 +1,7 @@
 """Tests for RFC 002 proto-backed Substrait emission and conformance alignment."""
 
-from std.testing import assert_eq
 from aggregate_builders import AggregateMeasure, AggregateKind
-from functions import add, always_true, col, int_expr, mul
+from functions import add, always_true, col, lit, mul
 from projection_builders import with_column_assignment
 from substrait.extensions import explode_extension_uri, function_extension_uri, registered_substrait_extension_uris
 from substrait.inspect import (
@@ -46,7 +45,7 @@ from substrait.relations import (
     set_rel_of_kind,
     sort_rel,
 )
-from substrait.schema_registry import register_named_table_schema
+from substrait.schema_registry import named_table_columns, register_named_table_schema
 from substrait.schema import RowColumnSpec, SubstraitPrimitiveKind
 from substrait.conformance import (
     ConformanceCapabilityTags,
@@ -116,6 +115,32 @@ def _register_orders_schema() -> None:
     register_named_table_schema("orders", [RowColumnSpec(name="id", kind=SubstraitPrimitiveKind.I64, nullable=false)])
 
 
+def _register_fixture_schema(table_name: str) -> None:
+    register_named_table_schema(
+        table_name,
+        [RowColumnSpec(name=_fixture_col_primary(), kind=SubstraitPrimitiveKind.I64, nullable=false)],
+    )
+
+
+def test_plan__named_table_schema_registry_prefers_latest_registration() -> None:
+    # -- Arrange --
+    table_name = "__schema_replace_probe__"
+    register_named_table_schema(
+        table_name,
+        [RowColumnSpec(name="old_id", kind=SubstraitPrimitiveKind.I64, nullable=false)],
+    )
+    register_named_table_schema(
+        table_name,
+        [RowColumnSpec(name="new_id", kind=SubstraitPrimitiveKind.I64, nullable=false)],
+    )
+
+    # -- Act --
+    columns = named_table_columns(table_name)
+
+    # -- Assert --
+    assert columns == ["new_id"], "named-table schema lookup should use the latest registered shape"
+
+
 def test_plan__named_table_root_kind() -> None:
     # -- Arrange --
     plan = plan_from_named_table("orders")
@@ -126,9 +151,9 @@ def test_plan__named_table_root_kind() -> None:
     read_kind = read_kind_name(root)
 
     # -- Assert --
-    assert_eq(plan_encoded_len(plan) > 0, true, "proto-backed plan should encode")
-    assert_eq(root_kind, "ReadRel", "named table plan should expose ReadRel root")
-    assert_eq(read_kind, "NamedTable", "named table plan should expose NamedTable root kind")
+    assert plan_encoded_len(plan) > 0, "proto-backed plan should encode"
+    assert root_kind == "ReadRel", "named table plan should expose ReadRel root"
+    assert read_kind == "NamedTable", "named table plan should expose NamedTable root kind"
 
 
 def test_plan__read_root_kinds_are_distinguished() -> None:
@@ -143,33 +168,33 @@ def test_plan__read_root_kinds_are_distinguished() -> None:
     virtual_kind = read_kind_name(root_rel(virtual))
 
     # -- Assert --
-    assert_eq(named_kind, "NamedTable", "named table root should remain inspectable")
-    assert_eq(local_kind, "LocalFiles", "local files root should remain inspectable")
-    assert_eq(virtual_kind, "VirtualTable", "virtual table root should remain inspectable")
+    assert named_kind == "NamedTable", "named table root should remain inspectable"
+    assert local_kind == "LocalFiles", "local files root should remain inspectable"
+    assert virtual_kind == "VirtualTable", "virtual table root should remain inspectable"
 
 
 def test_plan__local_files_helpers_are_explicitly_parquet_backed() -> None:
     # -- Arrange --
     uri = "fixture://orders.parquet"
-    rel_via_compat = read_local_files_rel(uri)
+    rel_via_default = read_local_files_rel(uri)
     rel_via_parquet = read_local_parquet_rel(uri)
-    plan_via_compat = plan_from_local_files(uri)
+    plan_via_default = plan_from_local_files(uri)
     plan_via_parquet = plan_from_local_parquet(uri)
 
     # -- Act --
-    compat_kind = relation_kind_name(rel_via_compat)
-    compat_read_kind = read_kind_name(rel_via_compat)
+    default_kind = relation_kind_name(rel_via_default)
+    default_read_kind = read_kind_name(rel_via_default)
     parquet_kind = relation_kind_name(rel_via_parquet)
     parquet_read_kind = read_kind_name(rel_via_parquet)
-    compat_encoded = plan_encoded_len(plan_via_compat)
+    default_encoded = plan_encoded_len(plan_via_default)
     parquet_encoded = plan_encoded_len(plan_via_parquet)
 
     # -- Assert --
-    assert_eq(compat_kind, "ReadRel", "compat local-files helper should still emit ReadRel")
-    assert_eq(compat_read_kind, "LocalFiles", "compat local-files helper should still emit LocalFiles read kind")
-    assert_eq(parquet_kind, "ReadRel", "explicit parquet local-files helper should emit ReadRel")
-    assert_eq(parquet_read_kind, "LocalFiles", "explicit parquet local-files helper should emit LocalFiles read kind")
-    assert_eq(compat_encoded, parquet_encoded, "compat and explicit parquet plan helpers should remain equivalent")
+    assert default_kind == "ReadRel", "default local-files helper should emit ReadRel"
+    assert default_read_kind == "LocalFiles", "default local-files helper should emit LocalFiles read kind"
+    assert parquet_kind == "ReadRel", "explicit parquet local-files helper should emit ReadRel"
+    assert parquet_read_kind == "LocalFiles", "explicit parquet local-files helper should emit LocalFiles read kind"
+    assert default_encoded == parquet_encoded, "default and explicit parquet plan helpers should remain equivalent"
 
 
 def test_plan__combinators_compose_deterministically() -> None:
@@ -183,11 +208,11 @@ def test_plan__combinators_compose_deterministically() -> None:
     plan = plan_from_root_relation(with_fetch, ["id"])
 
     # -- Assert --
-    assert_eq(relation_kind_name(with_fetch), "FetchRel", "last combinator should become the root rel")
-    assert_eq(plan_encoded_len(plan) > 0, true, "composed plan should still encode")
-    assert_eq(plan_contains_relation_kind(plan, "FilterRel"), true, "recursive traversal should find nested filter")
-    assert_eq(plan_contains_relation_kind(plan, "SortRel"), true, "recursive traversal should find nested sort")
-    assert_eq(plan_contains_relation_kind(plan, "FetchRel"), true, "recursive traversal should find fetch root")
+    assert relation_kind_name(with_fetch) == "FetchRel", "last combinator should become the root rel"
+    assert plan_encoded_len(plan) > 0, "composed plan should still encode"
+    assert plan_contains_relation_kind(plan, "FilterRel"), "recursive traversal should find nested filter"
+    assert plan_contains_relation_kind(plan, "SortRel"), "recursive traversal should find nested sort"
+    assert plan_contains_relation_kind(plan, "FetchRel"), "recursive traversal should find fetch root"
 
 
 def test_plan__project_rel_supports_projection_expression_payloads() -> None:
@@ -196,32 +221,24 @@ def test_plan__project_rel_supports_projection_expression_payloads() -> None:
     projected = project_rel_of_columns(
         base,
         ["id"],
-        [with_column_assignment("double_id", mul(col("id"), int_expr(2))), with_column_assignment(
+        [with_column_assignment("double_id", mul(col("id"), lit(2))), with_column_assignment(
             "id_plus_one",
-            add(col("id"), int_expr(1)),
+            add(col("id"), lit(1)),
         )],
     )
 
     # -- Act --
     plan = plan_from_root_relation(projected, ["id", "double_id", "id_plus_one"])
     # -- Assert --
-    assert_eq(relation_kind_name(projected), "ProjectRel", "projection builder lowering should emit ProjectRel roots")
-    assert_eq(plan_encoded_len(plan) > 0, true, "projection builder lowering should still encode into a valid plan")
-    assert_eq(
-        plan_contains_relation_kind(plan, "ProjectRel"),
-        true,
-        "encoded plan should retain the projected root relation kind",
-    )
-    assert_eq(
-        plan_has_extension_urn(plan, registered_substrait_extension_uris()[0]),
-        true,
-        "scalar function plans should register the shared function extension URN",
-    )
+    assert relation_kind_name(projected) == "ProjectRel", "projection builder lowering should emit ProjectRel roots"
+    assert plan_encoded_len(plan) > 0, "projection builder lowering should still encode into a valid plan"
+    assert plan_contains_relation_kind(plan, "ProjectRel"), "encoded plan should retain the projected root relation kind"
+    assert plan_has_extension_urn(plan, registered_substrait_extension_uris()[0]), "scalar function plans should register the shared function extension URN"
     root_output_names = root_names(plan)
-    assert_eq(len(root_output_names), 3, "project root should publish one output name per projected column")
-    assert_eq(root_output_names[0], "id", "project root should preserve passthrough column names")
-    assert_eq(root_output_names[1], "double_id", "project root should preserve derived aliases")
-    assert_eq(root_output_names[2], "id_plus_one", "project root should preserve all derived aliases")
+    assert len(root_output_names) == 3, "project root should publish one output name per projected column"
+    assert root_output_names[0] == "id", "project root should preserve passthrough column names"
+    assert root_output_names[1] == "double_id", "project root should preserve derived aliases"
+    assert root_output_names[2] == "id_plus_one", "project root should preserve all derived aliases"
 
 
 def test_plan__aggregate_rel_surfaces_group_and_measure_output_columns() -> None:
@@ -230,10 +247,10 @@ def test_plan__aggregate_rel_surfaces_group_and_measure_output_columns() -> None
     base = read_named_table_rel("orders")
     aggregated = aggregate_rel(
         base,
-        ["id"],
-        [AggregateMeasure(kind=AggregateKind.Sum, column_name="id"), AggregateMeasure(
+        [col("id")],
+        [AggregateMeasure(kind=AggregateKind.Sum, expr=col("id")), AggregateMeasure(
             kind=AggregateKind.Count,
-            column_name="",
+            expr=col(""),
         )],
     )
     plan = plan_from_root_relation(aggregated, ["id", "sum_id", "count"])
@@ -242,16 +259,32 @@ def test_plan__aggregate_rel_surfaces_group_and_measure_output_columns() -> None
     output_columns = relation_output_columns(aggregated)
 
     # -- Assert --
-    assert_eq(relation_kind_name(aggregated), "AggregateRel", "aggregate lowering should emit AggregateRel")
-    assert_eq(
-        plan_has_extension_urn(plan, registered_substrait_extension_uris()[0]),
-        true,
-        "aggregate function plans should register the shared function extension URN",
+    assert relation_kind_name(aggregated) == "AggregateRel", "aggregate lowering should emit AggregateRel"
+    assert plan_has_extension_urn(plan, registered_substrait_extension_uris()[0]), "aggregate function plans should register the shared function extension URN"
+    assert len(output_columns) == 3, "aggregate output columns should include group key plus measure outputs"
+    assert output_columns[0] == "id", "group key should remain the first aggregate output column"
+    assert output_columns[1] == "sum_id", "sum measure output columns should use the stable prefixed name"
+    assert output_columns[2] == "count", "count measure output columns should use the stable count name"
+
+
+def test_plan__aggregate_rel_accepts_scalar_group_and_measure_expressions() -> None:
+    # -- Arrange --
+    _register_orders_schema()
+    base = read_named_table_rel("orders")
+    aggregated = aggregate_rel(
+        base,
+        [add(col("id"), lit(1))],
+        [AggregateMeasure(kind=AggregateKind.Sum, expr=add(col("id"), lit(2)))],
     )
-    assert_eq(len(output_columns), 3, "aggregate output columns should include group key plus measure outputs")
-    assert_eq(output_columns[0], "id", "group key should remain the first aggregate output column")
-    assert_eq(output_columns[1], "sum_id", "sum measure output columns should use the stable prefixed name")
-    assert_eq(output_columns[2], "count", "count measure output columns should use the stable count name")
+
+    # -- Act --
+    output_columns = relation_output_columns(aggregated)
+
+    # -- Assert --
+    assert relation_kind_name(aggregated) == "AggregateRel", "scalar aggregate lowering should emit AggregateRel"
+    assert len(output_columns) == 2, "scalar aggregate output should include computed group key and measure"
+    assert output_columns[0] == "group_0", "computed grouping expressions should get stable fallback names"
+    assert output_columns[1] == "sum", "computed aggregate measures should use stable fallback names"
 
 
 def test_plan__set_rel_uses_operation_enum() -> None:
@@ -264,9 +297,9 @@ def test_plan__set_rel_uses_operation_enum() -> None:
     union_plan = plan_from_root_relation(union_rel, ["id"])
 
     # -- Assert --
-    assert_eq(relation_kind_name(union_rel), "SetRel", "set combinator must produce SetRel root")
-    assert_eq(plan_encoded_len(union_plan) > 0, true, "set plan should still encode")
-    assert_eq(plan_contains_relation_kind(union_plan, "ReadRel"), true, "set traversal should still reach child reads")
+    assert relation_kind_name(union_rel) == "SetRel", "set combinator must produce SetRel root"
+    assert plan_encoded_len(union_plan) > 0, "set plan should still encode"
+    assert plan_contains_relation_kind(union_plan, "ReadRel"), "set traversal should still reach child reads"
 
 
 def test_plan__enum_backed_join_and_set_builders_expose_boundary_facts() -> None:
@@ -288,8 +321,8 @@ def test_plan__enum_backed_join_and_set_builders_expose_boundary_facts() -> None
     set_kind = set_operation_name(union_distinct_rel)
 
     # -- Assert --
-    assert_eq(join_kind, "JoinRel", "enum-backed join builder should still emit a JoinRel root")
-    assert_eq(set_kind, "UnionDistinct", "enum-backed set builder should preserve the selected set operation")
+    assert join_kind == "JoinRel", "enum-backed join builder should still emit a JoinRel root"
+    assert set_kind == "UnionDistinct", "enum-backed set builder should preserve the selected set operation"
 
 
 def test_plan__reference_rel_preserves_subtree_ordinal() -> None:
@@ -301,8 +334,8 @@ def test_plan__reference_rel_preserves_subtree_ordinal() -> None:
     ordinal = reference_subtree_ordinal(rel)
 
     # -- Assert --
-    assert_eq(kind, "ReferenceRel", "reference builder should still expose ReferenceRel root kind")
-    assert_eq(ordinal, 7, "reference builder should preserve the requested subtree ordinal")
+    assert kind == "ReferenceRel", "reference builder should still expose ReferenceRel root kind"
+    assert ordinal == 7, "reference builder should preserve the requested subtree ordinal"
 
 
 def test_plan__extension_urns_are_surfaced() -> None:
@@ -314,8 +347,8 @@ def test_plan__extension_urns_are_surfaced() -> None:
     plan = plan_from_root_relation(rel, ["id"])
 
     # -- Assert --
-    assert_eq(plan_has_extension_urn(plan, extension_uri), true, "extension relation should populate extension URNs")
-    assert_eq(plan_contains_relation_kind(plan, "ExtensionSingleRel"), true, "extension root should remain inspectable")
+    assert plan_has_extension_urn(plan, extension_uri), "extension relation should populate extension URNs"
+    assert plan_contains_relation_kind(plan, "ExtensionSingleRel"), "extension root should remain inspectable"
 
 
 def test_plan__revision_pin_and_extension_registry_are_exported() -> None:
@@ -327,22 +360,23 @@ def test_plan__revision_pin_and_extension_registry_are_exported() -> None:
     producer = substrait_producer_name()
 
     # -- Assert --
-    assert_eq(tag, "v0.63.0", "revision helpers should expose the currently targeted Substrait release tag")
-    assert_eq(producer, "inql-rfc002", "revision helpers should expose the package producer label")
-    assert_eq(len(registered), 2, "current package boundary should register both extension URIs")
-    assert_eq(registered[0], function_extension_uri(), "registry should include the shared function extension URI first")
-    assert_eq(registered[1], explode_extension_uri(), "registry should include the emitted explode extension URI")
+    assert tag == "v0.63.0", "revision helpers should expose the currently targeted Substrait release tag"
+    assert producer == "inql-rfc002", "revision helpers should expose the package producer label"
+    assert len(registered) == 2, "current package boundary should register both extension URIs"
+    assert registered[0] == function_extension_uri(), "registry should include the shared function extension URI first"
+    assert registered[1] == explode_extension_uri(), "registry should include the emitted explode extension URI"
 
 
 def test_conformance__core_scenarios_validate_emission_output() -> None:
     # -- Arrange --
+    _register_fixture_schema(_fixture_table_main())
     scenarios = core_scenarios()
 
     # -- Act --
-    assert_eq(len(scenarios), 12, "core scenario count should stay stable")
+    assert len(scenarios) == 12, "core scenario count should stay stable"
     for scenario in scenarios:
-        assert_eq(len(scenario.capability_tags.0) > 0, true, "capability tags must remain non-empty")
-        assert_eq(len(scenario.references.0) > 0, true, "references must remain non-empty")
+        assert len(scenario.capability_tags.0) > 0, "capability tags must remain non-empty"
+        assert len(scenario.references.0) > 0, "references must remain non-empty"
 
     # -- Assert --
     for key in _core_keys():
@@ -384,8 +418,8 @@ def test_conformance__core_scenarios_validate_emission_output() -> None:
                 plan = plan_from_root_relation(
                     aggregate_rel(
                         read_named_table_rel(_fixture_table_main()),
-                        [_fixture_col_primary()],
-                        [AggregateMeasure(kind=AggregateKind.Count, column_name="")],
+                        [col(_fixture_col_primary())],
+                        [AggregateMeasure(kind=AggregateKind.Count, expr=col(""))],
                     ),
                     [_fixture_col_primary()],
                 )
@@ -411,21 +445,9 @@ def test_conformance__core_scenarios_validate_emission_output() -> None:
             CoreScenarioKey.ReferenceRelSharedSubplan =>
                 plan = plan_from_root_relation(reference_rel(7), [_fixture_col_primary()])
 
-        assert_eq(
-            scenario_matches_root_shape(scenario, plan),
-            true,
-            "scenario should validate root shape against test-owned fixture plan",
-        )
-        assert_eq(
-            scenario_has_required_rel_kinds(scenario, plan),
-            true,
-            "fixture plan should contain all scenario-required relation kinds",
-        )
-        assert_eq(
-            scenario_matches_key_invariants(key, plan),
-            true,
-            "fixture plan should satisfy scenario-specific invariant checks",
-        )
+        assert scenario_matches_root_shape(scenario, plan), "scenario should validate root shape against test-owned fixture plan"
+        assert scenario_has_required_rel_kinds(scenario, plan), "fixture plan should contain all scenario-required relation kinds"
+        assert scenario_matches_key_invariants(key, plan), "fixture plan should satisfy scenario-specific invariant checks"
 
 
 def test_conformance__scenario_shape_requires_all_declared_required_rels() -> None:
@@ -449,13 +471,5 @@ def test_conformance__scenario_shape_requires_all_declared_required_rels() -> No
     named_only_plan = plan_from_named_table("orders")
 
     # -- Assert --
-    assert_eq(
-        scenario_matches_root_shape(scenario, named_only_plan),
-        false,
-        "shape validation should fail when the root relation does not match the declared root contract",
-    )
-    assert_eq(
-        scenario_has_required_rel_kinds(scenario, named_only_plan),
-        false,
-        "recursive relation-kind validation should fail when one required relation is missing",
-    )
+    assert scenario_matches_root_shape(scenario, named_only_plan) is false, "shape validation should fail when the root relation does not match the declared root contract"
+    assert scenario_has_required_rel_kinds(scenario, named_only_plan) is false, "recursive relation-kind validation should fail when one required relation is missing"

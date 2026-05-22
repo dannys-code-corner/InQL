@@ -1,8 +1,9 @@
 """End-to-end Session projection execution tests over the DataFusion backend."""
 
-from std.testing import assert_eq
-from functions import add, col, int_expr, mul
-from session import Session
+from functions import add, col, lit, mul
+from dataset import LazyFrame
+from session import Session, SessionErrorKind
+from std.testing import assert_is_err, assert_is_ok
 from substrait.inspect import root_names
 
 
@@ -20,16 +21,18 @@ def test_session_projection__plan_root_names_match_append_projection() -> None:
     mut session = Session.default()
 
     # -- Act --
-    match session.read_csv[AggregateOrder]("aggregate_orders", AGGREGATE_ORDERS_CSV_FIXTURE):
-        Ok(lazy) =>
-            projected = lazy.with_column("double_amount", mul(col("amount"), int_expr(2)))
-            # -- Assert --
-            names = root_names(projected.to_substrait_plan())
-            assert_eq(len(names), 3, "project append path should publish one root name per projected output column")
-            assert_eq(names[0], "customer_id", "project append path should preserve the first input name")
-            assert_eq(names[1], "amount", "project append path should preserve the second input name")
-            assert_eq(names[2], "double_amount", "project append path should publish the appended alias")
-        Err(err) => assert_eq(true, false, err.error_message())
+    lazy: LazyFrame[AggregateOrder] = assert_is_ok(
+        session.read_csv("aggregate_orders", AGGREGATE_ORDERS_CSV_FIXTURE),
+        "aggregate orders fixture should load",
+    )
+    projected = lazy.with_column("double_amount", mul(col("amount"), lit(2)))
+
+    # -- Assert --
+    names = root_names(projected.to_substrait_plan())
+    assert len(names) == 3, "project append path should publish one root name per projected output column"
+    assert names[0] == "customer_id", "project append path should preserve the first input name"
+    assert names[1] == "amount", "project append path should preserve the second input name"
+    assert names[2] == "double_amount", "project append path should publish the appended alias"
 
 
 def test_session_projection__plan_root_names_match_replace_projection() -> None:
@@ -37,15 +40,17 @@ def test_session_projection__plan_root_names_match_replace_projection() -> None:
     mut session = Session.default()
 
     # -- Act --
-    match session.read_csv[AggregateOrder]("aggregate_orders", AGGREGATE_ORDERS_CSV_FIXTURE):
-        Ok(lazy) =>
-            projected = lazy.with_column("amount", add(col("amount"), int_expr(1)))
-            # -- Assert --
-            names = root_names(projected.to_substrait_plan())
-            assert_eq(len(names), 2, "project replace path should preserve one root name per output column")
-            assert_eq(names[0], "customer_id", "project replace path should preserve the first input name")
-            assert_eq(names[1], "amount", "project replace path should preserve the replaced alias")
-        Err(err) => assert_eq(true, false, err.error_message())
+    lazy: LazyFrame[AggregateOrder] = assert_is_ok(
+        session.read_csv("aggregate_orders", AGGREGATE_ORDERS_CSV_FIXTURE),
+        "aggregate orders fixture should load",
+    )
+    projected = lazy.with_column("amount", add(col("amount"), lit(1)))
+
+    # -- Assert --
+    names = root_names(projected.to_substrait_plan())
+    assert len(names) == 2, "project replace path should preserve one root name per output column"
+    assert names[0] == "customer_id", "project replace path should preserve the first input name"
+    assert names[1] == "amount", "project replace path should preserve the replaced alias"
 
 
 def test_session_projection__collect_executes_with_column_append() -> None:
@@ -53,49 +58,29 @@ def test_session_projection__collect_executes_with_column_append() -> None:
     mut session = Session.default()
 
     # -- Act --
-    match session.read_csv[AggregateOrder]("aggregate_orders", AGGREGATE_ORDERS_CSV_FIXTURE):
-        Ok(lazy) =>
-            projected = lazy.with_column("double_amount", mul(col("amount"), int_expr(2)))
-            planned = projected.planned_columns()
-            plan_names = root_names(projected.to_substrait_plan())
-            match session.collect(projected):
-                Ok(df) =>
-                    payload = df.preview_text()
-                    assert_eq(df.row_count(), 3, "project append collect should preserve the three input rows")
-                    resolved = df.resolved_columns()
-                    # -- Assert --
-                    assert_eq(len(planned), 3, "with_column should append one projected output column before execution")
-                    assert_eq(
-                        len(plan_names),
-                        3,
-                        "projected plan should publish one root name per projected output column",
-                    )
-                    assert_eq(
-                        plan_names[2],
-                        "double_amount",
-                        "projected plan root names should preserve the requested alias",
-                    )
-                    assert_eq(
-                        planned[2],
-                        "double_amount",
-                        "lazy planned columns should preserve the requested output alias",
-                    )
-                    assert_eq(len(resolved), 3, "collected projection should expose one appended resolved column")
-                    assert_eq(
-                        resolved[2],
-                        "double_amount",
-                        "root output names should preserve the requested projected alias after collect",
-                    )
-                    assert_eq(
-                        payload.contains("double_amount"),
-                        true,
-                        "preview text should render the projected alias as a column header",
-                    )
-                    assert_eq(payload.contains("20"), true, "materialized projection should include 10 * 2")
-                    assert_eq(payload.contains("30"), true, "materialized projection should include 15 * 2")
-                    assert_eq(payload.contains("14"), true, "materialized projection should include 7 * 2")
-                Err(err) => assert_eq(true, false, err.error_message())
-        Err(err) => assert_eq(true, false, err.error_message())
+    lazy: LazyFrame[AggregateOrder] = assert_is_ok(
+        session.read_csv("aggregate_orders", AGGREGATE_ORDERS_CSV_FIXTURE),
+        "aggregate orders fixture should load",
+    )
+    projected = lazy.with_column("double_amount", mul(col("amount"), lit(2)))
+    planned = projected.planned_columns()
+    plan_names = root_names(projected.to_substrait_plan())
+    df = assert_is_ok(session.collect(projected), "project append collect should execute")
+    payload = df.preview_text()
+    resolved = df.resolved_columns()
+
+    # -- Assert --
+    assert df.row_count() == 3, "project append collect should preserve the three input rows"
+    assert len(planned) == 3, "with_column should append one projected output column before execution"
+    assert len(plan_names) == 3, "projected plan should publish one root name per projected output column"
+    assert plan_names[2] == "double_amount", "projected plan root names should preserve the requested alias"
+    assert planned[2] == "double_amount", "lazy planned columns should preserve the requested output alias"
+    assert len(resolved) == 3, "collected projection should expose one appended resolved column"
+    assert resolved[2] == "double_amount", "root output names should preserve the requested projected alias after collect"
+    assert payload.contains("double_amount"), "preview text should render the projected alias as a column header"
+    assert payload.contains("20"), "materialized projection should include 10 * 2"
+    assert payload.contains("30"), "materialized projection should include 15 * 2"
+    assert payload.contains("14"), "materialized projection should include 7 * 2"
 
 
 def test_session_projection__collect_executes_identity_select() -> None:
@@ -103,22 +88,35 @@ def test_session_projection__collect_executes_identity_select() -> None:
     mut session = Session.default()
 
     # -- Act --
-    match session.read_csv[AggregateOrder]("aggregate_orders", AGGREGATE_ORDERS_CSV_FIXTURE):
-        Ok(lazy) =>
-            selected = lazy.select()
-            match session.collect(selected):
-                Ok(df) =>
-                    resolved = df.resolved_columns()
-                    # -- Assert --
-                    assert_eq(
-                        len(resolved),
-                        2,
-                        "identity select should preserve the original column count after collect",
-                    )
-                    assert_eq(resolved[0], "customer_id", "identity select should preserve the first input name")
-                    assert_eq(resolved[1], "amount", "identity select should preserve the second input name")
-                Err(err) => assert_eq(true, false, err.error_message())
-        Err(err) => assert_eq(true, false, err.error_message())
+    lazy: LazyFrame[AggregateOrder] = assert_is_ok(
+        session.read_csv("aggregate_orders", AGGREGATE_ORDERS_CSV_FIXTURE),
+        "aggregate orders fixture should load",
+    )
+    selected = lazy.select()
+    df = assert_is_ok(session.collect(selected), "identity select collect should execute")
+    resolved = df.resolved_columns()
+
+    # -- Assert --
+    assert len(resolved) == 2, "identity select should preserve the original column count after collect"
+    assert resolved[0] == "customer_id", "identity select should preserve the first input name"
+    assert resolved[1] == "amount", "identity select should preserve the second input name"
+
+
+def test_session_projection__collect_unknown_projection_column_returns_planning_error() -> None:
+    # -- Arrange --
+    mut session = Session.default()
+
+    # -- Act --
+    lazy: LazyFrame[AggregateOrder] = assert_is_ok(
+        session.read_csv("aggregate_orders", AGGREGATE_ORDERS_CSV_FIXTURE),
+        "aggregate orders fixture should load",
+    )
+    projected = lazy.with_column("bad_amount", add(col("missing_amount"), lit(1)))
+    err = assert_is_err(session.collect(projected), "expected unknown projection input column to fail during planning")
+
+    # -- Assert --
+    assert err.kind == SessionErrorKind.UnknownScalarColumn, err.error_message()
+    assert err.message.contains("missing_amount"), err.error_message()
 
 
 def test_session_projection__collect_executes_with_column_replace() -> None:
@@ -126,41 +124,25 @@ def test_session_projection__collect_executes_with_column_replace() -> None:
     mut session = Session.default()
 
     # -- Act --
-    match session.read_csv[AggregateOrder]("aggregate_orders", AGGREGATE_ORDERS_CSV_FIXTURE):
-        Ok(lazy) =>
-            projected = lazy.with_column("amount", add(col("amount"), int_expr(1)))
-            planned = projected.planned_columns()
-            plan_names = root_names(projected.to_substrait_plan())
-            match session.collect(projected):
-                Ok(df) =>
-                    payload = df.preview_text()
-                    assert_eq(df.row_count(), 3, "project replace collect should preserve the three input rows")
-                    resolved = df.resolved_columns()
-                    # -- Assert --
-                    assert_eq(len(planned), 2, "replacing an existing name should preserve projected column count")
-                    assert_eq(
-                        len(plan_names),
-                        2,
-                        "replacement projection should publish one root name per output column",
-                    )
-                    assert_eq(
-                        plan_names[1],
-                        "amount",
-                        "replacement projection root names should preserve the replaced alias",
-                    )
-                    assert_eq(planned[1], "amount", "replacement semantics should preserve the original ordinal slot")
-                    assert_eq(
-                        len(resolved),
-                        2,
-                        "replacement projection should preserve resolved column count after collect",
-                    )
-                    assert_eq(
-                        resolved[1],
-                        "amount",
-                        "root output names should preserve the replaced column alias after collect",
-                    )
-                    assert_eq(payload.contains("11"), true, "replacement projection should include 10 + 1")
-                    assert_eq(payload.contains("16"), true, "replacement projection should include 15 + 1")
-                    assert_eq(payload.contains("8"), true, "replacement projection should include 7 + 1")
-                Err(err) => assert_eq(true, false, err.error_message())
-        Err(err) => assert_eq(true, false, err.error_message())
+    lazy: LazyFrame[AggregateOrder] = assert_is_ok(
+        session.read_csv("aggregate_orders", AGGREGATE_ORDERS_CSV_FIXTURE),
+        "aggregate orders fixture should load",
+    )
+    projected = lazy.with_column("amount", add(col("amount"), lit(1)))
+    planned = projected.planned_columns()
+    plan_names = root_names(projected.to_substrait_plan())
+    df = assert_is_ok(session.collect(projected), "project replace collect should execute")
+    payload = df.preview_text()
+    resolved = df.resolved_columns()
+
+    # -- Assert --
+    assert df.row_count() == 3, "project replace collect should preserve the three input rows"
+    assert len(planned) == 2, "replacing an existing name should preserve projected column count"
+    assert len(plan_names) == 2, "replacement projection should publish one root name per output column"
+    assert plan_names[1] == "amount", "replacement projection root names should preserve the replaced alias"
+    assert planned[1] == "amount", "replacement semantics should preserve the original ordinal slot"
+    assert len(resolved) == 2, "replacement projection should preserve resolved column count after collect"
+    assert resolved[1] == "amount", "root output names should preserve the replaced column alias after collect"
+    assert payload.contains("11"), "replacement projection should include 10 + 1"
+    assert payload.contains("16"), "replacement projection should include 15 + 1"
+    assert payload.contains("8"), "replacement projection should include 7 + 1"

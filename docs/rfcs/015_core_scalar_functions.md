@@ -96,9 +96,9 @@ The minimum core scalar catalog is:
 
 `query {}` syntax may present SQL-familiar operators such as `==`, `>`, `AND`, `OR`, and `IS NULL`, but those operators must lower to the same scalar function semantics defined here. Dataframe methods must consume the same scalar expression model.
 
-### Compatibility / migration
+### Surface cleanup
 
-Existing helpers such as `int_expr`, `float_expr`, `str_expr`, `bool_expr`, `int_lit`, `str_lit`, and `bool_lit` may remain temporarily as compatibility shims to `lit`. Existing `add`, `mul`, `eq`, and `gt` should become registered core scalar entries.
+Typed literal helpers such as `int_expr`, `float_expr`, `str_expr`, `bool_expr`, `int_lit`, `str_lit`, and `bool_lit` should route through `lit` or the same scalar-literal representation. Existing `add`, `mul`, `eq`, and `gt` should become registered core scalar entries.
 
 ## Alternatives considered
 
@@ -109,16 +109,16 @@ Existing helpers such as `int_expr`, `float_expr`, `str_expr`, `bool_expr`, `int
 ## Drawbacks
 
 - Defining null, cast, and numeric failure behavior exposes hard choices earlier.
-- Compatibility shims may temporarily increase the number of public helper names.
+- Typed helper entrypoints may increase the number of public helper names.
 - Operator sugar and function helper names can drift unless tooling treats registry entries as canonical.
 
 ## Layers affected
 
 - **InQL specification** — the core scalar vocabulary must remain consistent with InQL RFC 012 and InQL RFC 014.
-- **InQL library package** — public helpers should expose the core scalar entries and compatibility shims.
+- **InQL library package** — public helpers should expose the core scalar entries and selected typed helper entrypoints.
 - **Incan compiler** — query syntax and any future operator sugar must lower to the same scalar function semantics.
 - **Execution / interchange** — Prism and Substrait lowering must preserve casts, null-safe equality, boolean logic, ordering null placement, and `try_` behavior.
-- **Documentation** — scalar function reference docs should distinguish canonical names from compatibility helpers.
+- **Documentation** — scalar function reference docs should distinguish canonical names from typed helper entrypoints.
 
 ## Unresolved questions
 

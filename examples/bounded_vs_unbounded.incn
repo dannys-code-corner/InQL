@@ -1,82 +1,44 @@
-"""
-Example: Bounded vs unbounded type signatures (RFC 001).
+"""Example: bounded vs unbounded model-carrier contracts."""
 
-This example focuses on compile-time type signatures and keeps runtime bodies as placeholders.
-
-## Patterns shown
-
-- BoundedDataSet[T]: All operations allowed
-- UnboundedDataSet[T]: Unbounded-state operations rejected at compile time
-- Static capability gating based on trait bounds
-"""
-
+from functions import col, eq, lit
 from dataset import DataSet, BoundedDataSet, UnboundedDataSet
 from models import Order, Event
 
 
-# ---- Bounded-only functions ----
-def write_to_parquet(data: BoundedDataSet[Order]) -> None:
-    """Write to Parquet requires bounded data (finite extent)."""
-    pass
+def open_batch_orders(orders: BoundedDataSet[Order]) -> BoundedDataSet[Order]:
+    """Batch helpers can require finite Order data explicitly."""
+    return orders.filter(eq(col("status"), lit("open")))
 
 
-def materialize_to_dataframe(_data: BoundedDataSet[Order]) -> None:
-    """Materialize to DataFrame requires bounded data."""
-    pass
+def order_snapshot(orders: BoundedDataSet[Order]) -> BoundedDataSet[Order]:
+    """Snapshot helpers can keep boundedness in the return type."""
+    return open_batch_orders(orders).limit(100)
 
 
-def batch_aggregate(_data: BoundedDataSet[Order]) -> None:
-    """Batch aggregation requires bounded data."""
-    pass
+def high_priority_events(events: UnboundedDataSet[Event]) -> UnboundedDataSet[Event]:
+    """Streaming helpers keep the event-stream carrier visible."""
+    return events.filter(eq(col("severity"), lit("high")))
 
 
-# ---- Streaming-only functions ----
-def write_to_kafka(events: UnboundedDataSet[Event]) -> None:
-    """Write to Kafka requires streaming data."""
-    pass
+def event_stream_window(events: UnboundedDataSet[Event]) -> UnboundedDataSet[Event]:
+    """Unbounded pipelines can still use row-local transforms."""
+    return high_priority_events(events).limit(1000)
 
 
-def process_stream(events: UnboundedDataSet[Event]) -> UnboundedDataSet[Event]:
-    """Process streaming data."""
-    return events
+def require_batch_orders(orders: BoundedDataSet[Order]) -> None:
+    """Sink boundaries can demand a bounded Order carrier."""
+    _ = orders
 
 
-# ---- Generic functions with boundedness constraints ----
-def process_any[T](data: DataSet[T]) -> int:
-    """Generic function that works with any carrier."""
-    return 0
+def require_event_stream(events: UnboundedDataSet[Event]) -> None:
+    """Sink boundaries can demand an unbounded Event carrier."""
+    _ = events
 
 
-def process_batch[T](data: BoundedDataSet[T]) -> BoundedDataSet[T]:
-    """Function that works only with bounded data."""
+def pass_through_any_model[T](data: DataSet[T]) -> DataSet[T]:
+    """Generic helpers stay carrier-neutral when they only need shared DataSet operations."""
     return data
 
 
-# ---- Static capability gating examples ----
-def safe_filter[T](data: DataSet[T]) -> DataSet[T]:
-    """Filter is available on all carriers."""
-    # Intended shape: data.filter(...)
-    return data
-
-
-def safe_join[T](data: DataSet[T], other: DataSet[T]) -> DataSet[T]:
-    """Join uses `other: Self` (same carrier type at the trait level; logical row typing per RFC 003)."""
-    # Intended shape when stubs are executable: data.join(other, ...)
-    _ = other
-    return data
-
-
-def bounded_only_operation(data: BoundedDataSet[Order]) -> None:
-    """Function that requires bounded data."""
-    pass
-
-
-def streaming_safe_operation(data: UnboundedDataSet[Event]) -> None:
-    """Function that works with streaming data."""
-    pass
-
-
-# ---- Main ----
 def main() -> None:
-    """Example main function."""
     pass
