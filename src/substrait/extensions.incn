@@ -257,6 +257,15 @@ def _function_extension_urn_is_required(rel: Rel) -> bool:
     return len(_plan_extension_anchors_for_rel(rel)) > 0
 
 
+def _direct_extension_urn_for_rel(rel: Rel) -> Option[str]:
+    """Return the extension URI carried directly by one extension relation node."""
+    if let Some(RelType.ExtensionSingle(extension)) = rel.rel_type:
+        if let Some(detail) = extension.detail:
+            if detail.type_url != "":
+                return Some(detail.type_url)
+    return None
+
+
 pub def aggregate_extensions_for_rel(rel: Rel) -> list[SimpleExtensionDeclaration]:
     """Collect aggregate-function extension declarations required by one relation subtree."""
     return _aggregate_extension_decls(_aggregate_extension_anchors_for_rel(rel))
@@ -275,17 +284,8 @@ pub def plan_extensions_for_rel(rel: Rel) -> list[SimpleExtensionDeclaration]:
 def _collect_extension_urn_strings(rel: Rel) -> list[str]:
     """Recursively collect extension URI strings from one relation subtree."""
     mut urns: list[str] = []
-    match rel.rel_type.clone():
-        Some(rel_type) =>
-            match rel_type:
-                RelType.ExtensionSingle(extension) =>
-                    match extension.detail:
-                        Some(detail) =>
-                            if detail.type_url != "":
-                                urns.append(detail.type_url)
-                        None => pass
-                _ => pass
-        _ => pass
+    if let Some(urn) = _direct_extension_urn_for_rel(rel.clone()):
+        urns.append(urn)
 
     for child in relation_children(rel):
         for urn in _collect_extension_urn_strings(child):
