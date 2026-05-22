@@ -10,7 +10,7 @@ from rust::substrait::proto import Expression, Rel
 from rust::substrait::proto::extensions import SimpleExtensionDeclaration, SimpleExtensionUrn
 from rust::substrait::proto::extensions::simple_extension_declaration import ExtensionFunction, MappingType
 from rust::substrait::proto::function_argument import ArgType
-from rust::substrait::proto::expression import RexType, ScalarFunction
+from rust::substrait::proto::expression import RexType
 from rust::substrait::proto::rel import RelType
 from substrait.errors import SubstraitLoweringError, invalid_scalar_expression
 from substrait.traversal import relation_children
@@ -156,55 +156,26 @@ def _scalar_extension_decl(anchor: u32) -> SimpleExtensionDeclaration:
             return raise_value_error(message)
 
 
-def _scalar_function_value_arguments(fun: ScalarFunction) -> list[Expression]:
-    """Return scalar-function arguments that carry expression values."""
-    mut values: list[Expression] = []
-    for argument in fun.arguments:
-        if let Some(ArgType.Value(value)) = argument.arg_type:
-            values.append(value)
-    return values
-
-
-def _scalar_function_uses_anchor(fun: ScalarFunction, expected_anchor: u32) -> bool:
-    """Return whether one scalar-function expression uses the requested anchor."""
-    if fun.function_reference == expected_anchor:
-        return true
-
-    for argument in _scalar_function_value_arguments(fun):
-        if _expr_uses_scalar_function_anchor(argument, expected_anchor):
-            return true
-    return false
-
-
 def _expr_uses_scalar_function_anchor(expr: Expression, expected_anchor: u32) -> bool:
     """Return whether one expression tree uses the requested scalar-function anchor."""
     if let Some(RexType.ScalarFunction(fun)) = expr.rex_type:
-        return _scalar_function_uses_anchor(fun, expected_anchor)
-    return false
-
-
-def _aggregate_measure_anchors(rel: Rel) -> list[u32]:
-    """Return aggregate-function anchors used directly by one relation node."""
-    mut anchors: list[u32] = []
-    if let Some(RelType.Aggregate(aggregate_rel)) = rel.rel_type:
-        for measure in aggregate_rel.measures:
-            if let Some(agg_fn) = measure.measure:
-                anchors.append(agg_fn.function_reference)
-    return anchors
-
-
-def _rel_directly_uses_aggregate_function_anchor(rel: Rel, expected_anchor: u32) -> bool:
-    """Return whether one relation node uses the requested aggregate-function anchor."""
-    for anchor in _aggregate_measure_anchors(rel):
-        if anchor == expected_anchor:
+        if fun.function_reference == expected_anchor:
             return true
+
+        for argument in fun.arguments:
+            if let Some(ArgType.Value(value)) = argument.arg_type:
+                if _expr_uses_scalar_function_anchor(value, expected_anchor):
+                    return true
     return false
 
 
 def _rel_uses_aggregate_function_anchor(rel: Rel, expected_anchor: u32) -> bool:
     """Return whether one relation subtree uses the requested aggregate-function anchor."""
-    if _rel_directly_uses_aggregate_function_anchor(rel.clone(), expected_anchor):
-        return true
+    if let Some(RelType.Aggregate(aggregate_rel)) = rel.rel_type.clone():
+        for measure in aggregate_rel.measures:
+            if let Some(agg_fn) = measure.measure:
+                if agg_fn.function_reference == expected_anchor:
+                    return true
 
     for child in relation_children(rel):
         if _rel_uses_aggregate_function_anchor(child, expected_anchor):
@@ -212,22 +183,18 @@ def _rel_uses_aggregate_function_anchor(rel: Rel, expected_anchor: u32) -> bool:
     return false
 
 
-def _rel_scalar_expressions(rel: Rel) -> list[Expression]:
-    """Return scalar expressions used directly by one relation node."""
-    match rel.rel_type:
-        Some(RelType.Filter(filter_rel)) =>
-            if let Some(condition) = filter_rel.condition:
-                return [condition.as_ref().clone()]
-            return []
-        Some(RelType.Project(project_rel)) => return project_rel.expressions
-        _ => return []
-
-
 def _rel_uses_scalar_function_anchor(rel: Rel, expected_anchor: u32) -> bool:
     """Return whether one relation subtree uses the requested scalar-function anchor."""
-    for expr in _rel_scalar_expressions(rel.clone()):
-        if _expr_uses_scalar_function_anchor(expr, expected_anchor):
-            return true
+    match rel.rel_type.clone():
+        Some(RelType.Filter(filter_rel)) =>
+            if let Some(condition) = filter_rel.condition:
+                if _expr_uses_scalar_function_anchor(condition.as_ref().clone(), expected_anchor):
+                    return true
+        Some(RelType.Project(project_rel)) =>
+            for expr in project_rel.expressions:
+                if _expr_uses_scalar_function_anchor(expr, expected_anchor):
+                    return true
+        _ => pass
 
     for child in relation_children(rel):
         if _rel_uses_scalar_function_anchor(child, expected_anchor):
