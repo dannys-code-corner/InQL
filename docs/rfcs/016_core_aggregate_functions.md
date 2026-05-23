@@ -9,7 +9,7 @@
   - InQL RFC 012 (scalar expressions and aggregate measures)
   - InQL RFC 013 (function catalog program)
   - InQL RFC 014 (function registry and catalog governance)
-- **Issue:** —
+- **Issue:** [InQL #33](https://github.com/dannys-code-corner/InQL/issues/33)
 - **RFC PR:** —
 - **Written against:** Incan v0.2
 - **Shipped in:** —

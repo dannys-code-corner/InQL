@@ -44,6 +44,13 @@ test-style: ## Validate test style markers (Arrange / Act / Assert) across `test
 	@echo "\033[1mChecking test style markers...\033[0m"
 	@bash scripts/check_test_style.sh
 
+.PHONY: registry-metadata
+registry-metadata: ## Validate RFC 014 function registry checked API metadata
+	@echo "\033[1mChecking function registry API metadata...\033[0m"
+	@mkdir -p target
+	@$(INCAN) tools metadata api . --format json > target/function_registry_api_metadata.json
+	@RUSTFLAGS="-Awarnings" $(INCAN) run scripts/check_function_registry_metadata.incn
+
 .PHONY: build-locked
 build-locked: ## Build with `--locked` (stricter; requires current `incan.lock`)
 	@echo "\033[1mBuilding InQL library (locked)...\033[0m"
@@ -86,15 +93,15 @@ fmt-check: ## Check formatting without writing (`incan fmt --check` per director
 # =============================================================================
 
 .PHONY: check
-check: fmt-check test-style build test ## Format check, style gate, build, and test
+check: fmt-check test-style registry-metadata build test ## Format check, style gate, metadata check, build, and test
 	@echo "\033[32m✓ check passed\033[0m"
 
 .PHONY: pre-commit
-pre-commit: fmt-check test-style build test ## Fast gate before commit (same as `check`)
+pre-commit: fmt-check test-style registry-metadata build test ## Fast gate before commit (same as `check`)
 	@echo "\033[32m✓ pre-commit gate passed\033[0m"
 
 .PHONY: ci
-ci: fmt-check test-style build test smoke-consumer ## Same steps as GitHub Actions `inql` job
+ci: fmt-check test-style registry-metadata build test smoke-consumer ## Same steps as GitHub Actions `inql` job
 	@echo "\033[32m✓ ci gate passed\033[0m"
 
 .PHONY: verify

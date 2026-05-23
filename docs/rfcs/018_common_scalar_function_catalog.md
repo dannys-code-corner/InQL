@@ -8,7 +8,7 @@
   - InQL RFC 013 (function catalog program)
   - InQL RFC 014 (function registry and catalog governance)
   - InQL RFC 015 (core scalar functions and operators)
-- **Issue:** —
+- **Issue:** [InQL #35](https://github.com/dannys-code-corner/InQL/issues/35)
 - **RFC PR:** —
 - **Written against:** Incan v0.2
 - **Shipped in:** —

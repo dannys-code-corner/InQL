@@ -9,7 +9,7 @@
   - InQL RFC 014 (function registry and catalog governance)
   - InQL RFC 022 (semi-structured and format functions)
   - InQL RFC 023 (approximate and sketch functions)
-- **Issue:** —
+- **Issue:** [InQL #41](https://github.com/dannys-code-corner/InQL/issues/41)
 - **RFC PR:** —
 - **Written against:** Incan v0.2
 - **Shipped in:** —

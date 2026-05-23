@@ -1,0 +1,262 @@
+"""Test: RFC 014 function registry metadata and public helper registration."""
+
+from std.testing import fail_t
+from aggregate_builders import AggregateKind
+from functions import (
+    add,
+    always_false,
+    always_true,
+    col,
+    count,
+    eq,
+    function_registry_canonical_names,
+    function_registry_entries,
+    function_registry_entry,
+    function_registry_entry_by_name,
+    function_registry_entry_count,
+    function_registry_function_refs,
+    gt,
+    int_lit,
+    lit,
+    registered_substrait_mapped_function_refs,
+    str_lit,
+    sum,
+)
+from function_registry import (
+    FunctionAliasPolicy,
+    FunctionClass,
+    FunctionRegistryEntry,
+    FunctionNullBehavior,
+    SubstraitMappingKind,
+    function_ref_for,
+    V0_1,
+)
+from projection_builders import ColumnExprKind, column_expr_kind
+from substrait.extensions import (
+    ADD_FUNCTION_ANCHOR,
+    COUNT_FUNCTION_ANCHOR,
+    EQUAL_FUNCTION_ANCHOR,
+    GT_FUNCTION_ANCHOR,
+    SUM_FUNCTION_ANCHOR,
+    function_extension_uri,
+)
+
+
+def _contains_text(items: list[str], expected: str) -> bool:
+    """Return whether one list contains the expected string."""
+    for item in items:
+        if item == expected:
+            return true
+    return false
+
+
+def _entry_or_fail(function_ref: str) -> FunctionRegistryEntry:
+    """Return one registry entry or fail the test with the missing function reference."""
+    match function_registry_entry(function_ref):
+        Some(entry) => return entry
+        None => return fail_t(f"missing function registry entry: {function_ref}")
+
+
+def _entry_by_name_or_fail(canonical_name: str) -> FunctionRegistryEntry:
+    """Return one registry entry by canonical name or fail the test."""
+    match function_registry_entry_by_name(canonical_name):
+        Some(entry) => return entry
+        None => return fail_t(f"missing function registry entry by name: {canonical_name}")
+
+
+def _assert_entry_signature(
+    function_ref: str,
+    canonical_name: str,
+    return_type_rule: str,
+    arg_names: list[str],
+    arg_type_rules: list[str],
+) -> None:
+    """Assert one registry entry signature matches the public helper contract."""
+    entry = _entry_or_fail(function_ref)
+    assert entry.canonical_name == canonical_name, f"{function_ref} should expose the expected canonical name"
+    assert entry.signature.return_type_rule == return_type_rule, f"{function_ref} should expose the expected return type"
+    assert len(entry.signature.args) == len(arg_names), f"{function_ref} should expose the expected arity"
+    assert len(arg_names) == len(arg_type_rules), f"{function_ref} test fixture should pair each argument with one type"
+
+    for index in range(len(arg_names)):
+        arg = entry.signature.args[index]
+        assert arg.name == arg_names[index], f"{function_ref} should preserve argument names"
+        assert arg.type_rule == arg_type_rules[index], f"{function_ref} should preserve argument type rules"
+
+
+def _assert_not_deprecated(entry: FunctionRegistryEntry) -> None:
+    """Assert one current registry entry is not marked deprecated."""
+    match entry.lifecycle.deprecated:
+        Some(_) => return fail_t(f"{entry.function_ref} should not be deprecated")
+        None => pass
+
+
+def test_function_registry__covers_current_public_helpers() -> None:
+    """Assert that RFC 014 registry metadata covers the current public helper surface."""
+    # -- Arrange --
+    refs = function_registry_function_refs()
+    names = function_registry_canonical_names()
+
+    # -- Act --
+    entry_count = function_registry_entry_count()
+
+    # -- Assert --
+    assert entry_count == 17, "registry should cover the current public helper set"
+    assert len(function_registry_entries()) == entry_count, "entry count helper should match the runtime registry entries"
+    assert _contains_text(refs, function_ref_for("col")), "registry should include col"
+    assert _contains_text(refs, function_ref_for("lit")), "registry should include lit"
+    assert _contains_text(refs, function_ref_for("sum")), "registry should include sum"
+    assert _contains_text(refs, function_ref_for("count")), "registry should include count"
+    assert _contains_text(refs, function_ref_for("add")), "registry should include add"
+    assert _contains_text(refs, function_ref_for("mul")), "registry should include mul"
+    assert _contains_text(refs, function_ref_for("eq")), "registry should include eq"
+    assert _contains_text(refs, function_ref_for("gt")), "registry should include gt"
+    assert _contains_text(names, "always_true"), "registry should expose canonical helper names"
+    assert _contains_text(names, "always_false"), "registry should expose canonical helper names"
+
+
+def test_function_registry__lifecycle_metadata_is_versioned() -> None:
+    """Assert registered helpers carry typed lifecycle facts, not an erased default string."""
+    # -- Arrange --
+    entries = function_registry_entries()
+
+    # -- Act / Assert --
+    assert len(entries) == 17, "lifecycle fixture should cover the current registry surface"
+    for entry in entries:
+        assert entry.lifecycle.since.major == V0_1.major, f"{entry.function_ref} should expose its introduction major version"
+        assert entry.lifecycle.since.minor == V0_1.minor, f"{entry.function_ref} should expose its introduction minor version"
+        assert len(entry.lifecycle.changed) == 0, f"{entry.function_ref} should have no user-visible changes yet"
+        _assert_not_deprecated(entry)
+
+
+def test_function_registry__signatures_match_current_public_helpers() -> None:
+    """Assert every registered signature mirrors the current public helper contract."""
+    # -- Arrange --
+    literal_union = "int | float | str | bool"
+
+    # -- Act --
+    entry_count = function_registry_entry_count()
+
+    # -- Assert --
+    assert entry_count == 17, "signature fixture should cover the whole registry"
+    _assert_entry_signature(function_ref_for("col"), "col", "ColumnExpr", ["name"], ["str"])
+    _assert_entry_signature(function_ref_for("lit"), "lit", "ColumnExpr", ["value"], [literal_union])
+    _assert_entry_signature(function_ref_for("sum"), "sum", "AggregateMeasure", ["expr"], ["ColumnExpr"])
+    _assert_entry_signature(function_ref_for("count"), "count", "AggregateMeasure", [], [])
+    _assert_entry_signature(function_ref_for("int_expr"), "int_expr", "ColumnExpr", ["value"], ["int"])
+    _assert_entry_signature(function_ref_for("float_expr"), "float_expr", "ColumnExpr", ["value"], ["float"])
+    _assert_entry_signature(function_ref_for("str_expr"), "str_expr", "ColumnExpr", ["value"], ["str"])
+    _assert_entry_signature(function_ref_for("bool_expr"), "bool_expr", "ColumnExpr", ["value"], ["bool"])
+    _assert_entry_signature(
+        function_ref_for("add"),
+        "add",
+        "ColumnExpr",
+        ["left", "right"],
+        ["ColumnExpr", "ColumnExpr"],
+    )
+    _assert_entry_signature(
+        function_ref_for("mul"),
+        "mul",
+        "ColumnExpr",
+        ["left", "right"],
+        ["ColumnExpr", "ColumnExpr"],
+    )
+    _assert_entry_signature(function_ref_for("int_lit"), "int_lit", "ColumnExpr", ["value"], ["int"])
+    _assert_entry_signature(function_ref_for("str_lit"), "str_lit", "ColumnExpr", ["value"], ["str"])
+    _assert_entry_signature(function_ref_for("bool_lit"), "bool_lit", "ColumnExpr", ["value"], ["bool"])
+    _assert_entry_signature(function_ref_for("always_true"), "always_true", "ColumnExpr", [], [])
+    _assert_entry_signature(function_ref_for("always_false"), "always_false", "ColumnExpr", [], [])
+    _assert_entry_signature(function_ref_for("eq"), "eq", "ColumnExpr", ["left", "right"], ["ColumnExpr", "ColumnExpr"])
+    _assert_entry_signature(function_ref_for("gt"), "gt", "ColumnExpr", ["left", "right"], ["ColumnExpr", "ColumnExpr"])
+
+
+def test_function_registry__lookup_exposes_canonical_metadata() -> None:
+    """Assert lookup helpers expose canonical registry metadata by ref and by name."""
+    # -- Arrange --
+    col_entry = _entry_or_fail(function_ref_for("col"))
+    count_entry = _entry_by_name_or_fail("count")
+
+    # -- Act --
+    col_arg = col_entry.signature.args[0]
+
+    # -- Assert --
+    assert col_entry.canonical_name == "col", "lookup by function ref should return canonical name"
+    assert col_entry.function_class == FunctionClass.Scalar, "col should be classified as scalar"
+    assert col_entry.alias_policy == FunctionAliasPolicy.CoreImport, "core helpers should use core import policy"
+    assert col_arg.name == "name", "registry signature should preserve public helper argument names"
+    assert col_arg.type_rule == "str", "registry signature should preserve public helper argument type rules"
+    assert count_entry.function_ref == function_ref_for("count"), "lookup by name should return the stable function ref"
+    assert count_entry.function_class == FunctionClass.Aggregate, "count should be classified as aggregate"
+    assert len(count_entry.signature.args) == 0, "count should be registered as zero-argument"
+
+
+def test_function_registry__substrait_extension_mappings_are_structured() -> None:
+    """Assert Substrait extension-backed helpers carry stable mapping facts."""
+    # -- Arrange --
+    add_entry = _entry_or_fail(function_ref_for("add"))
+    sum_entry = _entry_or_fail(function_ref_for("sum"))
+    count_entry = _entry_or_fail(function_ref_for("count"))
+    eq_entry = _entry_or_fail(function_ref_for("eq"))
+    gt_entry = _entry_or_fail(function_ref_for("gt"))
+
+    # -- Act --
+    mapped_refs = registered_substrait_mapped_function_refs()
+
+    # -- Assert --
+    assert _contains_text(mapped_refs, function_ref_for("add")), "add should be in the Substrait extension mapping set"
+    assert _contains_text(mapped_refs, function_ref_for("sum")), "sum should be in the Substrait extension mapping set"
+    assert add_entry.substrait.kind == SubstraitMappingKind.ExtensionFunction, "add should use a Substrait extension function"
+    assert add_entry.substrait.uri == function_extension_uri(), "add should use the shared function extension URI"
+    assert add_entry.substrait.function_name == "add", "add should use the registered extension name"
+    assert add_entry.substrait.anchor == ADD_FUNCTION_ANCHOR, "add should carry the stable Substrait anchor"
+    assert sum_entry.substrait.function_name == "sum", "sum should use the registered extension name"
+    assert sum_entry.substrait.anchor == SUM_FUNCTION_ANCHOR, "sum should carry the stable Substrait anchor"
+    assert count_entry.substrait.anchor == COUNT_FUNCTION_ANCHOR, "count should carry the stable Substrait anchor"
+    assert eq_entry.substrait.anchor == EQUAL_FUNCTION_ANCHOR, "eq should carry the stable Substrait anchor"
+    assert gt_entry.substrait.anchor == GT_FUNCTION_ANCHOR, "gt should carry the stable Substrait anchor"
+
+
+def test_function_registry__rewrite_mappings_identify_non_extension_helpers() -> None:
+    """Assert helper entries that lower as selections or literals are marked as deterministic rewrites."""
+    # -- Arrange --
+    col_entry = _entry_or_fail(function_ref_for("col"))
+    lit_entry = _entry_or_fail(function_ref_for("lit"))
+    always_true_entry = _entry_or_fail(function_ref_for("always_true"))
+    always_false_entry = _entry_or_fail(function_ref_for("always_false"))
+
+    # -- Act --
+    lit_arg = lit_entry.signature.args[0]
+
+    # -- Assert --
+    assert col_entry.substrait.kind == SubstraitMappingKind.Rewrite, "col should lower as a direct field-reference rewrite"
+    assert lit_entry.substrait.kind == SubstraitMappingKind.Rewrite, "lit should lower as a literal rewrite"
+    assert always_true_entry.substrait.kind == SubstraitMappingKind.Rewrite, "always_true should lower as a literal rewrite"
+    assert always_false_entry.substrait.kind == SubstraitMappingKind.Rewrite, "always_false should lower as a literal rewrite"
+    assert lit_arg.literal_only, "literal helper metadata should mark literal-only arguments"
+    assert always_true_entry.null_behavior == FunctionNullBehavior.Predicate, "predicate helpers should expose predicate null behavior"
+    assert always_false_entry.null_behavior == FunctionNullBehavior.Predicate, "predicate helpers should expose predicate null behavior"
+
+
+def test_function_registry__public_helpers_preserve_existing_behavior() -> None:
+    """Assert decorated public wrappers preserve the current builder behavior."""
+    # -- Arrange --
+    amount = col("amount")
+    status = col("status")
+
+    # -- Act --
+    sum_measure = sum(amount)
+    count_measure = count()
+    add_expr = add(amount, lit(7))
+    eq_expr = eq(status, str_lit("paid"))
+    gt_expr = gt(amount, int_lit(10))
+
+    # -- Assert --
+    assert column_expr_kind(amount) == ColumnExprKind.Column, "col should still build a column reference"
+    assert column_expr_kind(lit(true)) == ColumnExprKind.BoolLiteral, "lit should still build typed literals"
+    assert sum_measure.kind == AggregateKind.Sum, "sum wrapper should preserve aggregate kind"
+    assert count_measure.kind == AggregateKind.Count, "count wrapper should preserve aggregate kind"
+    assert column_expr_kind(add_expr) == ColumnExprKind.Add, "add wrapper should preserve expression kind"
+    assert column_expr_kind(eq_expr) == ColumnExprKind.Eq, "eq wrapper should preserve expression kind"
+    assert column_expr_kind(gt_expr) == ColumnExprKind.Gt, "gt wrapper should preserve expression kind"
+    assert column_expr_kind(always_true()) == ColumnExprKind.BoolLiteral, "always_true should still build a bool literal"
+    assert column_expr_kind(always_false()) == ColumnExprKind.BoolLiteral, "always_false should still build a bool literal"

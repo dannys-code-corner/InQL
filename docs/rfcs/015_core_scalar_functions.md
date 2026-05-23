@@ -8,7 +8,7 @@
   - InQL RFC 013 (function catalog program)
   - InQL RFC 014 (function registry and catalog governance)
   - InQL RFC 003 (`query {}` blocks and relational authoring)
-- **Issue:** —
+- **Issue:** [InQL #32](https://github.com/dannys-code-corner/InQL/issues/32)
 - **RFC PR:** —
 - **Written against:** Incan v0.2
 - **Shipped in:** —

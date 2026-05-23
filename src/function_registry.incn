@@ -1,0 +1,312 @@
+"""
+Package-owned function registry metadata for the current public InQL function surface.
+
+Public helpers register themselves by calling `FUNCTION_REGISTRY.add(...)` as their decorator. The decorator method owns
+the typed metadata and records one normalized entry while returning the helper unchanged.
+"""
+
+from substrait.extensions import function_extension_uri
+
+const FUNCTION_REF_PREFIX: str = "inql.functions."
+
+
+@derive(Clone)
+pub enum FunctionClass(str):
+    """High-level semantic category for one registered function."""
+
+    Scalar = "scalar"
+    Aggregate = "aggregate"
+    Window = "window"
+    Generator = "generator"
+    TableValued = "table_valued"
+    PartitionTransform = "partition_transform"
+    ExtensionOnly = "extension_only"
+
+
+@derive(Clone)
+pub enum FunctionAliasPolicy(str):
+    """Import policy for compatibility names associated with a registered function."""
+
+    CoreImport = "core_import"
+    OptInCompatibility = "opt_in_compatibility"
+
+
+@derive(Clone)
+pub enum FunctionDeterminism(str):
+    """Determinism category used by optimization and documentation tools."""
+
+    Deterministic = "deterministic"
+    Nondeterministic = "nondeterministic"
+
+
+@derive(Clone)
+pub enum FunctionNullBehavior(str):
+    """Normalized null behavior category for one registered function."""
+
+    DependsOnInputs = "depends_on_inputs"
+    NullSkippingAggregate = "null_skipping_aggregate"
+    NonNullLiteral = "non_null_literal"
+    Predicate = "predicate"
+
+
+@derive(Clone)
+pub enum FunctionErrorBehavior(str):
+    """Normalized error behavior category for one registered function."""
+
+    Typechecked = "typechecked"
+    InvalidInputDiagnostic = "invalid_input_diagnostic"
+
+
+@derive(Clone)
+pub enum SubstraitMappingKind(str):
+    """Substrait interchange category for one portable InQL function."""
+
+    CoreFunction = "core_function"
+    ExtensionFunction = "extension_function"
+    Rewrite = "rewrite"
+    Unsupported = "unsupported"
+
+
+@derive(Clone)
+pub model FunctionVersion:
+    """One InQL package version used by function lifecycle metadata."""
+
+    pub major: int
+    pub minor: int
+
+
+@derive(Clone)
+pub model FunctionChange:
+    """One versioned user-visible function contract change."""
+
+    pub version: FunctionVersion
+    pub note: str
+
+
+@derive(Clone)
+pub model FunctionDeprecation:
+    """Deprecation metadata for one function when it is no longer preferred."""
+
+    pub since: FunctionVersion
+    pub note: str
+    pub replacement: str
+
+
+pub static V0_1: FunctionVersion = FunctionVersion(major=0, minor=1)
+pub static V0_2: FunctionVersion = FunctionVersion(major=0, minor=2)
+pub static V0_3: FunctionVersion = FunctionVersion(major=0, minor=3)
+
+
+@derive(Clone)
+pub model FunctionLifecycle:
+    """Version lifecycle facts attached to one function registry entry."""
+
+    pub since: FunctionVersion
+    pub changed: list[FunctionChange]
+    pub deprecated: Option[FunctionDeprecation]
+
+
+@derive(Clone)
+pub model FunctionArg:
+    """One registry-visible function argument shape."""
+
+    pub name: str
+    pub type_rule: str
+    pub required: bool
+    pub literal_only: bool
+
+
+@derive(Clone)
+pub model FunctionSignature:
+    """Registry-visible callable signature metadata."""
+
+    pub args: list[FunctionArg]
+    pub return_type_rule: str
+    pub variadic: bool
+
+
+@derive(Clone)
+pub model SubstraitMapping:
+    """Portable interchange mapping metadata for one registered function."""
+
+    pub kind: SubstraitMappingKind
+    pub uri: str
+    pub function_name: str
+    pub anchor: u32
+    pub rewrite: str
+    pub unsupported_reason: str
+
+
+@derive(Clone)
+pub model FunctionSpec:
+    """Machine-readable contract supplied to the registry decorator."""
+
+    pub function_class: FunctionClass
+    pub aliases: list[str]
+    pub alias_policy: FunctionAliasPolicy
+    pub lifecycle: FunctionLifecycle
+    pub signature: FunctionSignature
+    pub determinism: FunctionDeterminism
+    pub null_behavior: FunctionNullBehavior
+    pub error_behavior: FunctionErrorBehavior
+    pub substrait: SubstraitMapping
+
+
+@derive(Clone)
+pub model FunctionRegistryEntry:
+    """Normalized metadata for one registered InQL function."""
+
+    pub function_ref: str
+    pub canonical_name: str
+    pub function_class: FunctionClass
+    pub aliases: list[str]
+    pub alias_policy: FunctionAliasPolicy
+    pub lifecycle: FunctionLifecycle
+    pub signature: FunctionSignature
+    pub determinism: FunctionDeterminism
+    pub null_behavior: FunctionNullBehavior
+    pub error_behavior: FunctionErrorBehavior
+    pub substrait: SubstraitMapping
+
+
+@derive(Clone)
+pub class FunctionRegistry:
+    """Mutable package-owned function registry populated by declaration-site decorators."""
+
+    pub entries: list[FunctionRegistryEntry]
+
+    @staticmethod
+    def new() -> Self:
+        """Return an empty function registry."""
+        return FunctionRegistry(entries=[])
+
+    def add[F](mut self, canonical_name: str, spec: FunctionSpec) -> (F) -> F:
+        """Register one public helper and return the helper unchanged."""
+        self._add_entry(canonical_name, spec)
+        return (func) => func
+
+    def _add_entry(mut self, canonical_name: str, spec: FunctionSpec) -> None:
+        """Record one registry entry or fail fast on invalid duplicate metadata."""
+        assert _valid_canonical_name(canonical_name), (f"function canonical name must be one non-empty identifier segment, found `{canonical_name}`")
+
+        function_ref = function_ref_for(canonical_name)
+        for entry in self.entries:
+            assert entry.function_ref != function_ref, f"duplicate function reference `{function_ref}`"
+            assert entry.canonical_name != canonical_name, f"duplicate canonical function name `{canonical_name}`"
+
+        self.entries.append(
+            FunctionRegistryEntry(
+                function_ref=function_ref,
+                canonical_name=canonical_name,
+                function_class=spec.function_class,
+                aliases=spec.aliases,
+                alias_policy=spec.alias_policy,
+                lifecycle=spec.lifecycle,
+                signature=spec.signature,
+                determinism=spec.determinism,
+                null_behavior=spec.null_behavior,
+                error_behavior=spec.error_behavior,
+                substrait=spec.substrait,
+            ),
+        )
+        return
+
+    def entry(self, function_ref: str) -> Option[FunctionRegistryEntry]:
+        """Return the registry entry for one stable function reference when it is known."""
+        for entry in self.entries:
+            if entry.function_ref == function_ref:
+                return Some(entry)
+        return None
+
+    def entry_by_name(self, canonical_name: str) -> Option[FunctionRegistryEntry]:
+        """Return the registry entry for one canonical public function name when it is known."""
+        for entry in self.entries:
+            if entry.canonical_name == canonical_name:
+                return Some(entry)
+        return None
+
+    def function_refs(self) -> list[str]:
+        """Return registered function references in stable registry order."""
+        return [entry.function_ref for entry in self.entries]
+
+    def canonical_names(self) -> list[str]:
+        """Return registered canonical function names in stable registry order."""
+        return [entry.canonical_name for entry in self.entries]
+
+    def entry_count(self) -> int:
+        """Return the number of registered function entries."""
+        return len(self.entries)
+
+    def substrait_mapped_function_refs(self) -> list[str]:
+        """Return function references with a concrete Substrait extension mapping."""
+        return [entry.function_ref for entry in self.entries if entry.substrait.kind == SubstraitMappingKind.ExtensionFunction]
+
+
+pub def function_ref_for(canonical_name: str) -> str:
+    """Return the durable registry reference for one canonical InQL function name."""
+    return f"{FUNCTION_REF_PREFIX}{canonical_name}"
+
+
+pub def required_arg(name: str, type_rule: str) -> FunctionArg:
+    """Build one required non-literal-only function argument metadata record."""
+    return FunctionArg(name=name, type_rule=type_rule, required=true, literal_only=false)
+
+
+pub def literal_arg(name: str, type_rule: str) -> FunctionArg:
+    """Build one required literal-only function argument metadata record."""
+    return FunctionArg(name=name, type_rule=type_rule, required=true, literal_only=true)
+
+
+pub def signature(args: list[FunctionArg], return_type_rule: str) -> FunctionSignature:
+    """Build one fixed-arity function signature metadata record."""
+    return FunctionSignature(args=args, return_type_rule=return_type_rule, variadic=false)
+
+
+pub def extension_mapping(function_name: str, anchor: u32) -> SubstraitMapping:
+    """Build one registered Substrait extension-function mapping."""
+    return SubstraitMapping(
+        kind=SubstraitMappingKind.ExtensionFunction,
+        uri=function_extension_uri(),
+        function_name=function_name,
+        anchor=anchor,
+        rewrite="",
+        unsupported_reason="",
+    )
+
+
+pub def rewrite_mapping(rewrite: str) -> SubstraitMapping:
+    """Build one deterministic Substrait rewrite mapping description."""
+    return SubstraitMapping(
+        kind=SubstraitMappingKind.Rewrite,
+        uri="",
+        function_name="",
+        anchor=0,
+        rewrite=rewrite,
+        unsupported_reason="",
+    )
+
+
+pub def deterministic_spec(
+    function_class: FunctionClass,
+    lifecycle: FunctionLifecycle,
+    signature: FunctionSignature,
+    null_behavior: FunctionNullBehavior,
+    substrait: SubstraitMapping,
+) -> FunctionSpec:
+    """Build one deterministic core-import function spec."""
+    return FunctionSpec(
+        function_class=function_class,
+        aliases=[],
+        alias_policy=FunctionAliasPolicy.CoreImport,
+        lifecycle=lifecycle,
+        signature=signature,
+        determinism=FunctionDeterminism.Deterministic,
+        null_behavior=null_behavior,
+        error_behavior=FunctionErrorBehavior.Typechecked,
+        substrait=substrait,
+    )
+
+
+def _valid_canonical_name(canonical_name: str) -> bool:
+    """Return whether one canonical function name can derive a durable single-segment reference."""
+    return len(canonical_name) > 0 and not canonical_name.contains(".")

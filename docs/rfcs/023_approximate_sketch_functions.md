@@ -9,7 +9,7 @@
   - InQL RFC 016 (core aggregate functions)
   - InQL RFC 017 (aggregate modifiers)
   - InQL RFC 024 (function extension policy)
-- **Issue:** —
+- **Issue:** [InQL #40](https://github.com/dannys-code-corner/InQL/issues/40)
 - **RFC PR:** —
 - **Written against:** Incan v0.2
 - **Shipped in:** —
