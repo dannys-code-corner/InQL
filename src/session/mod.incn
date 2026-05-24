@@ -6,6 +6,7 @@ Module layout:
 - `session.errors`: Session-facing typed errors and diagnostics helpers
 - `session.domain`: Session boundary newtypes and sink-kind enum
 - `session.csv_schema`: CSV schema inference helpers used by Session read paths
+- `session.source_formats`: central source-format policy shared by planning and backend registration
 - `session.active`: active-session registry used by LazyFrame collect/display conveniences
 - `session.datafusion_backend`: internal DataFusion backend implementation
 """

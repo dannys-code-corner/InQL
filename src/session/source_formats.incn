@@ -1,0 +1,73 @@
+"""Central source-format policy for Session registration and planning."""
+
+from backends import SourceKind, TableSource
+from session.csv_schema import infer_csv_schema_columns
+from session.errors import SessionError
+from substrait.schema import RowColumnSpec
+
+
+@derive(Clone)
+pub enum PlannedSchemaPolicy(str):
+    """How much schema information Session can bind from a source descriptor before execution."""
+
+    InferCsvHeader = "infer_csv_header"
+    Empty = "empty"
+
+
+@derive(Clone)
+pub enum DataFusionSourceRegistration(str):
+    """DataFusion registration path for one portable source format."""
+
+    Csv = "csv"
+    Parquet = "parquet"
+    Arrow = "arrow"
+
+
+@derive(Clone)
+pub class SourceFormatPolicy:
+    """Source-format policy shared by Session schema planning and backend registration."""
+
+    pub schema_policy: PlannedSchemaPolicy
+    pub datafusion_registration: DataFusionSourceRegistration
+
+    def clone(self) -> Self:
+        """Return one cloned source-format policy."""
+        return SourceFormatPolicy(schema_policy=self.schema_policy, datafusion_registration=self.datafusion_registration)
+
+
+pub def source_format_policy_for_kind(kind: SourceKind) -> SourceFormatPolicy:
+    """Return the central policy for one closed source kind."""
+    match kind:
+        SourceKind.Csv =>
+            return SourceFormatPolicy(
+                schema_policy=PlannedSchemaPolicy.InferCsvHeader,
+                datafusion_registration=DataFusionSourceRegistration.Csv,
+            )
+        SourceKind.Parquet =>
+            return SourceFormatPolicy(
+                schema_policy=PlannedSchemaPolicy.Empty,
+                datafusion_registration=DataFusionSourceRegistration.Parquet,
+            )
+        SourceKind.Arrow =>
+            return SourceFormatPolicy(
+                schema_policy=PlannedSchemaPolicy.Empty,
+                datafusion_registration=DataFusionSourceRegistration.Arrow,
+            )
+
+
+pub def source_format_policy(source: TableSource) -> SourceFormatPolicy:
+    """Return the central policy for one source descriptor."""
+    return source_format_policy_for_kind(source.source_kind)
+
+
+pub def planned_schema_columns_for_source(source: TableSource) -> Result[list[RowColumnSpec], SessionError]:
+    """Return planned schema columns that can be established from a source descriptor."""
+    policy = source_format_policy(source)
+    match policy.schema_policy:
+        PlannedSchemaPolicy.InferCsvHeader => return infer_csv_schema_columns(source.uri)
+        PlannedSchemaPolicy.Empty => return Ok([])
+
+
+pub def datafusion_registration_for_source(source: TableSource) -> DataFusionSourceRegistration:
+    """Return the DataFusion registration path for one source descriptor."""
+    return source_format_policy(source).datafusion_registration

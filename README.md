@@ -56,4 +56,4 @@ incan build --lib
 incan test tests
 ```
 
-See `make help` for other targets (`fmt`, `fmt-check`, `build-locked`, …). Continuous integration builds **Incan from source** on each run, then runs the same `fmt-check`, `build`, and `test` steps (see [.github/workflows/ci.yml](.github/workflows/ci.yml)).
+See `make help` for other targets (`fmt`, `fmt-check`, `registry-metadata`, `build-locked`, …). Continuous integration builds **Incan from source** from the workflow's pinned `INCAN_REF` release branch or tag, then runs `fmt-check`, `test-style`, function registry metadata validation, `build`, `test`, and the pub-consumer smoke check (see [.github/workflows/ci.yml](.github/workflows/ci.yml)).

@@ -7,7 +7,6 @@ from backends import (
     BackendKind,
     BackendSelection,
     DataFusion,
-    SourceKind,
     TableSource,
     backend_kind_name,
     source_kind_name,
@@ -20,7 +19,7 @@ from dataset import DataFrame, LazyFrame, lazy_frame_named_table
 pub from session.errors import SessionError, SessionErrorKind, format_session_diagnostic, report_session_error
 from session.errors import invalid_registration, invalid_sink
 from session.domain import LogicalName, SourceUri, SinkUri, SinkKind
-from session.csv_schema import infer_csv_schema_columns
+from session.source_formats import planned_schema_columns_for_source
 from session.active import (
     ActiveRegistration,
     ActiveSessionError,
@@ -39,7 +38,6 @@ from session.datafusion_backend import (
     datafusion_write_csv_async,
     datafusion_write_parquet_async,
 )
-from substrait.schema import RowColumnSpec
 from substrait.errors import SubstraitLoweringError, SubstraitLoweringErrorKind
 from substrait.schema_registry import register_named_table_schema
 from substrait.inspect import root_rel, read_named_table_name
@@ -108,7 +106,7 @@ pub class Session:
         name = _logical_name_from_text(logical_name)?
         _ = _source_uri_from_text(source.uri)?
         _ensure_registration_available(self._registrations, name.0)?
-        columns = _schema_columns_for_source(source)?
+        columns = planned_schema_columns_for_source(source)?
         self._register_parsed(name, source)?
         register_named_table_schema(name.0, columns)
         return Ok(None)
@@ -124,8 +122,9 @@ pub class Session:
         name = _logical_name_from_text(logical_name)?
         source_uri = _source_uri_from_text(uri)?
         _ensure_registration_available(self._registrations, name.0)?
-        columns = infer_csv_schema_columns(source_uri.0)?
-        self._register_parsed(name, csv_source(source_uri.0))?
+        source = csv_source(source_uri.0)
+        columns = planned_schema_columns_for_source(source)?
+        self._register_parsed(name, source)?
         # TODO(InQL RFC 004): Formalize logical-name schema binding as an explicit catalog/snapshot model and surface overwrite diagnostics.
         register_named_table_schema(name.0, columns)
         return self.table(name.0)
@@ -315,19 +314,6 @@ def _ensure_registration_available(
     if _find_registration_index(registrations, logical_name) >= 0:
         return Err(_duplicate_registration_error(logical_name))
     return Ok(None)
-
-
-def _schema_columns_for_source(source: TableSource) -> Result[list[RowColumnSpec], SessionError]:
-    """Return planned schema columns that can be established from a source descriptor."""
-    match source.source_kind:
-        SourceKind.Csv => return infer_csv_schema_columns(source.uri)
-        SourceKind.Parquet => return Ok(_empty_schema_columns())
-        SourceKind.Arrow => return Ok(_empty_schema_columns())
-
-
-def _empty_schema_columns() -> list[RowColumnSpec]:
-    """Return an empty schema binding for sources whose planned schema is not inferred yet."""
-    return []
 
 
 def _plan_from_lazy_frame[T with Clone](data: LazyFrame[T]) -> Result[Plan, SessionError]:

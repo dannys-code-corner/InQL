@@ -1,6 +1,6 @@
 # InQL RFC 013: Function catalog program
 
-- **Status:** Draft
+- **Status:** Planned
 - **Created:** 2026-04-27
 - **Author(s):** Danny Meijer (@dannymeijer)
 - **Related:**
@@ -16,7 +16,7 @@
   - InQL RFC 022 (semi-structured and format functions)
   - InQL RFC 023 (approximate and sketch functions)
   - InQL RFC 024 (function extension policy)
-- **Issue:** —
+- **Issue:** [InQL #30](https://github.com/dannys-code-corner/InQL/issues/30)
 - **RFC PR:** —
 - **Written against:** Incan v0.2
 - **Shipped in:** —

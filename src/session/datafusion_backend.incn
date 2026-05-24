@@ -10,8 +10,9 @@ from rust::datafusion::prelude import CsvReadOptions, ParquetReadOptions
 from rust::datafusion::dataframe import DataFrameWriteOptions
 from rust::datafusion_substrait::substrait::proto import Plan as ConsumerPlan
 from rust::datafusion_substrait::logical_plan::consumer import from_substrait_plan
-from backends import SourceKind, TableSource
+from backends import TableSource
 from dataset.materialization import DataFrameMaterialization
+from session.source_formats import DataFusionSourceRegistration, datafusion_registration_for_source
 from substrait.inspect import root_names
 
 
@@ -156,19 +157,19 @@ async def _register_sources(
 
 
 async def _register_one(ctx: SessionContext, logical_name: str, source: TableSource) -> Result[None, BackendError]:
-    """Register one logical source by kind on the DataFusion context."""
-    match source.source_kind:
-        SourceKind.Csv =>
+    """Register one logical source through the central source-format policy."""
+    match datafusion_registration_for_source(source):
+        DataFusionSourceRegistration.Csv =>
             csv_opts = CsvReadOptions.new().has_header(true)
             match await ctx.register_csv(logical_name, source.uri, csv_opts):
                 Ok(_) => return Ok(None)
                 Err(err) => return Err(_backend_error(BackendErrorKind.BackendRegistrationError, err.to_string()))
-        SourceKind.Parquet =>
+        DataFusionSourceRegistration.Parquet =>
             parquet_opts = ParquetReadOptions.default()
             match await ctx.register_parquet(logical_name, source.uri, parquet_opts):
                 Ok(_) => return Ok(None)
                 Err(err) => return Err(_backend_error(BackendErrorKind.BackendRegistrationError, err.to_string()))
-        SourceKind.Arrow =>
+        DataFusionSourceRegistration.Arrow =>
             arrow_opts = ArrowReadOptions.default()
             match await ctx.register_arrow(logical_name, source.uri, arrow_opts):
                 Ok(_) => return Ok(None)

@@ -19,6 +19,7 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  INCAN_REF: release/v0.3
   RUST_BACKTRACE: 1
   INCAN_NO_BANNER: 1
 
@@ -39,7 +40,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: dannys-code-corner/incan
-          ref: main
+          ref: ${{ env.INCAN_REF }}
           path: incan
 
       - name: Install Rust toolchain
@@ -64,6 +65,12 @@ jobs:
 
       - name: Format check (package .incn)
         run: make fmt-check
+
+      - name: Test style check
+        run: make test-style
+
+      - name: Function registry metadata check
+        run: make registry-metadata
 
       - name: Build library
         run: make build
