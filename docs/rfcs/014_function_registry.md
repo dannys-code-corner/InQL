@@ -17,8 +17,8 @@
   - Incan issue #638 / PR #641 (decorator string argument materialization)
   - Incan issue #640 / PR #643 (generic function references for decorator factories)
   - Incan issue #645 (method-call decorators for registry registration)
-  - Incan issue #658 (`const` model constructor initializers for typed version constants)
-  - Incan issue #659 (lowercase exported static import/codegen mismatch)
+  - Incan issue #658 / PR #660 (`const` model constructor initializers for typed version constants)
+  - Incan issue #659 / PR #660 (lowercase exported static import/codegen mismatch)
 - **Issue:** [InQL #31](https://github.com/dannys-code-corner/InQL/issues/31)
 - **RFC PR:** —
 - **Written against:** Incan v0.2
@@ -158,9 +158,9 @@ The public helper shape should stay compact enough to preserve authoring ergonom
     deterministic_spec(
         FunctionClass.Aggregate,
         FunctionLifecycle(
-            since=V0_2,
+            since=v0_2,
             changed=[
-                FunctionChange(version=V0_3, note="Added decimal return type rule."),
+                FunctionChange(version=v0_3, note="Added decimal return type rule."),
             ],
             deprecated=None,
         ),
@@ -280,7 +280,7 @@ Existing helper names such as `sum`, `count`, `add`, `mul`, `eq`, and `gt` may c
 - **Registry ownership:** the checked InQL package source is the source of truth. Compiler-facing metadata, generated docs metadata, diagnostics metadata, and lowering tables are derived from checked package source and typed registry data. The compiler must not maintain an independent InQL function registry.
 - **Authoring DX:** ordinary function authors should write normal public helpers and attach one registry decorator whose arguments contain the canonical name and typed function spec. The registry derives the stable function reference from that canonical name, avoiding a separate authored constant or central list.
 - **Decorator capability:** Incan issue #636 / PR #637 is required for decorator-authored helpers because checked API metadata must preserve source signatures for decorated functions. Incan issue #638 / PR #641 is required for decorator string argument materialization. Incan issue #640 / PR #643 provides generic signature-preserving decorator factories. Incan issue #645 is required for method-call decorators such as `FUNCTION_REGISTRY.add(...)`. The RFC design is one registry method decorator attached to the public helper.
-- **Lifecycle constants:** typed lifecycle metadata should use immutable version constants such as `V0_1`. The current implementation uses uppercase `static` version values as a compiler workaround until Incan issue #658 supports model constructors in `const` initializers and Incan issue #659 fixes lowercase exported static imports.
+- **Lifecycle constants:** typed lifecycle metadata uses immutable version constants such as `v0_1`. These are `const` model values, not mutable registry state or generated strings.
 - **Alias policy:** core semantic aliases may be available through normal public imports when they are real callable aliases of the canonical function. Dialect, warehouse, Spark, Snowflake, dbt, and backend compatibility aliases require explicit opt-in modules.
 - **Docstrings:** exact docstring section requirements are not an RFC 014 concern. Public registered functions must follow the repository's Incan-standard docstring policy, but registry metadata and public helper signatures own machine facts.
 - **Substrait mapping:** typed registry entries must represent whether a function maps to a core Substrait function, a registered extension function, a deterministic rewrite, or an explicit unsupported state. Backend capability declarations consume that mapping; they do not redefine InQL semantics.

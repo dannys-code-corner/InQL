@@ -40,7 +40,7 @@ from function_registry import (
     required_arg,
     rewrite_mapping,
     signature,
-    V0_1,
+    v0_1,
 )
 from projection_builders import ColumnExpr
 from substrait.extensions import (
@@ -57,7 +57,7 @@ pub static FUNCTION_REGISTRY: FunctionRegistry = FunctionRegistry.new()
 
 @FUNCTION_REGISTRY.add("col", deterministic_spec(
     FunctionClass.Scalar,
-    FunctionLifecycle(since=V0_1, changed=[], deprecated=None),
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
     signature([required_arg("name", "str")], "ColumnExpr"),
     FunctionNullBehavior.DependsOnInputs,
     rewrite_mapping("direct field reference selection"),
@@ -69,7 +69,7 @@ pub def col(name: str) -> ColumnExpr:
 
 @FUNCTION_REGISTRY.add("lit", deterministic_spec(
     FunctionClass.Scalar,
-    FunctionLifecycle(since=V0_1, changed=[], deprecated=None),
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
     signature([literal_arg("value", "int | float | str | bool")], "ColumnExpr"),
     FunctionNullBehavior.NonNullLiteral,
     rewrite_mapping("typed Substrait literal expression"),
@@ -81,7 +81,7 @@ pub def lit(value: Union[int, float, str, bool]) -> ColumnExpr:
 
 @FUNCTION_REGISTRY.add("sum", deterministic_spec(
     FunctionClass.Aggregate,
-    FunctionLifecycle(since=V0_1, changed=[], deprecated=None),
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
     signature([required_arg("expr", "ColumnExpr")], "AggregateMeasure"),
     FunctionNullBehavior.NullSkippingAggregate,
     extension_mapping("sum", SUM_FUNCTION_ANCHOR),
@@ -93,7 +93,7 @@ pub def sum(expr: ColumnExpr) -> AggregateMeasure:
 
 @FUNCTION_REGISTRY.add("count", deterministic_spec(
     FunctionClass.Aggregate,
-    FunctionLifecycle(since=V0_1, changed=[], deprecated=None),
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
     signature([], "AggregateMeasure"),
     FunctionNullBehavior.NullSkippingAggregate,
     extension_mapping("count", COUNT_FUNCTION_ANCHOR),
@@ -105,7 +105,7 @@ pub def count() -> AggregateMeasure:
 
 @FUNCTION_REGISTRY.add("int_expr", deterministic_spec(
     FunctionClass.Scalar,
-    FunctionLifecycle(since=V0_1, changed=[], deprecated=None),
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
     signature([literal_arg("value", "int")], "ColumnExpr"),
     FunctionNullBehavior.NonNullLiteral,
     rewrite_mapping("typed integer literal expression"),
@@ -117,7 +117,7 @@ pub def int_expr(value: int) -> ColumnExpr:
 
 @FUNCTION_REGISTRY.add("float_expr", deterministic_spec(
     FunctionClass.Scalar,
-    FunctionLifecycle(since=V0_1, changed=[], deprecated=None),
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
     signature([literal_arg("value", "float")], "ColumnExpr"),
     FunctionNullBehavior.NonNullLiteral,
     rewrite_mapping("typed floating-point literal expression"),
@@ -129,7 +129,7 @@ pub def float_expr(value: float) -> ColumnExpr:
 
 @FUNCTION_REGISTRY.add("str_expr", deterministic_spec(
     FunctionClass.Scalar,
-    FunctionLifecycle(since=V0_1, changed=[], deprecated=None),
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
     signature([literal_arg("value", "str")], "ColumnExpr"),
     FunctionNullBehavior.NonNullLiteral,
     rewrite_mapping("typed string literal expression"),
@@ -141,7 +141,7 @@ pub def str_expr(value: str) -> ColumnExpr:
 
 @FUNCTION_REGISTRY.add("bool_expr", deterministic_spec(
     FunctionClass.Scalar,
-    FunctionLifecycle(since=V0_1, changed=[], deprecated=None),
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
     signature([literal_arg("value", "bool")], "ColumnExpr"),
     FunctionNullBehavior.NonNullLiteral,
     rewrite_mapping("typed boolean literal expression"),
@@ -153,7 +153,7 @@ pub def bool_expr(value: bool) -> ColumnExpr:
 
 @FUNCTION_REGISTRY.add("add", deterministic_spec(
     FunctionClass.Scalar,
-    FunctionLifecycle(since=V0_1, changed=[], deprecated=None),
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
     signature([required_arg("left", "ColumnExpr"), required_arg("right", "ColumnExpr")], "ColumnExpr"),
     FunctionNullBehavior.DependsOnInputs,
     extension_mapping("add", ADD_FUNCTION_ANCHOR),
@@ -165,7 +165,7 @@ pub def add(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
 
 @FUNCTION_REGISTRY.add("mul", deterministic_spec(
     FunctionClass.Scalar,
-    FunctionLifecycle(since=V0_1, changed=[], deprecated=None),
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
     signature([required_arg("left", "ColumnExpr"), required_arg("right", "ColumnExpr")], "ColumnExpr"),
     FunctionNullBehavior.DependsOnInputs,
     extension_mapping("multiply", MULTIPLY_FUNCTION_ANCHOR),
@@ -177,7 +177,7 @@ pub def mul(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
 
 @FUNCTION_REGISTRY.add("int_lit", deterministic_spec(
     FunctionClass.Scalar,
-    FunctionLifecycle(since=V0_1, changed=[], deprecated=None),
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
     signature([literal_arg("value", "int")], "ColumnExpr"),
     FunctionNullBehavior.NonNullLiteral,
     rewrite_mapping("filter-helper integer literal expression"),
@@ -189,7 +189,7 @@ pub def int_lit(value: int) -> ColumnExpr:
 
 @FUNCTION_REGISTRY.add("str_lit", deterministic_spec(
     FunctionClass.Scalar,
-    FunctionLifecycle(since=V0_1, changed=[], deprecated=None),
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
     signature([literal_arg("value", "str")], "ColumnExpr"),
     FunctionNullBehavior.NonNullLiteral,
     rewrite_mapping("filter-helper string literal expression"),
@@ -201,7 +201,7 @@ pub def str_lit(value: str) -> ColumnExpr:
 
 @FUNCTION_REGISTRY.add("bool_lit", deterministic_spec(
     FunctionClass.Scalar,
-    FunctionLifecycle(since=V0_1, changed=[], deprecated=None),
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
     signature([literal_arg("value", "bool")], "ColumnExpr"),
     FunctionNullBehavior.NonNullLiteral,
     rewrite_mapping("filter-helper boolean literal expression"),
@@ -213,7 +213,7 @@ pub def bool_lit(value: bool) -> ColumnExpr:
 
 @FUNCTION_REGISTRY.add("always_true", deterministic_spec(
     FunctionClass.Scalar,
-    FunctionLifecycle(since=V0_1, changed=[], deprecated=None),
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
     signature([], "ColumnExpr"),
     FunctionNullBehavior.Predicate,
     rewrite_mapping("boolean true literal predicate"),
@@ -225,7 +225,7 @@ pub def always_true() -> ColumnExpr:
 
 @FUNCTION_REGISTRY.add("always_false", deterministic_spec(
     FunctionClass.Scalar,
-    FunctionLifecycle(since=V0_1, changed=[], deprecated=None),
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
     signature([], "ColumnExpr"),
     FunctionNullBehavior.Predicate,
     rewrite_mapping("boolean false literal predicate"),
@@ -237,7 +237,7 @@ pub def always_false() -> ColumnExpr:
 
 @FUNCTION_REGISTRY.add("eq", deterministic_spec(
     FunctionClass.Scalar,
-    FunctionLifecycle(since=V0_1, changed=[], deprecated=None),
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
     signature([required_arg("left", "ColumnExpr"), required_arg("right", "ColumnExpr")], "ColumnExpr"),
     FunctionNullBehavior.Predicate,
     extension_mapping("equal", EQUAL_FUNCTION_ANCHOR),
@@ -249,7 +249,7 @@ pub def eq(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
 
 @FUNCTION_REGISTRY.add("gt", deterministic_spec(
     FunctionClass.Scalar,
-    FunctionLifecycle(since=V0_1, changed=[], deprecated=None),
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
     signature([required_arg("left", "ColumnExpr"), required_arg("right", "ColumnExpr")], "ColumnExpr"),
     FunctionNullBehavior.Predicate,
     extension_mapping("gt", GT_FUNCTION_ANCHOR),

@@ -92,9 +92,9 @@ pub model FunctionDeprecation:
     pub replacement: str
 
 
-pub static V0_1: FunctionVersion = FunctionVersion(major=0, minor=1)
-pub static V0_2: FunctionVersion = FunctionVersion(major=0, minor=2)
-pub static V0_3: FunctionVersion = FunctionVersion(major=0, minor=3)
+pub const v0_1: FunctionVersion = FunctionVersion(major=0, minor=1)
+pub const v0_2: FunctionVersion = FunctionVersion(major=0, minor=2)
+pub const v0_3: FunctionVersion = FunctionVersion(major=0, minor=3)
 
 
 @derive(Clone)

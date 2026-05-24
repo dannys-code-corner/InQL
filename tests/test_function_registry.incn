@@ -29,7 +29,7 @@ from function_registry import (
     FunctionNullBehavior,
     SubstraitMappingKind,
     function_ref_for,
-    V0_1,
+    v0_1,
 )
 from projection_builders import ColumnExprKind, column_expr_kind
 from substrait.extensions import (
@@ -123,8 +123,8 @@ def test_function_registry__lifecycle_metadata_is_versioned() -> None:
     # -- Act / Assert --
     assert len(entries) == 17, "lifecycle fixture should cover the current registry surface"
     for entry in entries:
-        assert entry.lifecycle.since.major == V0_1.major, f"{entry.function_ref} should expose its introduction major version"
-        assert entry.lifecycle.since.minor == V0_1.minor, f"{entry.function_ref} should expose its introduction minor version"
+        assert entry.lifecycle.since.major == v0_1.major, f"{entry.function_ref} should expose its introduction major version"
+        assert entry.lifecycle.since.minor == v0_1.minor, f"{entry.function_ref} should expose its introduction minor version"
         assert len(entry.lifecycle.changed) == 0, f"{entry.function_ref} should have no user-visible changes yet"
         _assert_not_deprecated(entry)
 

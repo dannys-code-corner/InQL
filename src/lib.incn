@@ -76,9 +76,9 @@ pub from function_registry import (
     required_arg,
     rewrite_mapping,
     signature,
-    V0_1,
-    V0_2,
-    V0_3,
+    v0_1,
+    v0_2,
+    v0_3,
 )
 pub from backends import BackendKind, DataFusion, TableSource, csv_source, parquet_source
 pub from metadata import inql_version
