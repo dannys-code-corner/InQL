@@ -1,6 +1,6 @@
 # InQL RFC 014: Function registry and catalog governance
 
-- **Status:** In Progress
+- **Status:** Implemented
 - **Created:** 2026-04-27
 - **Author(s):** Danny Meijer (@dannymeijer)
 - **Related:**
@@ -22,7 +22,7 @@
 - **Issue:** [InQL #31](https://github.com/dannys-code-corner/InQL/issues/31)
 - **RFC PR:** —
 - **Written against:** Incan v0.2
-- **Shipped in:** —
+- **Shipped in:** v0.1
 
 ## Summary
 
