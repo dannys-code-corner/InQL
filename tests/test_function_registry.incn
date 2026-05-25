@@ -3,6 +3,7 @@
 from std.testing import fail_t
 from aggregate_builders import AggregateKind
 from functions import (
+    abs,
     add,
     always_false,
     always_true,
@@ -10,20 +11,24 @@ from functions import (
     asc,
     asc_nulls_first,
     asc_nulls_last,
+    avg,
     between,
     bool_expr,
     bool_lit,
     case_when,
     cast,
+    ceil,
     col,
     coalesce,
     count,
+    count_expr,
     desc,
     desc_nulls_first,
     desc_nulls_last,
     div,
     eq,
     equal_null,
+    floor,
     float_expr,
     function_registry_canonical_names,
     function_registry_entries,
@@ -43,6 +48,8 @@ from functions import (
     lit,
     lt,
     lte,
+    max,
+    min,
     modulo,
     mul,
     ne,
@@ -51,6 +58,7 @@ from functions import (
     nullif,
     or_,
     registered_substrait_mapped_function_refs,
+    round,
     str_expr,
     str_lit,
     sub,
@@ -60,21 +68,37 @@ from functions import (
 from function_registry import (
     FunctionAliasPolicy,
     FunctionClass,
+    FunctionDeterminism,
+    FunctionErrorBehavior,
+    FunctionLifecycle,
+    FunctionPolicyCategory,
+    FunctionRegistry,
     FunctionRegistryEntry,
     FunctionNullBehavior,
     SubstraitMappingKind,
+    core_function_namespace,
+    deterministic_spec,
+    extension_only_spec,
+    extension_mapping,
     function_ref_for,
+    namespaced_function_ref,
+    rejected_function_policy,
+    rewrite_mapping,
     v0_1,
 )
 from projection_builders import ColumnExprKind, column_expr_kind
 from substrait.function_extensions import (
+    ABS_FUNCTION_ANCHOR,
     ADD_FUNCTION_ANCHOR,
     AND_FUNCTION_ANCHOR,
+    AVG_FUNCTION_ANCHOR,
     BETWEEN_FUNCTION_ANCHOR,
+    CEIL_FUNCTION_ANCHOR,
     COALESCE_FUNCTION_ANCHOR,
     COUNT_FUNCTION_ANCHOR,
     DIVIDE_FUNCTION_ANCHOR,
     EQUAL_FUNCTION_ANCHOR,
+    FLOOR_FUNCTION_ANCHOR,
     GT_FUNCTION_ANCHOR,
     GTE_FUNCTION_ANCHOR,
     IS_NAN_FUNCTION_ANCHOR,
@@ -83,6 +107,8 @@ from substrait.function_extensions import (
     IS_NULL_FUNCTION_ANCHOR,
     LT_FUNCTION_ANCHOR,
     LTE_FUNCTION_ANCHOR,
+    MAX_FUNCTION_ANCHOR,
+    MIN_FUNCTION_ANCHOR,
     MODULUS_FUNCTION_ANCHOR,
     MULTIPLY_FUNCTION_ANCHOR,
     NEGATE_FUNCTION_ANCHOR,
@@ -90,6 +116,7 @@ from substrait.function_extensions import (
     NOT_FUNCTION_ANCHOR,
     NULLIF_FUNCTION_ANCHOR,
     OR_FUNCTION_ANCHOR,
+    ROUND_FUNCTION_ANCHOR,
     SUBTRACT_FUNCTION_ANCHOR,
     SUM_FUNCTION_ANCHOR,
     function_extension_uri,
@@ -120,14 +147,43 @@ def _entry_by_name_or_fail(canonical_name: str) -> FunctionRegistryEntry:
         None => return fail_t("missing function registry entry by name")
 
 
-def _expected_rfc015_registry_names() -> list[str]:
-    """Return the expected registered public helper names after RFC 015."""
-    return ["col", "lit", "sum", "count", "int_expr", "float_expr", "str_expr", "bool_expr", "add", "mul", "int_lit", "str_lit", "bool_lit", "always_true", "always_false", "eq", "gt", "cast", "try_cast", "ne", "lt", "lte", "gte", "equal_null", "and_", "or_", "not_", "is_null", "is_not_null", "is_nan", "is_not_nan", "sub", "div", "mod", "neg", "coalesce", "nullif", "case_when", "in_", "between", "asc", "desc", "asc_nulls_first", "asc_nulls_last", "desc_nulls_first", "desc_nulls_last"]
+def _local_entry_or_fail(registry: FunctionRegistry, function_ref: str) -> FunctionRegistryEntry:
+    """Return one entry from a local registry fixture or fail the test."""
+    lookup_ref = f"{function_ref}"
+    match registry.entry(lookup_ref):
+        Some(entry) => return entry
+        None => return fail_t("missing local function registry entry")
+
+
+def _local_entry_by_name_or_fail(registry: FunctionRegistry, canonical_name: str) -> FunctionRegistryEntry:
+    """Return one core-scoped local registry entry by canonical name or fail the test."""
+    lookup_name = f"{canonical_name}"
+    match registry.entry_by_name(lookup_name):
+        Some(entry) => return entry
+        None => return fail_t("missing local core function registry entry by name")
+
+
+def _local_entry_by_namespace_and_name_or_fail(
+    registry: FunctionRegistry,
+    namespace: str,
+    canonical_name: str,
+) -> FunctionRegistryEntry:
+    """Return one namespace-scoped local registry entry by canonical name or fail the test."""
+    lookup_namespace = f"{namespace}"
+    lookup_name = f"{canonical_name}"
+    match registry.entry_by_namespace_and_name(lookup_namespace, lookup_name):
+        Some(entry) => return entry
+        None => return fail_t("missing local namespaced function registry entry")
+
+
+def _expected_registry_names() -> list[str]:
+    """Return the expected registered public helper names."""
+    return ["col", "lit", "sum", "count", "count_expr", "avg", "min", "max", "int_expr", "float_expr", "str_expr", "bool_expr", "add", "mul", "int_lit", "str_lit", "bool_lit", "always_true", "always_false", "eq", "gt", "cast", "try_cast", "ne", "lt", "lte", "gte", "equal_null", "and_", "or_", "not_", "is_null", "is_not_null", "is_nan", "is_not_nan", "sub", "div", "mod", "neg", "coalesce", "nullif", "case_when", "in_", "between", "asc", "desc", "asc_nulls_first", "asc_nulls_last", "desc_nulls_first", "desc_nulls_last", "abs", "ceil", "floor", "round"]
 
 
 def _expected_substrait_mapped_names() -> list[str]:
     """Return helpers with concrete Substrait extension-function mappings."""
-    return ["sum", "count", "add", "mul", "eq", "gt", "ne", "lt", "lte", "gte", "equal_null", "and_", "or_", "not_", "is_null", "is_not_null", "is_nan", "sub", "div", "mod", "neg", "coalesce", "nullif", "between"]
+    return ["sum", "count", "count_expr", "avg", "min", "max", "add", "mul", "eq", "gt", "ne", "lt", "lte", "gte", "equal_null", "and_", "or_", "not_", "is_null", "is_not_null", "is_nan", "sub", "div", "mod", "neg", "coalesce", "nullif", "between", "abs", "ceil", "floor", "round"]
 
 
 def _exercise_current_public_helpers() -> None:
@@ -146,6 +202,10 @@ def _exercise_current_public_helpers() -> None:
     always_false()
     sum(amount)
     count()
+    count_expr(status)
+    avg(amount)
+    min(amount)
+    max(amount)
     add(amount, lit(1))
     mul(amount, int_lit(2))
     eq(status, str_lit("paid"))
@@ -179,6 +239,10 @@ def _exercise_current_public_helpers() -> None:
     asc_nulls_last(amount)
     desc_nulls_first(amount)
     desc_nulls_last(amount)
+    abs(amount)
+    ceil(amount)
+    floor(amount)
+    round(amount)
     return
 
 
@@ -237,7 +301,7 @@ def test_function_registry__covers_current_public_helpers() -> None:
     """Assert that RFC 015 registry metadata covers the current public helper surface."""
     # -- Arrange --
     _exercise_current_public_helpers()
-    expected_names = _expected_rfc015_registry_names()
+    expected_names = _expected_registry_names()
 
     # -- Act --
     entry_count = function_registry_entry_count()
@@ -256,7 +320,7 @@ def test_function_registry__lifecycle_metadata_is_versioned() -> None:
     entries = function_registry_entries()
 
     # -- Act / Assert --
-    assert len(entries) == len(_expected_rfc015_registry_names()), "lifecycle fixture should cover the current registry surface"
+    assert len(entries) == len(_expected_registry_names()), "lifecycle fixture should cover the current registry surface"
     for entry in entries:
         assert entry.lifecycle.since.major == v0_1.major, f"{entry.function_ref} should expose its introduction major version"
         assert entry.lifecycle.since.minor == v0_1.minor, f"{entry.function_ref} should expose its introduction minor version"
@@ -283,6 +347,108 @@ def test_function_registry__lookup_exposes_canonical_metadata() -> None:
     assert count_entry.function_class == FunctionClass.Aggregate, "count should be classified as aggregate"
 
 
+def test_function_registry__core_helpers_expose_portable_policy_metadata() -> None:
+    """Assert current helper entries distinguish portability policy from semantic function class."""
+    # -- Arrange --
+    _exercise_current_public_helpers()
+    entries = function_registry_entries()
+
+    # -- Act / Assert --
+    for entry in entries:
+        assert entry.namespace == core_function_namespace(), f"{entry.function_ref} should live in the core function namespace"
+        if entry.canonical_name == "count_expr":
+            assert entry.policy_category == FunctionPolicyCategory.CompatibilityAlias, "count_expr should be marked as a compatibility helper"
+            assert entry.alias_policy == FunctionAliasPolicy.OptInCompatibility, "compatibility helpers should be opt-in by policy"
+            continue
+        assert entry.policy_category == FunctionPolicyCategory.PortableCore, f"{entry.function_ref} should be portable core"
+
+
+def test_function_registry__extension_policy_is_separate_from_scalar_class() -> None:
+    """Assert extension-only functions can be scalar while remaining explicitly namespaced."""
+    # -- Arrange --
+    mut registry = FunctionRegistry.new()
+    extension_namespace = "inql_ext.geo"
+
+    # -- Act --
+    registry._add_entry(
+        "st_srid",
+        extension_only_spec(
+            extension_namespace,
+            FunctionClass.Scalar,
+            FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+            FunctionDeterminism.Deterministic,
+            FunctionNullBehavior.DependsOnInputs,
+            FunctionErrorBehavior.Typechecked,
+            extension_mapping("st_srid", 9000),
+        ),
+    )
+    extension_entry = _local_entry_or_fail(registry, namespaced_function_ref(extension_namespace, "st_srid"))
+
+    # -- Assert --
+    assert extension_entry.namespace == extension_namespace, "extension-only entries should preserve explicit namespace"
+    assert extension_entry.function_ref == "inql_ext.geo.st_srid", "extension-only entries should derive namespaced function refs"
+    assert extension_entry.policy_category == FunctionPolicyCategory.ExtensionOnly, "extension-only entries should expose policy category"
+    assert extension_entry.function_class == FunctionClass.Scalar, "extension-only policy should not replace semantic function class"
+    assert extension_entry.substrait.kind == SubstraitMappingKind.ExtensionFunction, "extension-only entries may declare Substrait extension mappings"
+
+
+def test_function_registry__canonical_name_lookup_stays_core_scoped() -> None:
+    """Assert explicit namespaces keep extension names from shadowing portable core names."""
+    # -- Arrange --
+    mut registry = FunctionRegistry.new()
+    extension_namespace = "inql_ext.crypto"
+
+    # -- Act --
+    registry._add_entry(
+        "hash",
+        deterministic_spec(
+            FunctionClass.Scalar,
+            FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+            FunctionNullBehavior.DependsOnInputs,
+            rewrite_mapping("portable hash fixture"),
+        ),
+    )
+    registry._add_entry(
+        "hash",
+        extension_only_spec(
+            extension_namespace,
+            FunctionClass.Scalar,
+            FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+            FunctionDeterminism.Deterministic,
+            FunctionNullBehavior.DependsOnInputs,
+            FunctionErrorBehavior.Typechecked,
+            extension_mapping("hash", 9001),
+        ),
+    )
+
+    core_entry = _local_entry_by_name_or_fail(registry, "hash")
+    extension_entry = _local_entry_by_namespace_and_name_or_fail(registry, extension_namespace, "hash")
+
+    # -- Assert --
+    assert core_entry.function_ref == function_ref_for("hash"), "canonical name lookup should use the core function reference"
+    assert core_entry.namespace == core_function_namespace(), "canonical name lookup should keep resolving core names"
+    assert core_entry.policy_category == FunctionPolicyCategory.PortableCore, "core-scoped lookup should return the portable core function"
+    assert extension_entry.function_ref == namespaced_function_ref(extension_namespace, "hash"), "namespace-qualified lookup should use the extension function reference"
+    assert extension_entry.namespace == extension_namespace, "namespace-qualified lookup should still find the extension entry"
+    assert extension_entry.policy_category == FunctionPolicyCategory.ExtensionOnly, "extension entry should keep its extension-only policy"
+
+
+def test_function_registry__rejected_compatibility_requests_are_metadata_only() -> None:
+    """Assert rejected requests are documented metadata, not fake function entries."""
+    # -- Arrange / Act --
+    rejection = rejected_function_policy(
+        "spark_partition_id",
+        "physical Spark partition ids are not portable data logic",
+        "",
+    )
+
+    # -- Assert --
+    assert rejection.policy_category == FunctionPolicyCategory.Rejected, "rejected requests should expose the rejected policy category"
+    assert rejection.requested_name == "spark_partition_id", "rejected metadata should preserve the requested compatibility name"
+    assert rejection.reason == "physical Spark partition ids are not portable data logic", "rejected metadata should preserve the policy reason"
+    assert rejection.alternative == "", "rejected metadata may omit an alternative when none exists"
+
+
 def test_function_registry__substrait_extension_mappings_are_structured() -> None:
     """Assert Substrait extension-backed helpers carry stable mapping facts."""
     # -- Arrange --
@@ -297,6 +463,10 @@ def test_function_registry__substrait_extension_mappings_are_structured() -> Non
         assert _contains_text(mapped_refs, function_ref_for(canonical_name)), "mapped helper should be in the Substrait extension mapping set"
     _assert_extension_mapping("sum", "sum", SUM_FUNCTION_ANCHOR)
     _assert_extension_mapping("count", "count", COUNT_FUNCTION_ANCHOR)
+    _assert_extension_mapping("count_expr", "count", COUNT_FUNCTION_ANCHOR)
+    _assert_extension_mapping("avg", "avg", AVG_FUNCTION_ANCHOR)
+    _assert_extension_mapping("min", "min", MIN_FUNCTION_ANCHOR)
+    _assert_extension_mapping("max", "max", MAX_FUNCTION_ANCHOR)
     _assert_extension_mapping("add", "add", ADD_FUNCTION_ANCHOR)
     _assert_extension_mapping("mul", "multiply", MULTIPLY_FUNCTION_ANCHOR)
     _assert_extension_mapping("eq", "equal", EQUAL_FUNCTION_ANCHOR)
@@ -319,6 +489,10 @@ def test_function_registry__substrait_extension_mappings_are_structured() -> Non
     _assert_extension_mapping("coalesce", "coalesce", COALESCE_FUNCTION_ANCHOR)
     _assert_extension_mapping("nullif", "nullif", NULLIF_FUNCTION_ANCHOR)
     _assert_extension_mapping("between", "between", BETWEEN_FUNCTION_ANCHOR)
+    _assert_extension_mapping("abs", "abs", ABS_FUNCTION_ANCHOR)
+    _assert_extension_mapping("ceil", "ceil", CEIL_FUNCTION_ANCHOR)
+    _assert_extension_mapping("floor", "floor", FLOOR_FUNCTION_ANCHOR)
+    _assert_extension_mapping("round", "round", ROUND_FUNCTION_ANCHOR)
 
 
 def test_function_registry__ordering_helpers_are_contextual_sort_fields() -> None:
@@ -381,25 +555,35 @@ def test_function_registry__public_helpers_preserve_existing_behavior() -> None:
     # -- Act --
     sum_measure = sum(amount)
     count_measure = count()
+    expression_count_measure = count_expr(status)
+    avg_measure = avg(amount)
+    min_measure = min(amount)
+    max_measure = max(amount)
     add_expr = add(amount, lit(7))
     eq_expr = eq(status, str_lit("paid"))
     gt_expr = gt(amount, int_lit(10))
-    core_exprs = [and_(eq_expr, gt_expr), asc(amount), asc_nulls_first(amount), asc_nulls_last(amount), between(
+    core_exprs = [abs(amount), and_(eq_expr, gt_expr), asc(amount), asc_nulls_first(amount), asc_nulls_last(amount), between(
         amount,
         int_lit(1),
         int_lit(10),
-    ), bool_expr(true), coalesce([status, str_expr("unknown")]), desc(amount), desc_nulls_first(amount), desc_nulls_last(
+    ), bool_expr(true), ceil(amount), coalesce([status, str_expr("unknown")]), desc(amount), desc_nulls_first(amount), desc_nulls_last(
         amount,
-    ), div(amount, lit(2)), equal_null(status, str_lit("paid")), float_expr(1.5), gte(amount, int_lit(10)), in_(
+    ), div(amount, lit(2)), equal_null(status, str_lit("paid")), float_expr(1.5), floor(amount), gte(amount, int_lit(10)), in_(
         status,
         [str_lit("paid"), str_lit("open")],
-    ), lt(amount, int_lit(10)), lte(amount, int_lit(10)), modulo(amount, lit(2))]
+    ), lt(amount, int_lit(10)), lte(amount, int_lit(10)), modulo(amount, lit(2)), round(amount)]
 
     # -- Assert --
     assert column_expr_kind(amount) == ColumnExprKind.Column, "col should still build a column reference"
     assert column_expr_kind(lit(true)) == ColumnExprKind.BoolLiteral, "lit should still build typed literals"
     assert sum_measure.kind == AggregateKind.Sum, "sum wrapper should preserve aggregate kind"
     assert count_measure.kind == AggregateKind.Count, "count wrapper should preserve aggregate kind"
+    assert not count_measure.has_expr, "count wrapper should preserve argument-free count semantics"
+    assert expression_count_measure.kind == AggregateKind.Count, "count(expr) wrapper should preserve aggregate kind"
+    assert expression_count_measure.has_expr, "count(expr) wrapper should preserve expression-count semantics"
+    assert avg_measure.kind == AggregateKind.Avg, "avg wrapper should preserve aggregate kind"
+    assert min_measure.kind == AggregateKind.Min, "min wrapper should preserve aggregate kind"
+    assert max_measure.kind == AggregateKind.Max, "max wrapper should preserve aggregate kind"
     assert column_expr_kind(add_expr) == ColumnExprKind.ScalarFunction, "add should use the shared scalar function kind"
     assert column_expr_kind(eq_expr) == ColumnExprKind.ScalarFunction, "eq should use the shared scalar function kind"
     assert column_expr_kind(gt_expr) == ColumnExprKind.ScalarFunction, "gt should use the shared scalar function kind"

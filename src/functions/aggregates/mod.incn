@@ -1,4 +1,7 @@
 """Aggregate function helpers."""
 
 pub from functions.aggregates.sum import sum
-pub from functions.aggregates.count import count
+pub from functions.aggregates.count import count, count_expr
+pub from functions.aggregates.avg import avg
+pub from functions.aggregates.min import min
+pub from functions.aggregates.max import max

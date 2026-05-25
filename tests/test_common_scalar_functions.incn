@@ -1,0 +1,32 @@
+"""Test: common scalar helper surface."""
+
+from functions import abs, ceil, col, floor, round
+from function_registry import function_ref_for
+from projection_builders import (
+    ColumnExpr,
+    ColumnExprKind,
+    column_expr_argument_count,
+    column_expr_function_name,
+    column_expr_function_ref,
+    column_expr_kind,
+)
+
+
+def _assert_math_application(expr: ColumnExpr, expected_name: str) -> None:
+    """Assert one math helper uses the shared scalar application node."""
+    assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction, f"{expected_name} should use the scalar function kind"
+    assert column_expr_function_name(expr) == expected_name, f"{expected_name} should preserve its canonical name"
+    assert column_expr_function_ref(expr) == function_ref_for(expected_name), "math helper should preserve its registry function ref"
+    assert column_expr_argument_count(expr) == 1, f"{expected_name} should carry one scalar argument"
+
+
+def test_common_scalar_functions__math_helpers_share_scalar_application_node() -> None:
+    """Assert the first common math slice uses the registry-backed scalar expression model."""
+    # -- Arrange --
+    amount = col("amount")
+
+    # -- Act / Assert --
+    _assert_math_application(abs(amount), "abs")
+    _assert_math_application(ceil(amount), "ceil")
+    _assert_math_application(floor(amount), "floor")
+    _assert_math_application(round(amount), "round")

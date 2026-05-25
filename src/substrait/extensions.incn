@@ -236,7 +236,10 @@ def _aggregate_extension_anchors_for_rel(rel: Rel) -> list[u32]:
     """Collect aggregate-function anchors used by one relation subtree in stable declaration order."""
     mut anchors: list[u32] = []
     for spec in _function_extension_specs():
-        if spec.kind == ExtensionFunctionKind.Aggregate and _rel_uses_aggregate_function_anchor(rel.clone(), spec.anchor):
+        if (spec.kind == ExtensionFunctionKind.Aggregate and _rel_uses_aggregate_function_anchor(
+            rel.clone(),
+            spec.anchor,
+        ) and not anchors.contains(spec.anchor)):
             anchors.append(spec.anchor)
     return anchors
 
@@ -250,7 +253,9 @@ def _scalar_extension_anchors_for_rel(rel: Rel) -> list[u32]:
 
     mut anchors: list[u32] = []
     for spec in _function_extension_specs():
-        if spec.kind == ExtensionFunctionKind.Scalar and _rel_uses_scalar_function_anchor(rel.clone(), spec.anchor):
+        if (spec.kind == ExtensionFunctionKind.Scalar and _rel_uses_scalar_function_anchor(rel.clone(), spec.anchor) and not anchors.contains(
+            spec.anchor,
+        )):
             anchors.append(spec.anchor)
     return anchors
 

@@ -2,21 +2,26 @@
 
 from std.testing import fail_t
 from functions import (
+    abs,
     add,
     always_true,
     and_,
     asc,
     asc_nulls_last,
+    avg,
     between,
     case_when,
     cast,
+    ceil,
     col,
     coalesce,
     count,
+    count_expr,
     desc,
     div,
     eq,
     equal_null,
+    floor,
     gt,
     gte,
     in_,
@@ -27,6 +32,8 @@ from functions import (
     lit,
     lt,
     lte,
+    max,
+    min,
     modulo,
     mul,
     ne,
@@ -34,6 +41,7 @@ from functions import (
     not_,
     nullif,
     or_,
+    round,
     sub,
     sum,
     try_cast,
@@ -47,6 +55,7 @@ from substrait.function_extensions import (
     registered_substrait_extension_uris,
 )
 from substrait.inspect import (
+    aggregate_measure_function_names,
     plan_contains_relation_kind,
     plan_has_extension_urn,
     read_kind_name,
@@ -353,41 +362,65 @@ def test_plan__core_scalar_extension_mappings_lower_to_substrait() -> None:
     _assert_scalar_expr_lowers(coalesce([col("status"), lit("unknown")]))
     _assert_scalar_expr_lowers(nullif(col("status"), lit("")))
     _assert_scalar_expr_lowers(between(col("amount"), lit(1), lit(10)))
+    _assert_scalar_expr_lowers(abs(col("amount")))
+    _assert_scalar_expr_lowers(ceil(div(col("amount"), lit(4.0))))
+    _assert_scalar_expr_lowers(floor(div(col("amount"), lit(4.0))))
+    _assert_scalar_expr_lowers(round(div(col("amount"), lit(4.0))))
 
 
 def test_plan__aggregate_rel_surfaces_group_and_measure_output_columns() -> None:
     # -- Arrange --
     _register_orders_schema()
     base = read_named_table_rel("orders")
-    aggregated = aggregate_rel(base, [col("id")], [sum(col("id")), count()])
-    plan = plan_from_root_relation(aggregated, ["id", "sum_id", "count"])
+    aggregated = aggregate_rel(
+        base,
+        [col("id")],
+        [sum(col("id")), count(), count_expr(col("id")), avg(col("id")), min(col("id")), max(col("id"))],
+    )
+    plan = plan_from_root_relation(aggregated, ["id", "sum_id", "count", "count_id", "avg_id", "min_id", "max_id"])
 
     # -- Act --
     output_columns = relation_output_columns(aggregated)
+    aggregate_functions = aggregate_measure_function_names(aggregated)
 
     # -- Assert --
     assert relation_kind_name(aggregated) == "AggregateRel", "aggregate lowering should emit AggregateRel"
     assert plan_has_extension_urn(plan, registered_substrait_extension_uris()[0]), "aggregate function plans should register the shared function extension URN"
-    assert len(output_columns) == 3, "aggregate output columns should include group key plus measure outputs"
+    assert len(output_columns) == 7, "aggregate output columns should include group key plus measure outputs"
     assert output_columns[0] == "id", "group key should remain the first aggregate output column"
     assert output_columns[1] == "sum_id", "sum measure output columns should use the stable prefixed name"
     assert output_columns[2] == "count", "count measure output columns should use the stable count name"
+    assert output_columns[3] == "count_id", "expression-count output columns should include the argument name"
+    assert output_columns[4] == "avg_id", "avg measure output columns should use the stable prefixed name"
+    assert output_columns[5] == "min_id", "min measure output columns should use the stable prefixed name"
+    assert output_columns[6] == "max_id", "max measure output columns should use the stable prefixed name"
+    assert aggregate_functions == ["sum", "count", "count", "avg", "min", "max"], "all core aggregate helpers should lower to registered aggregate functions"
 
 
 def test_plan__aggregate_rel_accepts_scalar_group_and_measure_expressions() -> None:
     # -- Arrange --
     _register_orders_schema()
     base = read_named_table_rel("orders")
-    aggregated = aggregate_rel(base, [add(col("id"), lit(1))], [sum(add(col("id"), lit(2)))])
+    aggregated = aggregate_rel(
+        base,
+        [add(col("id"), lit(1))],
+        [sum(add(col("id"), lit(2))), count_expr(add(col("id"), lit(3))), avg(add(col("id"), lit(4))), min(
+            add(col("id"), lit(5)),
+        ), max(add(col("id"), lit(6)))],
+    )
 
     # -- Act --
     output_columns = relation_output_columns(aggregated)
 
     # -- Assert --
     assert relation_kind_name(aggregated) == "AggregateRel", "scalar aggregate lowering should emit AggregateRel"
-    assert len(output_columns) == 2, "scalar aggregate output should include computed group key and measure"
+    assert len(output_columns) == 6, "scalar aggregate output should include computed group key and measures"
     assert output_columns[0] == "group_0", "computed grouping expressions should get stable fallback names"
     assert output_columns[1] == "sum", "computed aggregate measures should use stable fallback names"
+    assert output_columns[2] == "count", "computed expression-count measures should use stable fallback names"
+    assert output_columns[3] == "avg", "computed avg measures should use stable fallback names"
+    assert output_columns[4] == "min", "computed min measures should use stable fallback names"
+    assert output_columns[5] == "max", "computed max measures should use stable fallback names"
 
 
 def test_plan__set_rel_uses_operation_enum() -> None:

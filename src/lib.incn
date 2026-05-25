@@ -32,6 +32,7 @@ pub from functions import (
     function_registry_entries,
     function_registry_entry,
     function_registry_entry_by_name,
+    function_registry_entry_by_namespace_and_name,
     function_registry_entry_count,
     function_registry_function_refs,
     registered_substrait_mapped_function_refs,
@@ -47,8 +48,15 @@ pub from functions.literals.int_lit import int_lit
 pub from functions.literals.lit import lit
 pub from functions.literals.str_expr import str_expr
 pub from functions.literals.str_lit import str_lit
-pub from functions.aggregates.count import count
+pub from functions.aggregates.count import count, count_expr
 pub from functions.aggregates.sum import sum
+pub from functions.aggregates.avg import avg
+pub from functions.aggregates.min import min
+pub from functions.aggregates.max import max
+pub from functions.math.abs import abs
+pub from functions.math.ceil import ceil
+pub from functions.math.floor import floor
+pub from functions.math.round import round
 pub from functions.operators.add import add
 pub from functions.operators.and_ import and_
 pub from functions.operators.div import div
@@ -92,15 +100,24 @@ pub from function_registry import (
     FunctionErrorBehavior,
     FunctionLifecycle,
     FunctionNullBehavior,
+    FunctionPolicyCategory,
     FunctionRegistry,
     FunctionRegistryEntry,
     FunctionSpec,
     FunctionVersion,
+    RejectedFunctionPolicy,
     SubstraitMapping,
     SubstraitMappingKind,
+    compatibility_alias_spec,
+    core_function_namespace,
     deterministic_spec,
+    engine_specific_spec,
+    extension_only_spec,
     extension_mapping,
     function_ref_for,
+    function_policy_spec,
+    namespaced_function_ref,
+    rejected_function_policy,
     rewrite_mapping,
     sort_field_mapping,
     structural_mapping,
@@ -166,6 +183,7 @@ pub from substrait.plans import (
     substrait_release_tag,
 )
 pub from substrait.inspect import (
+    aggregate_measure_function_names,
     plan_contains_relation_kind,
     plan_has_extension_urn,
     read_kind_name,

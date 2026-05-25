@@ -47,6 +47,13 @@ pub const NEGATE_FUNCTION_ANCHOR: u32 = 20
 pub const COALESCE_FUNCTION_ANCHOR: u32 = 21
 pub const NULLIF_FUNCTION_ANCHOR: u32 = 22
 pub const BETWEEN_FUNCTION_ANCHOR: u32 = 23
+pub const AVG_FUNCTION_ANCHOR: u32 = 24
+pub const MIN_FUNCTION_ANCHOR: u32 = 25
+pub const MAX_FUNCTION_ANCHOR: u32 = 26
+pub const ABS_FUNCTION_ANCHOR: u32 = 27
+pub const CEIL_FUNCTION_ANCHOR: u32 = 28
+pub const FLOOR_FUNCTION_ANCHOR: u32 = 29
+pub const ROUND_FUNCTION_ANCHOR: u32 = 30
 const FUNCTION_EXTENSION_URI: str = "https://inql.io/extensions/v0.1/functions.yaml"
 const EXPLODE_EXTENSION_URI: str = "https://inql.io/extensions/v0.1/unnest.yaml#explode"
 

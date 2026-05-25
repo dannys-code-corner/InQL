@@ -1,6 +1,26 @@
 """End-to-end Session projection execution tests over the DataFusion backend."""
 
-from functions import add, case_when, cast, coalesce, col, desc, div, gt, lit, modulo, mul, neg, nullif, sub, try_cast
+from functions import (
+    abs,
+    add,
+    case_when,
+    cast,
+    ceil,
+    coalesce,
+    col,
+    desc,
+    div,
+    floor,
+    gt,
+    lit,
+    modulo,
+    mul,
+    neg,
+    nullif,
+    round,
+    sub,
+    try_cast,
+)
 from dataset import DataFrame, LazyFrame
 from session import Session, SessionErrorKind
 from std.testing import assert_is_err, assert_is_ok, fail_t
@@ -129,6 +149,40 @@ def test_session_projection__collect_executes_core_scalar_projection_functions()
     assert payload.contains("amount_text"), "cast projection should materialize its alias"
     assert payload.contains("customer_try_int"), "try_cast projection should materialize its alias"
     assert payload.contains("amount_bucket"), "case_when projection should materialize its alias"
+
+
+def test_session_projection__collect_executes_common_math_scalar_projection_functions() -> None:
+    """collect should execute the first RFC 018 math scalar helpers through DataFusion."""
+    # -- Arrange --
+    mut session = Session.default()
+
+    # -- Act --
+    lazy: LazyFrame[AggregateOrder] = assert_is_ok(
+        session.read_csv("aggregate_orders", AGGREGATE_ORDERS_CSV_FIXTURE),
+        "aggregate orders fixture should load",
+    )
+    projected = lazy.with_column("abs_delta", abs(sub(lit(5), col("amount")))).with_column(
+        "ceil_quarter",
+        ceil(div(col("amount"), lit(4.0))),
+    ).with_column("floor_quarter", floor(div(col("amount"), lit(4.0)))).with_column(
+        "round_quarter",
+        round(div(col("amount"), lit(4.0))),
+    )
+    df = _collect_or_fail(session, projected)
+    payload = df.preview_text()
+    resolved = df.resolved_columns()
+
+    # -- Assert --
+    assert df.row_count() == 3, "math scalar projections should preserve the input rows"
+    assert len(resolved) == 6, "projection should expose all appended math outputs"
+    assert payload.contains("abs_delta"), "abs projection should materialize its alias"
+    assert payload.contains("ceil_quarter"), "ceil projection should materialize its alias"
+    assert payload.contains("floor_quarter"), "floor projection should materialize its alias"
+    assert payload.contains("round_quarter"), "round projection should materialize its alias"
+    assert payload.contains("10"), "abs projection should include abs(5 - 15)"
+    assert payload.contains("4"), "ceil projection should include ceil(15 / 4.0)"
+    assert payload.contains("1"), "floor projection should include floor(7 / 4.0)"
+    assert payload.contains("3"), "round projection should include round(10 / 4.0)"
 
 
 def test_session_projection__collect_executes_identity_select() -> None:

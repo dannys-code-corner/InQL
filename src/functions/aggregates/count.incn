@@ -1,19 +1,26 @@
 """
 Count aggregate helper.
 
-`count` is registered as a zero-argument aggregate with a concrete Substrait extension mapping.
+`count` is registered as an aggregate with a concrete Substrait extension mapping. `count()` counts rows. `count_expr`
+is a compatibility helper for expression counts until the decorated public helper surface can expose `count(expr)`
+directly.
 """
 
-from aggregate_builders import AggregateKind, AggregateMeasure, count as count_builder
+from aggregate_builders import AggregateKind, AggregateMeasure, count as count_builder, count_expr as count_expr_builder
 from function_registry import (
     FunctionClass,
+    FunctionDeterminism,
+    FunctionErrorBehavior,
     FunctionLifecycle,
     FunctionNullBehavior,
+    compatibility_alias_spec,
+    core_function_namespace,
     deterministic_spec,
     extension_mapping,
     v0_1,
 )
 from functions.registry import function_registry
+from projection_builders import ColumnExpr, column_expr_name
 from substrait.function_extensions import COUNT_FUNCTION_ANCHOR
 
 
@@ -33,7 +40,40 @@ pub def count() -> AggregateMeasure:
     return count_builder()
 
 
+@function_registry.add("count_expr", compatibility_alias_spec(
+    core_function_namespace(),
+    FunctionClass.Aggregate,
+    ["count"],
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionDeterminism.Deterministic,
+    FunctionNullBehavior.NullSkippingAggregate,
+    FunctionErrorBehavior.Typechecked,
+    extension_mapping("count", COUNT_FUNCTION_ANCHOR),
+))
+pub def count_expr(expr: ColumnExpr) -> AggregateMeasure:
+    """
+    Build a count aggregate measure over non-null expression values.
+
+    Examples:
+        populated_codes = count_expr(col("discount_code"))
+
+    Parameters:
+        expr: Expression whose non-null values should be counted.
+    """
+    return count_expr_builder(expr)
+
+
 module tests:
+    from projection_builders import col
     def test_count_builds_count_aggregate_measure() -> None:
         measure = count()
         assert measure.kind == AggregateKind.Count
+        assert measure.canonical_name == "count"
+        assert not measure.has_expr
+        assert column_expr_name(measure.expr) == ""
+    def test_count_with_expression_builds_count_aggregate_measure() -> None:
+        measure = count_expr(col("amount"))
+        assert measure.kind == AggregateKind.Count
+        assert measure.canonical_name == "count_expr"
+        assert measure.has_expr
+        assert column_expr_name(measure.expr) == "amount"

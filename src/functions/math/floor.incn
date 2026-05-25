@@ -1,0 +1,51 @@
+"""
+Floor math helper.
+
+`floor` is a registry-backed scalar application for the common numeric function catalog.
+"""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import function_registry, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import FLOOR_FUNCTION_ANCHOR
+
+
+@function_registry.add("floor", deterministic_spec(
+    FunctionClass.Scalar,
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionNullBehavior.DependsOnInputs,
+    extension_mapping("floor", FLOOR_FUNCTION_ANCHOR),
+))
+pub def floor(expr: ColumnExpr) -> ColumnExpr:
+    """
+    Build a floor expression.
+
+    Examples:
+        previous_whole_amount = floor(col("amount"))
+
+    Parameters:
+        expr: Numeric expression to round toward negative infinity.
+    """
+    return registered_application("floor", [expr])
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        col,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+    )
+    def test_floor_builds_registered_application() -> None:
+        expr = floor(col("amount"))
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "floor"
+        assert column_expr_argument_count(expr) == 1

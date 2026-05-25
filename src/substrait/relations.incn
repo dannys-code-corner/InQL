@@ -44,7 +44,7 @@ from rust::substrait::proto::rel_common import Direct, Emit, EmitKind
 from rust::substrait::proto::set_rel import SetOp
 from rust::substrait::proto::sort_field import SortDirection, SortKind
 from aggregate_builders import AggregateKind, AggregateMeasure
-from function_registry import SubstraitMappingKind
+from function_registry import FunctionClass, SubstraitMappingKind
 from functions.registry import function_registry_entry
 from projection_builders import ColumnExpr, ProjectionAssignment, ScalarFunctionApplicationExpr, col
 from substrait.expr_lowering import (
@@ -57,14 +57,16 @@ from substrait.expr_lowering import (
     string_expr,
 )
 from substrait.errors import SubstraitLoweringError, invalid_scalar_expression
-from substrait.function_extensions import COUNT_FUNCTION_ANCHOR, SUM_FUNCTION_ANCHOR
 from substrait.inspect import relation_output_columns
 from substrait.schema_registry import named_table_base_schema, unknown_named_struct
 
 
 model ResolvedAggregateMeasure:
     kind: AggregateKind
+    function_ref: str
+    canonical_name: str
     expr: Expression
+    has_expr: bool
 
 
 @derive(Clone)
@@ -193,28 +195,50 @@ def _set_operation_from_name(operation: str) -> Result[SubstraitSetOperation, Su
     return Err(invalid_scalar_expression(f"unknown set operation '{operation}'"))
 
 
-def _resolved_measure_to_substrait(measure: ResolvedAggregateMeasure) -> Measure:
+def _resolved_measure_to_substrait(measure: ResolvedAggregateMeasure) -> Result[Measure, SubstraitLoweringError]:
     """Lower one resolved aggregate measure into a Substrait aggregate measure."""
     mut arguments: list[FunctionArgument] = []
-    mut function_reference = COUNT_FUNCTION_ANCHOR
-    if measure.kind == AggregateKind.Sum:
-        function_reference = SUM_FUNCTION_ANCHOR
+    if measure.has_expr:
         arguments = [FunctionArgument(arg_type=Some(ArgType.Value(measure.expr.clone())))]
-    return Measure(
-        measure=Some(
-            AggregateFunction(
-                function_reference=function_reference,
-                arguments=arguments,
-                sorts=[],
-                output_type=None,
-                invocation=AggregationInvocation.All.into(),
-                phase=AggregationPhase.Unspecified.into(),
-                args=[],
-                options=[],
+    return Ok(
+        Measure(
+            measure=Some(
+                AggregateFunction(
+                    function_reference=_aggregate_function_reference(measure)?,
+                    arguments=arguments,
+                    sorts=[],
+                    output_type=None,
+                    invocation=AggregationInvocation.All.into(),
+                    phase=AggregationPhase.Unspecified.into(),
+                    args=[],
+                    options=[],
+                ),
             ),
+            filter=None,
         ),
-        filter=None,
     )
+
+
+def _aggregate_function_reference(measure: ResolvedAggregateMeasure) -> Result[u32, SubstraitLoweringError]:
+    """Resolve one aggregate measure through declaration-side registry metadata."""
+    match function_registry_entry(measure.function_ref):
+        Some(entry) =>
+            if entry.function_class != FunctionClass.Aggregate:
+                return Err(invalid_scalar_expression(f"{entry.function_ref} is not registered as an aggregate function"))
+            if entry.substrait.kind != SubstraitMappingKind.ExtensionFunction:
+                return Err(
+                    invalid_scalar_expression(
+                        f"{entry.function_ref} does not declare a concrete Substrait aggregate mapping",
+                    ),
+                )
+            return Ok(entry.substrait.anchor)
+        None =>
+            return Err(invalid_scalar_expression(f"missing aggregate registry entry for `{measure.canonical_name}`"))
+
+
+def _is_argument_free_count(measure: AggregateMeasure) -> bool:
+    """Return whether one count measure represents `count()` rather than `count(expr)`."""
+    return measure.kind == AggregateKind.Count and not measure.has_expr
 
 
 def _resolved_measure(
@@ -222,9 +246,25 @@ def _resolved_measure(
     input_columns: list[str],
 ) -> Result[ResolvedAggregateMeasure, SubstraitLoweringError]:
     """Resolve one aggregate measure against the current input-column list."""
-    if measure.kind == AggregateKind.Count:
-        return Ok(ResolvedAggregateMeasure(kind=measure.kind, expr=bool_expr(true)))
-    return Ok(ResolvedAggregateMeasure(kind=measure.kind, expr=scalar_expr(input_columns, measure.expr)?))
+    if _is_argument_free_count(measure):
+        return Ok(
+            ResolvedAggregateMeasure(
+                kind=measure.kind,
+                function_ref=measure.function_ref,
+                canonical_name=measure.canonical_name,
+                expr=bool_expr(true),
+                has_expr=false,
+            ),
+        )
+    return Ok(
+        ResolvedAggregateMeasure(
+            kind=measure.kind,
+            function_ref=measure.function_ref,
+            canonical_name=measure.canonical_name,
+            expr=scalar_expr(input_columns, measure.expr)?,
+            has_expr=true,
+        ),
+    )
 
 
 def _lowered_rel_or_raise(result: Result[Rel, SubstraitLoweringError]) -> Rel:
@@ -491,7 +531,7 @@ pub def try_aggregate_rel_of_columns(
         grouping_expressions=grouping_expr_copies,
         expression_references=grouping_reference_indexes(len(grouping_exprs)),
     )]
-    lowered_measures = [_resolved_measure_to_substrait(_resolved_measure(measure, input_columns)?) for measure in measures]
+    lowered_measures = [_resolved_measure_to_substrait(_resolved_measure(measure, input_columns)?)? for measure in measures]
     return Ok(
         _rel_aggregate(
             AggregateRel(

@@ -6,6 +6,7 @@ Today they provide a library-owned way to express grouping columns and aggregate
 typechecker changes in the Incan compiler.
 """
 
+from function_registry import function_ref_for
 from projection_builders import ColumnExpr, col as col_expr
 
 
@@ -15,6 +16,9 @@ pub enum AggregateKind(str):
 
     Sum = "sum"
     Count = "count"
+    Avg = "avg"
+    Min = "min"
+    Max = "max"
 
 
 @derive(Clone)
@@ -22,7 +26,21 @@ pub model AggregateMeasure:
     """Aggregate measure description carried through dataset, Prism, and Substrait boundaries."""
 
     pub kind: AggregateKind
+    pub function_ref: str
+    pub canonical_name: str
     pub expr: ColumnExpr
+    pub has_expr: bool
+
+
+def _aggregate_measure(canonical_name: str, kind: AggregateKind, expr: ColumnExpr, has_expr: bool) -> AggregateMeasure:
+    """Build one registry-backed aggregate measure description."""
+    return AggregateMeasure(
+        kind=kind,
+        function_ref=function_ref_for(canonical_name),
+        canonical_name=canonical_name,
+        expr=expr,
+        has_expr=has_expr,
+    )
 
 
 pub def col(name: str) -> ColumnExpr:
@@ -32,9 +50,29 @@ pub def col(name: str) -> ColumnExpr:
 
 pub def sum(expr: ColumnExpr) -> AggregateMeasure:
     """Build one `sum` aggregate measure over a scalar expression."""
-    return AggregateMeasure(kind=AggregateKind.Sum, expr=expr)
+    return _aggregate_measure("sum", AggregateKind.Sum, expr, true)
 
 
 pub def count() -> AggregateMeasure:
     """Build one zero-argument `count` aggregate measure."""
-    return AggregateMeasure(kind=AggregateKind.Count, expr=col_expr(""))
+    return _aggregate_measure("count", AggregateKind.Count, col_expr(""), false)
+
+
+pub def count_expr(expr: ColumnExpr) -> AggregateMeasure:
+    """Build one expression-count aggregate measure."""
+    return _aggregate_measure("count_expr", AggregateKind.Count, expr, true)
+
+
+pub def avg(expr: ColumnExpr) -> AggregateMeasure:
+    """Build one `avg` aggregate measure over a scalar expression."""
+    return _aggregate_measure("avg", AggregateKind.Avg, expr, true)
+
+
+pub def min(expr: ColumnExpr) -> AggregateMeasure:
+    """Build one `min` aggregate measure over a scalar expression."""
+    return _aggregate_measure("min", AggregateKind.Min, expr, true)
+
+
+pub def max(expr: ColumnExpr) -> AggregateMeasure:
+    """Build one `max` aggregate measure over a scalar expression."""
+    return _aggregate_measure("max", AggregateKind.Max, expr, true)

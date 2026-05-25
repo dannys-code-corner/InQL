@@ -1,6 +1,6 @@
 """End-to-end Session aggregate execution tests over the DataFusion backend."""
 
-from functions import col, count, sum
+from functions import avg, col, count, count_expr, max, min, sum
 from dataset import LazyFrame
 from session import Session
 from std.testing import assert_is_ok
@@ -44,6 +44,38 @@ def test_session_aggregates__grouped_collect_executes_sum_and_count() -> None:
     assert payload.contains("7"), "grouped aggregate output should contain the summed amount for customer B"
     assert payload.contains("2"), "grouped aggregate output should contain the row-count for customer A"
     assert payload.contains("1"), "grouped aggregate output should contain the row-count for customer B"
+
+
+def test_session_aggregates__grouped_collect_executes_core_aggregates() -> None:
+    # -- Arrange --
+    mut session = Session.default()
+
+    # -- Act --
+    lazy: LazyFrame[AggregateOrder] = assert_is_ok(
+        session.read_csv("aggregate_orders", AGGREGATE_ORDERS_CSV_FIXTURE),
+        "aggregate orders fixture should load",
+    )
+    grouped = lazy.group_by([col("customer_id")]).agg(
+        [sum(col("amount")), count(), count_expr(col("amount")), avg(col("amount")), min(col("amount")), max(
+            col("amount"),
+        )],
+    )
+    df = assert_is_ok(session.collect(grouped), "mixed grouped aggregate collect should execute")
+    payload = df.preview_text()
+    resolved = df.resolved_columns()
+
+    # -- Assert --
+    assert df.row_count() == 2, "mixed grouped aggregate should produce one row per customer"
+    assert resolved == ["customer_id", "sum_amount", "count", "count_amount", "avg_amount", "min_amount", "max_amount"], "mixed grouped aggregate should expose stable output columns"
+    assert payload.contains("A"), "mixed grouped aggregate output should contain customer A"
+    assert payload.contains("B"), "mixed grouped aggregate output should contain customer B"
+    assert payload.contains("25"), "customer A sum should be materialized"
+    assert payload.contains("12.5"), "customer A average should be materialized"
+    assert payload.contains("10"), "customer A minimum should be materialized"
+    assert payload.contains("15"), "customer A maximum should be materialized"
+    assert payload.contains("7"), "customer B aggregate values should be materialized"
+    assert payload.contains("2"), "customer A count and expression count should be materialized"
+    assert payload.contains("1"), "customer B count and expression count should be materialized"
 
 
 def test_session_aggregates__global_collect_executes_count() -> None:

@@ -19,7 +19,7 @@ from rust::substrait::proto::sort_field import SortDirection, SortKind
 from aggregate_builders import AggregateKind, AggregateMeasure
 from projection_builders import scalar_expr_output_name
 from substrait.expr_lowering import field_index_from_expression, project_output_columns_with_emit
-from substrait.function_extensions import COUNT_FUNCTION_ANCHOR
+from substrait.extensions import aggregate_function_name_from_anchor
 from substrait.schema_registry import named_table_columns, unknown_named_struct
 from substrait.traversal import relation_children
 
@@ -45,7 +45,7 @@ def _set_op_value(value: SetOp) -> RustI32:
 
 def _measure_output_name(measure: AggregateMeasure) -> str:
     """Return the projected output column name for one aggregate measure."""
-    if measure.kind == AggregateKind.Count:
+    if measure.kind == AggregateKind.Count and not measure.has_expr:
         return measure.kind.value()
     return measure.kind.value() + "_" + scalar_expr_output_name(measure.expr, "expr")
 
@@ -87,20 +87,19 @@ def _aggregate_measure_output_name(input_columns: list[str], measure: Measure) -
     """Resolve one aggregate output name from the lowered Substrait aggregate measure payload."""
     match measure.measure:
         Some(agg_fn) =>
-            if agg_fn.function_reference == COUNT_FUNCTION_ANCHOR:
-                return "count"
+            function_name = aggregate_function_name_from_anchor(agg_fn.function_reference)
             if len(agg_fn.arguments) == 0:
-                return "sum"
+                return function_name
             match agg_fn.arguments[0].arg_type:
                 Some(arg_type) =>
                     match arg_type:
                         ArgType.Value(expr) =>
                             field_index = field_index_from_expression(expr)
                             if field_index >= 0 and field_index < len(input_columns):
-                                return "sum_" + input_columns[field_index]
-                            return "sum"
-                        _ => return "sum"
-                _ => return "sum"
+                                return function_name + "_" + input_columns[field_index]
+                            return function_name
+                        _ => return function_name
+                _ => return function_name
         None => return ""
 
 
@@ -186,6 +185,18 @@ def _relation_output_columns(rel: Rel) -> list[str]:
 pub def relation_output_columns(rel: Rel) -> list[str]:
     """Return best-effort logical output columns for one relation subtree."""
     return _relation_output_columns(rel)
+
+
+pub def aggregate_measure_function_names(rel: Rel) -> list[str]:
+    """Return aggregate function names used by a top-level AggregateRel, otherwise empty."""
+    match rel.rel_type:
+        Some(RelType.Aggregate(aggregate_rel)) =>
+            mut names: list[str] = []
+            for measure in aggregate_rel.measures:
+                if let Some(agg_fn) = measure.measure:
+                    names.append(aggregate_function_name_from_anchor(agg_fn.function_reference))
+            return names
+        _ => return []
 
 
 pub def root_rel(plan: Plan) -> Rel:

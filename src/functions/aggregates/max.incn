@@ -1,0 +1,44 @@
+"""
+Maximum aggregate helper.
+
+`max` records its aggregate signature and Substrait extension anchor at the helper declaration site.
+"""
+
+from aggregate_builders import AggregateKind, AggregateMeasure, max as max_builder
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import function_registry
+from projection_builders import ColumnExpr
+from substrait.function_extensions import MAX_FUNCTION_ANCHOR
+
+
+@function_registry.add("max", deterministic_spec(
+    FunctionClass.Aggregate,
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionNullBehavior.NullSkippingAggregate,
+    extension_mapping("max", MAX_FUNCTION_ANCHOR),
+))
+pub def max(expr: ColumnExpr) -> AggregateMeasure:
+    """
+    Build a maximum aggregate measure.
+
+    Examples:
+        last_created = max(col("created_at"))
+
+    Parameters:
+        expr: Orderable expression to aggregate.
+    """
+    return max_builder(expr)
+
+
+module tests:
+    from projection_builders import col
+    def test_max_builds_max_aggregate_measure() -> None:
+        measure = max(col("amount"))
+        assert measure.kind == AggregateKind.Max

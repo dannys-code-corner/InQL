@@ -2,19 +2,24 @@
 
 from std.testing import fail_t, parametrize
 from metadata import inql_version
+from aggregate_builders import AggregateKind
 from dataset import DataSet, BoundedDataSet, UnboundedDataSet, DataFrame, LazyFrame, DataStream, lazy_frame_named_table
 from dataset.materialization import DataFrameMaterialization
 from dataset.ops import filter_ds, join_ds
 from functions import (
     always_false,
     always_true,
+    avg,
     bool_lit,
     col,
     count,
+    count_expr,
     float_expr,
     int_expr,
     int_lit,
     lit,
+    max,
+    min,
     mul,
     str_expr,
     str_lit,
@@ -147,10 +152,19 @@ def test_smoke__dataset_types_are_published() -> None:
     # -- Act --
     sum_result = sum(amount)
     count_result = count()
+    expression_count_result = count_expr(amount)
+    avg_result = avg(amount)
+    min_result = min(amount)
+    max_result = max(amount)
 
     # -- Assert --
     assert column_expr_name(sum_result.expr) == "amount", "sum should preserve the selected input column expression"
     assert column_expr_name(count_result.expr) == "", "count should remain a zero-argument aggregate helper"
+    assert expression_count_result.has_expr, "count(expr) should mark expression-count measures explicitly"
+    assert column_expr_name(expression_count_result.expr) == "amount", "count(expr) should preserve the selected input column expression"
+    assert avg_result.kind == AggregateKind.Avg, "avg should build an aggregate measure"
+    assert min_result.kind == AggregateKind.Min, "min should build an aggregate measure"
+    assert max_result.kind == AggregateKind.Max, "max should build an aggregate measure"
 
 
 @parametrize("helper_name, expected_kind", [("int_expr", "IntLiteral"), ("float_expr", "FloatLiteral"), ("str_expr", "StringLiteral"), ("int_lit", "IntLiteral"), ("str_lit", "StringLiteral"), ("bool_lit", "BoolLiteral")])

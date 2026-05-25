@@ -8,7 +8,18 @@ and signatures are checked API metadata facts, not second copies in this runtime
 
 from substrait.function_extensions import function_extension_uri
 
-const FUNCTION_REF_PREFIX: str = "inql.functions."
+const CORE_FUNCTION_NAMESPACE: str = "inql.functions"
+
+
+@derive(Clone)
+pub enum FunctionPolicyCategory(str):
+    """RFC 024 portability and extension-policy category for one function-like metadata item."""
+
+    PortableCore = "portable_core"
+    ExtensionOnly = "extension_only"
+    CompatibilityAlias = "compatibility_alias"
+    EngineSpecific = "engine_specific"
+    Rejected = "rejected"
 
 
 @derive(Clone)
@@ -22,7 +33,6 @@ pub enum FunctionClass(str):
     Generator = "generator"
     TableValued = "table_valued"
     PartitionTransform = "partition_transform"
-    ExtensionOnly = "extension_only"
 
 
 @derive(Clone)
@@ -124,6 +134,8 @@ pub model SubstraitMapping:
 pub model FunctionSpec:
     """Machine-readable function facts supplied to the registry decorator."""
 
+    pub namespace: str
+    pub policy_category: FunctionPolicyCategory
     pub function_class: FunctionClass
     pub aliases: list[str]
     pub alias_policy: FunctionAliasPolicy
@@ -139,7 +151,9 @@ pub model FunctionRegistryEntry:
     """Runtime projection for one registered InQL function."""
 
     pub function_ref: str
+    pub namespace: str
     pub canonical_name: str
+    pub policy_category: FunctionPolicyCategory
     pub function_class: FunctionClass
     pub aliases: list[str]
     pub alias_policy: FunctionAliasPolicy
@@ -148,6 +162,16 @@ pub model FunctionRegistryEntry:
     pub null_behavior: FunctionNullBehavior
     pub error_behavior: FunctionErrorBehavior
     pub substrait: SubstraitMapping
+
+
+@derive(Clone)
+pub model RejectedFunctionPolicy:
+    """Documented rejection metadata for a likely compatibility request that is not a function entry."""
+
+    pub requested_name: str
+    pub policy_category: FunctionPolicyCategory
+    pub reason: str
+    pub alternative: str
 
 
 @derive(Clone)
@@ -169,16 +193,19 @@ pub class FunctionRegistry:
     def _add_entry(mut self, canonical_name: str, spec: FunctionSpec) -> None:
         """Record one registry entry or fail fast on invalid duplicate metadata."""
         assert _valid_canonical_name(canonical_name), (f"function canonical name must be one non-empty identifier segment, found `{canonical_name}`")
+        assert _valid_namespace(spec.namespace), f"function namespace must be non-empty, found `{spec.namespace}`"
 
-        function_ref = function_ref_for(canonical_name)
+        function_ref = namespaced_function_ref(spec.namespace, canonical_name)
         for entry in self.entries:
             assert entry.function_ref != function_ref, f"duplicate function reference `{function_ref}`"
-            assert entry.canonical_name != canonical_name, f"duplicate canonical function name `{canonical_name}`"
+            assert entry.namespace != spec.namespace or entry.canonical_name != canonical_name, f"duplicate canonical function name `{canonical_name}` in namespace `{spec.namespace}`"
 
         self.entries.append(
             FunctionRegistryEntry(
                 function_ref=function_ref,
+                namespace=spec.namespace,
                 canonical_name=canonical_name,
+                policy_category=spec.policy_category,
                 function_class=spec.function_class,
                 aliases=spec.aliases,
                 alias_policy=spec.alias_policy,
@@ -199,9 +226,13 @@ pub class FunctionRegistry:
         return None
 
     def entry_by_name(self, canonical_name: str) -> Option[FunctionRegistryEntry]:
-        """Return the registry entry for one canonical public function name when it is known."""
+        """Return the core registry entry for one canonical public function name when it is known."""
+        return self.entry_by_namespace_and_name(core_function_namespace(), canonical_name)
+
+    def entry_by_namespace_and_name(self, namespace: str, canonical_name: str) -> Option[FunctionRegistryEntry]:
+        """Return the registry entry for one namespace-qualified canonical function name when it is known."""
         for entry in self.entries:
-            if entry.canonical_name == canonical_name:
+            if entry.namespace == namespace and entry.canonical_name == canonical_name:
                 return Some(entry)
         return None
 
@@ -224,7 +255,19 @@ pub class FunctionRegistry:
 
 pub def function_ref_for(canonical_name: str) -> str:
     """Return the durable registry reference for one canonical InQL function name."""
-    return f"{FUNCTION_REF_PREFIX}{canonical_name}"
+    return namespaced_function_ref(core_function_namespace(), canonical_name)
+
+
+pub def core_function_namespace() -> str:
+    """Return the namespace used by portable core package functions."""
+    return CORE_FUNCTION_NAMESPACE
+
+
+pub def namespaced_function_ref(namespace: str, canonical_name: str) -> str:
+    """Return the durable registry reference for a function in one explicit namespace."""
+    assert _valid_namespace(namespace), f"function namespace must be non-empty, found `{namespace}`"
+    assert _valid_canonical_name(canonical_name), (f"function canonical name must be one non-empty identifier segment, found `{canonical_name}`")
+    return f"{namespace}.{canonical_name}"
 
 
 pub def extension_mapping(function_name: str, anchor: u32) -> SubstraitMapping:
@@ -287,6 +330,33 @@ pub def sort_field_mapping(direction: str) -> SubstraitMapping:
     )
 
 
+pub def function_policy_spec(
+    namespace: str,
+    policy_category: FunctionPolicyCategory,
+    function_class: FunctionClass,
+    aliases: list[str],
+    alias_policy: FunctionAliasPolicy,
+    lifecycle: FunctionLifecycle,
+    determinism: FunctionDeterminism,
+    null_behavior: FunctionNullBehavior,
+    error_behavior: FunctionErrorBehavior,
+    substrait: SubstraitMapping,
+) -> FunctionSpec:
+    """Build one function spec with explicit RFC 024 namespace and policy metadata."""
+    return FunctionSpec(
+        namespace=namespace,
+        policy_category=policy_category,
+        function_class=function_class,
+        aliases=aliases,
+        alias_policy=alias_policy,
+        lifecycle=lifecycle,
+        determinism=determinism,
+        null_behavior=null_behavior,
+        error_behavior=error_behavior,
+        substrait=substrait,
+    )
+
+
 pub def deterministic_spec(
     function_class: FunctionClass,
     lifecycle: FunctionLifecycle,
@@ -295,6 +365,8 @@ pub def deterministic_spec(
 ) -> FunctionSpec:
     """Build one deterministic core-import function spec."""
     return FunctionSpec(
+        namespace=core_function_namespace(),
+        policy_category=FunctionPolicyCategory.PortableCore,
         function_class=function_class,
         aliases=[],
         alias_policy=FunctionAliasPolicy.CoreImport,
@@ -306,6 +378,96 @@ pub def deterministic_spec(
     )
 
 
+pub def extension_only_spec(
+    namespace: str,
+    function_class: FunctionClass,
+    lifecycle: FunctionLifecycle,
+    determinism: FunctionDeterminism,
+    null_behavior: FunctionNullBehavior,
+    error_behavior: FunctionErrorBehavior,
+    substrait: SubstraitMapping,
+) -> FunctionSpec:
+    """Build one explicitly namespaced extension-only function spec."""
+    return function_policy_spec(
+        namespace,
+        FunctionPolicyCategory.ExtensionOnly,
+        function_class,
+        [],
+        FunctionAliasPolicy.OptInCompatibility,
+        lifecycle,
+        determinism,
+        null_behavior,
+        error_behavior,
+        substrait,
+    )
+
+
+pub def compatibility_alias_spec(
+    namespace: str,
+    function_class: FunctionClass,
+    aliases: list[str],
+    lifecycle: FunctionLifecycle,
+    determinism: FunctionDeterminism,
+    null_behavior: FunctionNullBehavior,
+    error_behavior: FunctionErrorBehavior,
+    substrait: SubstraitMapping,
+) -> FunctionSpec:
+    """Build one opt-in compatibility alias spec for semantics that remain typeable by InQL."""
+    return function_policy_spec(
+        namespace,
+        FunctionPolicyCategory.CompatibilityAlias,
+        function_class,
+        aliases,
+        FunctionAliasPolicy.OptInCompatibility,
+        lifecycle,
+        determinism,
+        null_behavior,
+        error_behavior,
+        substrait,
+    )
+
+
+pub def engine_specific_spec(
+    namespace: str,
+    function_class: FunctionClass,
+    lifecycle: FunctionLifecycle,
+    determinism: FunctionDeterminism,
+    null_behavior: FunctionNullBehavior,
+    error_behavior: FunctionErrorBehavior,
+    substrait: SubstraitMapping,
+) -> FunctionSpec:
+    """Build one explicitly namespaced engine-specific function spec."""
+    return function_policy_spec(
+        namespace,
+        FunctionPolicyCategory.EngineSpecific,
+        function_class,
+        [],
+        FunctionAliasPolicy.OptInCompatibility,
+        lifecycle,
+        determinism,
+        null_behavior,
+        error_behavior,
+        substrait,
+    )
+
+
+pub def rejected_function_policy(requested_name: str, reason: str, alternative: str) -> RejectedFunctionPolicy:
+    """Build metadata for a rejected compatibility request without creating a lowerable function entry."""
+    assert len(requested_name) > 0, "rejected function request must have a name"
+    assert len(reason) > 0, "rejected function request must explain the policy reason"
+    return RejectedFunctionPolicy(
+        requested_name=requested_name,
+        policy_category=FunctionPolicyCategory.Rejected,
+        reason=reason,
+        alternative=alternative,
+    )
+
+
 def _valid_canonical_name(canonical_name: str) -> bool:
     """Return whether one canonical function name can derive a durable single-segment reference."""
     return len(canonical_name) > 0 and not canonical_name.contains(".")
+
+
+def _valid_namespace(namespace: str) -> bool:
+    """Return whether a namespace can prefix durable function references."""
+    return len(namespace) > 0

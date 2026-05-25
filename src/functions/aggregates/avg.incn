@@ -1,0 +1,44 @@
+"""
+Average aggregate helper.
+
+`avg` records its aggregate signature and Substrait extension anchor at the helper declaration site.
+"""
+
+from aggregate_builders import AggregateKind, AggregateMeasure, avg as avg_builder
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import function_registry
+from projection_builders import ColumnExpr
+from substrait.function_extensions import AVG_FUNCTION_ANCHOR
+
+
+@function_registry.add("avg", deterministic_spec(
+    FunctionClass.Aggregate,
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionNullBehavior.NullSkippingAggregate,
+    extension_mapping("avg", AVG_FUNCTION_ANCHOR),
+))
+pub def avg(expr: ColumnExpr) -> AggregateMeasure:
+    """
+    Build an average aggregate measure.
+
+    Examples:
+        mean_revenue = avg(col("amount"))
+
+    Parameters:
+        expr: Numeric expression to aggregate.
+    """
+    return avg_builder(expr)
+
+
+module tests:
+    from projection_builders import col
+    def test_avg_builds_avg_aggregate_measure() -> None:
+        measure = avg(col("amount"))
+        assert measure.kind == AggregateKind.Avg

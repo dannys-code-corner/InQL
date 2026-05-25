@@ -57,11 +57,16 @@ pub def function_registry_entry(function_ref: str) -> Option[FunctionRegistryEnt
 
 
 pub def function_registry_entry_by_name(canonical_name: str) -> Option[FunctionRegistryEntry]:
-    """Return a loaded registry entry for one canonical public function name when it is known."""
-    for entry in function_registry.entries:
-        if entry.canonical_name == canonical_name:
-            return Some(entry)
-    return None
+    """Return a loaded core registry entry for one canonical public function name when it is known."""
+    return function_registry.entry_by_name(canonical_name)
+
+
+pub def function_registry_entry_by_namespace_and_name(
+    namespace: str,
+    canonical_name: str,
+) -> Option[FunctionRegistryEntry]:
+    """Return a loaded registry entry for one namespace-qualified function name when it is known."""
+    return function_registry.entry_by_namespace_and_name(namespace, canonical_name)
 
 
 pub def function_registry_function_refs() -> list[str]:
