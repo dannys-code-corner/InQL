@@ -1,0 +1,55 @@
+"""
+Filtered count compatibility helper.
+
+`count_if(predicate)` is sugar over the canonical aggregate modifier model: `count().filter(predicate)`.
+"""
+
+from aggregate_builders import AggregateKind, AggregateMeasure
+from function_registry import (
+    FunctionClass,
+    FunctionDeterminism,
+    FunctionErrorBehavior,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    compatibility_alias_spec,
+    core_function_namespace,
+    rewrite_mapping,
+    v0_1,
+)
+from functions.aggregates.count import count
+from functions.registry import function_registry
+from projection_builders import ColumnExpr, col, column_expr_name
+
+
+@function_registry.add("count_if", compatibility_alias_spec(
+    core_function_namespace(),
+    FunctionClass.Aggregate,
+    ["count"],
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionDeterminism.Deterministic,
+    FunctionNullBehavior.NullSkippingAggregate,
+    FunctionErrorBehavior.Typechecked,
+    rewrite_mapping("count().filter(predicate)"),
+))
+pub def count_if(predicate: ColumnExpr) -> AggregateMeasure:
+    """
+    Count rows where a predicate evaluates to true.
+
+    Examples:
+        completed = count_if(col("is_completed"))
+
+    Parameters:
+        predicate: Boolean expression that decides whether each input row contributes to the count.
+    """
+    return count().filter(predicate)
+
+
+module tests:
+    def test_count_if_builds_filtered_count_measure() -> None:
+        """count_if should build a filtered row-count measure."""
+        measure = count_if(col("is_completed"))
+        assert measure.kind == AggregateKind.Count
+        assert not measure.has_expr
+        assert measure.has_filter
+        assert not measure.is_distinct
+        assert column_expr_name(measure.filter_expr) == "is_completed"

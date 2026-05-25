@@ -53,8 +53,11 @@ pub from substrait.plans import (
 )
 pub from substrait.inspect import (
     aggregate_group_columns,
+    aggregate_measure_filter_flags,
     aggregate_measure_function_names,
+    aggregate_measure_invocation_names,
     aggregate_measure_output_names,
+    aggregate_measure_sort_counts,
     plan_contains_relation_kind,
     plan_has_extension_urn,
     read_kind_name,

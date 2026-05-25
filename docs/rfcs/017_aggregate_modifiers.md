@@ -1,6 +1,6 @@
 # InQL RFC 017: Aggregate modifiers
 
-- **Status:** Draft
+- **Status:** Implemented
 - **Created:** 2026-04-27
 - **Author(s):** Danny Meijer (@dannymeijer)
 - **Related:**
@@ -11,8 +11,8 @@
   - InQL RFC 016 (core aggregate functions)
 - **Issue:** [InQL #34](https://github.com/dannys-code-corner/InQL/issues/34)
 - **RFC PR:** —
-- **Written against:** Incan v0.2
-- **Shipped in:** —
+- **Written against:** Incan v0.3-era InQL
+- **Shipped in:** v0.1
 
 ## Summary
 
@@ -111,9 +111,11 @@ Existing aggregate helpers remain valid. New compatibility helpers such as `coun
 - **Execution / interchange** — Prism and Substrait lowering must preserve filter, distinct, and ordering semantics or reject unsupported forms.
 - **Documentation** — aggregate docs should prefer the modifier model and list compatibility helper aliases.
 
-## Unresolved questions
+## Design Decisions
 
-- Should `count_if(null)` count zero rows or follow a stricter boolean-null diagnostic rule?
-- Which aggregate functions must allow ordered input in the initial modifier contract, especially `listagg`, `percentile_cont`, and `percentile_disc`?
+### Resolved
 
-<!-- When every question is resolved, rename this section to **Design Decisions**, group answers under ### Resolved, and remove this comment. -->
+- `count_if(predicate)` follows aggregate `FILTER` semantics: rows where the predicate is false or null do not
+  contribute to the aggregate.
+- The initial modifier contract records ordered aggregate input but no current core aggregate allows it. Ordered input
+  is rejected explicitly until an order-sensitive aggregate such as `listagg` or ordered percentile functions lands.

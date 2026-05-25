@@ -13,7 +13,10 @@ from functions import (
     bool_lit,
     col,
     count,
+    count_distinct,
     count_expr,
+    count_if,
+    eq,
     float_expr,
     int_expr,
     int_lit,
@@ -153,6 +156,8 @@ def test_smoke__dataset_types_are_published() -> None:
     sum_result = sum(amount)
     count_result = count()
     expression_count_result = count_expr(amount)
+    distinct_count_result = count_distinct(amount)
+    filtered_count_result = count_if(eq(col("status"), str_lit("paid")))
     avg_result = avg(amount)
     min_result = min(amount)
     max_result = max(amount)
@@ -162,6 +167,8 @@ def test_smoke__dataset_types_are_published() -> None:
     assert column_expr_name(count_result.expr) == "", "count should remain a zero-argument aggregate helper"
     assert expression_count_result.has_expr, "count(expr) should mark expression-count measures explicitly"
     assert column_expr_name(expression_count_result.expr) == "amount", "count(expr) should preserve the selected input column expression"
+    assert distinct_count_result.is_distinct, "count_distinct should build a distinct aggregate measure"
+    assert filtered_count_result.has_filter, "count_if should build a filtered aggregate measure"
     assert avg_result.kind == AggregateKind.Avg, "avg should build an aggregate measure"
     assert min_result.kind == AggregateKind.Min, "min should build an aggregate measure"
     assert max_result.kind == AggregateKind.Max, "max should build an aggregate measure"

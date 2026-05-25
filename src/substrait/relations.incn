@@ -44,7 +44,7 @@ from rust::substrait::proto::rel_common import Direct, Emit, EmitKind
 from rust::substrait::proto::set_rel import SetOp
 from rust::substrait::proto::sort_field import SortDirection, SortKind
 from aggregate_builders import AggregateKind, AggregateMeasure
-from function_registry import FunctionClass, SubstraitMappingKind
+from function_registry import FunctionClass, FunctionRegistryEntry, SubstraitMappingKind
 from functions.registry import function_registry_entry
 from projection_builders import ColumnExpr, ProjectionAssignment, ScalarFunctionApplicationExpr, col
 from substrait.expr_lowering import (
@@ -61,12 +61,17 @@ from substrait.inspect import relation_output_columns
 from substrait.schema_registry import named_table_base_schema, unknown_named_struct
 
 
+@derive(Clone)
 model ResolvedAggregateMeasure:
     kind: AggregateKind
     function_ref: str
     canonical_name: str
     expr: Expression
     has_expr: bool
+    is_distinct: bool
+    filter_expr: Expression
+    has_filter: bool
+    ordering: list[SortField]
 
 
 @derive(Clone)
@@ -197,34 +202,67 @@ def _set_operation_from_name(operation: str) -> Result[SubstraitSetOperation, Su
 
 def _resolved_measure_to_substrait(measure: ResolvedAggregateMeasure) -> Result[Measure, SubstraitLoweringError]:
     """Lower one resolved aggregate measure into a Substrait aggregate measure."""
+    _validate_aggregate_modifiers(measure.clone())?
     mut arguments: list[FunctionArgument] = []
     if measure.has_expr:
         arguments = [FunctionArgument(arg_type=Some(ArgType.Value(measure.expr.clone())))]
+    mut invocation: RustI32 = AggregationInvocation.All.into()
+    if measure.is_distinct:
+        invocation = AggregationInvocation.Distinct.into()
+    mut measure_filter: Option[Expression] = None
+    if measure.has_filter:
+        measure_filter = Some(measure.filter_expr.clone())
     return Ok(
         Measure(
             measure=Some(
                 AggregateFunction(
-                    function_reference=_aggregate_function_reference(measure)?,
+                    function_reference=_aggregate_function_reference(measure.clone())?,
                     arguments=arguments,
-                    sorts=[],
+                    sorts=measure.ordering,
                     output_type=None,
-                    invocation=AggregationInvocation.All.into(),
+                    invocation=invocation,
                     phase=AggregationPhase.Unspecified.into(),
                     args=[],
                     options=[],
                 ),
             ),
-            filter=None,
+            filter=measure_filter,
         ),
     )
 
 
-def _aggregate_function_reference(measure: ResolvedAggregateMeasure) -> Result[u32, SubstraitLoweringError]:
-    """Resolve one aggregate measure through declaration-side registry metadata."""
+def _aggregate_registry_entry(
+    measure: ResolvedAggregateMeasure,
+) -> Result[FunctionRegistryEntry, SubstraitLoweringError]:
+    """Resolve one aggregate measure registry entry and validate its semantic class."""
     match function_registry_entry(measure.function_ref):
         Some(entry) =>
             if entry.function_class != FunctionClass.Aggregate:
                 return Err(invalid_scalar_expression(f"{entry.function_ref} is not registered as an aggregate function"))
+            return Ok(entry)
+        None =>
+            return Err(invalid_scalar_expression(f"missing aggregate registry entry for `{measure.canonical_name}`"))
+
+
+def _validate_aggregate_modifiers(measure: ResolvedAggregateMeasure) -> Result[None, SubstraitLoweringError]:
+    """Validate RFC 017 modifiers against aggregate registry metadata."""
+    entry = _aggregate_registry_entry(measure.clone())?
+    if measure.is_distinct:
+        if not entry.aggregate_modifiers.allows_distinct:
+            return Err(invalid_scalar_expression(f"{entry.function_ref} does not allow DISTINCT aggregate input"))
+        if not measure.has_expr:
+            return Err(invalid_scalar_expression("DISTINCT aggregate input requires an aggregate expression"))
+    if measure.has_filter and not entry.aggregate_modifiers.allows_filter:
+        return Err(invalid_scalar_expression(f"{entry.function_ref} does not allow aggregate-local FILTER"))
+    if len(measure.ordering) > 0 and not entry.aggregate_modifiers.allows_ordered_input:
+        return Err(invalid_scalar_expression(f"{entry.function_ref} does not allow ordered aggregate input"))
+    return Ok(None)
+
+
+def _aggregate_function_reference(measure: ResolvedAggregateMeasure) -> Result[u32, SubstraitLoweringError]:
+    """Resolve one aggregate measure through declaration-side registry metadata."""
+    match _aggregate_registry_entry(measure):
+        Ok(entry) =>
             if entry.substrait.kind != SubstraitMappingKind.ExtensionFunction:
                 return Err(
                     invalid_scalar_expression(
@@ -232,8 +270,7 @@ def _aggregate_function_reference(measure: ResolvedAggregateMeasure) -> Result[u
                     ),
                 )
             return Ok(entry.substrait.anchor)
-        None =>
-            return Err(invalid_scalar_expression(f"missing aggregate registry entry for `{measure.canonical_name}`"))
+        Err(err) => return Err(err)
 
 
 def _is_argument_free_count(measure: AggregateMeasure) -> bool:
@@ -246,6 +283,8 @@ def _resolved_measure(
     input_columns: list[str],
 ) -> Result[ResolvedAggregateMeasure, SubstraitLoweringError]:
     """Resolve one aggregate measure against the current input-column list."""
+    filter_expr = _resolved_measure_filter_expr(measure.clone(), input_columns)?
+    ordering = [_sort_field(input_columns, key)? for key in measure.ordering]
     if _is_argument_free_count(measure):
         return Ok(
             ResolvedAggregateMeasure(
@@ -254,6 +293,10 @@ def _resolved_measure(
                 canonical_name=measure.canonical_name,
                 expr=bool_expr(true),
                 has_expr=false,
+                is_distinct=measure.is_distinct,
+                filter_expr=filter_expr,
+                has_filter=measure.has_filter,
+                ordering=ordering,
             ),
         )
     return Ok(
@@ -263,8 +306,22 @@ def _resolved_measure(
             canonical_name=measure.canonical_name,
             expr=scalar_expr(input_columns, measure.expr)?,
             has_expr=true,
+            is_distinct=measure.is_distinct,
+            filter_expr=filter_expr,
+            has_filter=measure.has_filter,
+            ordering=ordering,
         ),
     )
+
+
+def _resolved_measure_filter_expr(
+    measure: AggregateMeasure,
+    input_columns: list[str],
+) -> Result[Expression, SubstraitLoweringError]:
+    """Resolve one aggregate-local filter expression or a harmless placeholder."""
+    if measure.has_filter:
+        return Ok(filter_predicate_expr(input_columns, measure.filter_expr)?)
+    return Ok(bool_expr(true))
 
 
 def _lowered_rel_or_raise(result: Result[Rel, SubstraitLoweringError]) -> Rel:

@@ -119,6 +119,15 @@ pub model FunctionLifecycle:
 
 
 @derive(Clone)
+pub model AggregateModifierPolicy:
+    """Aggregate-specific modifier support recorded with registry metadata."""
+
+    pub allows_distinct: bool
+    pub allows_filter: bool
+    pub allows_ordered_input: bool
+
+
+@derive(Clone)
 pub model SubstraitMapping:
     """Portable interchange mapping metadata for one registered function."""
 
@@ -143,6 +152,7 @@ pub model FunctionSpec:
     pub determinism: FunctionDeterminism
     pub null_behavior: FunctionNullBehavior
     pub error_behavior: FunctionErrorBehavior
+    pub aggregate_modifiers: AggregateModifierPolicy
     pub substrait: SubstraitMapping
 
 
@@ -161,6 +171,7 @@ pub model FunctionRegistryEntry:
     pub determinism: FunctionDeterminism
     pub null_behavior: FunctionNullBehavior
     pub error_behavior: FunctionErrorBehavior
+    pub aggregate_modifiers: AggregateModifierPolicy
     pub substrait: SubstraitMapping
 
 
@@ -213,6 +224,7 @@ pub class FunctionRegistry:
                 determinism=spec.determinism,
                 null_behavior=spec.null_behavior,
                 error_behavior=spec.error_behavior,
+                aggregate_modifiers=spec.aggregate_modifiers,
                 substrait=spec.substrait,
             ),
         )
@@ -330,6 +342,36 @@ pub def sort_field_mapping(direction: str) -> SubstraitMapping:
     )
 
 
+pub def aggregate_modifier_policy(
+    allows_distinct: bool,
+    allows_filter: bool,
+    allows_ordered_input: bool,
+) -> AggregateModifierPolicy:
+    """Build one aggregate modifier policy."""
+    return AggregateModifierPolicy(
+        allows_distinct=allows_distinct,
+        allows_filter=allows_filter,
+        allows_ordered_input=allows_ordered_input,
+    )
+
+
+pub def no_aggregate_modifiers() -> AggregateModifierPolicy:
+    """Return the default modifier policy for non-aggregate functions."""
+    return aggregate_modifier_policy(false, false, false)
+
+
+pub def core_aggregate_modifier_policy() -> AggregateModifierPolicy:
+    """Return the default RFC 017 policy for core order-insensitive aggregates."""
+    return aggregate_modifier_policy(true, true, false)
+
+
+def _aggregate_modifier_policy_for_class(function_class: FunctionClass) -> AggregateModifierPolicy:
+    """Return the default modifier policy for a semantic function class."""
+    if function_class == FunctionClass.Aggregate:
+        return core_aggregate_modifier_policy()
+    return no_aggregate_modifiers()
+
+
 pub def function_policy_spec(
     namespace: str,
     policy_category: FunctionPolicyCategory,
@@ -340,6 +382,7 @@ pub def function_policy_spec(
     determinism: FunctionDeterminism,
     null_behavior: FunctionNullBehavior,
     error_behavior: FunctionErrorBehavior,
+    aggregate_modifiers: AggregateModifierPolicy,
     substrait: SubstraitMapping,
 ) -> FunctionSpec:
     """Build one function spec with explicit RFC 024 namespace and policy metadata."""
@@ -353,6 +396,7 @@ pub def function_policy_spec(
         determinism=determinism,
         null_behavior=null_behavior,
         error_behavior=error_behavior,
+        aggregate_modifiers=aggregate_modifiers,
         substrait=substrait,
     )
 
@@ -374,6 +418,7 @@ pub def deterministic_spec(
         determinism=FunctionDeterminism.Deterministic,
         null_behavior=null_behavior,
         error_behavior=FunctionErrorBehavior.Typechecked,
+        aggregate_modifiers=_aggregate_modifier_policy_for_class(function_class),
         substrait=substrait,
     )
 
@@ -398,6 +443,7 @@ pub def extension_only_spec(
         determinism,
         null_behavior,
         error_behavior,
+        no_aggregate_modifiers(),
         substrait,
     )
 
@@ -423,6 +469,7 @@ pub def compatibility_alias_spec(
         determinism,
         null_behavior,
         error_behavior,
+        _aggregate_modifier_policy_for_class(function_class),
         substrait,
     )
 
@@ -447,6 +494,7 @@ pub def engine_specific_spec(
         determinism,
         null_behavior,
         error_behavior,
+        no_aggregate_modifiers(),
         substrait,
     )
 

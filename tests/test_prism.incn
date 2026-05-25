@@ -1,6 +1,6 @@
 """Internal Prism engine tests against the shared-store cursor substrate."""
 
-from functions import always_false, always_true, col, count, lit, mul, sum
+from functions import always_false, always_true, col, count, count_expr, lit, mul, sum
 from prism import (
     PrismCursor,
     prism_cursor_apply_filter,
@@ -179,6 +179,28 @@ def test_prism__cross_store_join_dedups_equivalent_rhs_multistep_branches() -> N
     assert plan_contains_relation_kind(plan, str("SortRel")), "rhs multistep branch sort should remain present after adoption"
     assert plan_contains_relation_kind(plan, str("FilterRel")), "rhs multistep branch filter should remain present after adoption"
     assert plan_contains_relation_kind(plan, str("ReadRel")), "deduped multistep adoption should still preserve read roots"
+
+
+def test_prism__cross_store_adoption_keeps_distinct_aggregate_modifier_state() -> None:
+    # -- Arrange --
+    _register_projection_test_schema(str("orders"))
+    _register_projection_test_schema(str("orders_archive"))
+    left: PrismCursor[Order] = prism_cursor_named_table(str("orders")).filter(always_false())
+    right_base: PrismCursor[Order] = prism_cursor_named_table(str("orders_archive"))
+    right_plain: PrismCursor[Order] = right_base.group_by([col("id")]).agg([count_expr(col("id"))])
+    right_distinct: PrismCursor[Order] = right_base.group_by([col("id")]).agg([count_expr(col("id")).distinct()])
+
+    # -- Act --
+    right_joined: PrismCursor[Order] = right_plain.join(right_distinct.clone(), true)
+    joined: PrismCursor[Order] = left.join(right_joined.clone(), true)
+    plan = joined.to_substrait_plan()
+
+    # -- Assert --
+    assert prism_cursors_share_store(left, right_joined) is false, "final join should still adopt the rhs aggregate tree"
+    assert prism_cursor_store_node_count(joined) == 8, "cross-store adoption must not dedup aggregates that differ by modifier state"
+    assert prism_cursor_authored_node_count(joined) == 8, "joined cursor should preserve both modified and unmodified aggregate branches"
+    assert relation_kind_name(root_rel(plan)) == str("JoinRel"), "aggregate modifier adoption should still lower through JoinRel"
+    assert plan_contains_relation_kind(plan, str("AggregateRel")), "both rhs aggregate branches should survive into lowering"
 
 
 def test_prism__cursor_native_nodes_cover_current_method_surface() -> None:

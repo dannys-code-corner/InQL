@@ -1,9 +1,9 @@
 """End-to-end Session aggregate execution tests over the DataFusion backend."""
 
-from functions import avg, col, count, count_expr, max, min, sum
-from dataset import LazyFrame
+from functions import avg, col, count, count_distinct, count_expr, count_if, eq, max, min, str_lit, sum
+from dataset import DataFrame, LazyFrame
 from session import Session
-from std.testing import assert_is_ok
+from std.testing import assert_is_ok, fail_t
 
 
 @derive(Clone)
@@ -13,12 +13,31 @@ pub model AggregateOrder:
 
 
 @derive(Clone)
+pub model AggregateModifierOrder:
+    pub customer_id: str
+    pub amount: int
+    pub status: str
+    pub product_id: str
+
+
+@derive(Clone)
 pub model Order:
     pub id: int
 
 
+const AGGREGATE_MODIFIERS_CSV_FIXTURE: str = "tests/fixtures/aggregate_modifiers.csv"
 const AGGREGATE_ORDERS_CSV_FIXTURE: str = "tests/fixtures/aggregate_orders.csv"
 const ORDERS_CSV_FIXTURE: str = "tests/fixtures/orders.csv"
+
+
+def _collect_modifier_or_fail(
+    mut session: Session,
+    grouped: LazyFrame[AggregateModifierOrder],
+) -> DataFrame[AggregateModifierOrder]:
+    """Collect a modified aggregate frame or fail with the backend diagnostic."""
+    match session.collect(grouped):
+        Ok(df) => return df
+        Err(err) => return fail_t(err.error_message())
 
 
 def test_session_aggregates__grouped_collect_executes_sum_and_count() -> None:
@@ -76,6 +95,36 @@ def test_session_aggregates__grouped_collect_executes_core_aggregates() -> None:
     assert payload.contains("7"), "customer B aggregate values should be materialized"
     assert payload.contains("2"), "customer A count and expression count should be materialized"
     assert payload.contains("1"), "customer B count and expression count should be materialized"
+
+
+def test_session_aggregates__grouped_collect_executes_distinct_and_filter_modifiers() -> None:
+    # -- Arrange --
+    mut session = Session.default()
+
+    # -- Act --
+    lazy: LazyFrame[AggregateModifierOrder] = assert_is_ok(
+        session.read_csv("aggregate_modifiers", AGGREGATE_MODIFIERS_CSV_FIXTURE),
+        "aggregate modifiers fixture should load",
+    )
+    paid = eq(col("status"), str_lit("paid"))
+    grouped = lazy.group_by([col("customer_id")]).agg(
+        [count_distinct(col("product_id")), count_if(paid.clone()), sum(col("amount")).filter(paid)],
+    )
+    df = _collect_modifier_or_fail(session, grouped)
+    payload = df.preview_text()
+    resolved = df.resolved_columns()
+
+    # -- Assert --
+    assert df.row_count() == 2, "modified grouped aggregate should produce one row per customer"
+    assert resolved == ["customer_id", "count_distinct_product_id", "count_filtered", "sum_amount_filtered"], "modified aggregate output columns should be stable"
+    assert payload.contains("A"), "modified aggregate output should contain customer A"
+    assert payload.contains("B"), "modified aggregate output should contain customer B"
+    assert payload.contains("25"), "customer A paid sum should be materialized"
+    assert payload.contains("18"), "customer B paid sum should be materialized"
+    assert payload.contains("2"), "distinct and filtered counts should be materialized"
+    assert not payload.contains("28"), "customer A filtered sum should exclude cancelled rows"
+    assert not payload.contains("27"), "customer B filtered sum should exclude cancelled rows"
+    assert not payload.contains("3"), "distinct counts should not count duplicated product ids"
 
 
 def test_session_aggregates__global_collect_executes_count() -> None:

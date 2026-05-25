@@ -21,7 +21,9 @@ from functions import (
     col,
     coalesce,
     count,
+    count_distinct,
     count_expr,
+    count_if,
     desc,
     desc_nulls_first,
     desc_nulls_last,
@@ -178,7 +180,7 @@ def _local_entry_by_namespace_and_name_or_fail(
 
 def _expected_registry_names() -> list[str]:
     """Return the expected registered public helper names."""
-    return ["col", "lit", "sum", "count", "count_expr", "avg", "min", "max", "int_expr", "float_expr", "str_expr", "bool_expr", "add", "mul", "int_lit", "str_lit", "bool_lit", "always_true", "always_false", "eq", "gt", "cast", "try_cast", "ne", "lt", "lte", "gte", "equal_null", "and_", "or_", "not_", "is_null", "is_not_null", "is_nan", "is_not_nan", "sub", "div", "mod", "neg", "coalesce", "nullif", "case_when", "in_", "between", "asc", "desc", "asc_nulls_first", "asc_nulls_last", "desc_nulls_first", "desc_nulls_last", "abs", "ceil", "floor", "round"]
+    return ["col", "lit", "sum", "count", "count_expr", "count_distinct", "count_if", "avg", "min", "max", "int_expr", "float_expr", "str_expr", "bool_expr", "add", "mul", "int_lit", "str_lit", "bool_lit", "always_true", "always_false", "eq", "gt", "cast", "try_cast", "ne", "lt", "lte", "gte", "equal_null", "and_", "or_", "not_", "is_null", "is_not_null", "is_nan", "is_not_nan", "sub", "div", "mod", "neg", "coalesce", "nullif", "case_when", "in_", "between", "asc", "desc", "asc_nulls_first", "asc_nulls_last", "desc_nulls_first", "desc_nulls_last", "abs", "ceil", "floor", "round"]
 
 
 def _expected_substrait_mapped_names() -> list[str]:
@@ -203,6 +205,8 @@ def _exercise_current_public_helpers() -> None:
     sum(amount)
     count()
     count_expr(status)
+    count_distinct(status)
+    count_if(eq(status, str_lit("paid")))
     avg(amount)
     min(amount)
     max(amount)
@@ -356,11 +360,31 @@ def test_function_registry__core_helpers_expose_portable_policy_metadata() -> No
     # -- Act / Assert --
     for entry in entries:
         assert entry.namespace == core_function_namespace(), f"{entry.function_ref} should live in the core function namespace"
-        if entry.canonical_name == "count_expr":
-            assert entry.policy_category == FunctionPolicyCategory.CompatibilityAlias, "count_expr should be marked as a compatibility helper"
+        if entry.canonical_name == "count_expr" or entry.canonical_name == "count_distinct" or entry.canonical_name == "count_if":
+            assert entry.policy_category == FunctionPolicyCategory.CompatibilityAlias, f"{entry.canonical_name} should be marked as a compatibility helper"
             assert entry.alias_policy == FunctionAliasPolicy.OptInCompatibility, "compatibility helpers should be opt-in by policy"
             continue
         assert entry.policy_category == FunctionPolicyCategory.PortableCore, f"{entry.function_ref} should be portable core"
+
+
+def test_function_registry__aggregate_helpers_expose_modifier_policy() -> None:
+    """Assert aggregate registry metadata declares RFC 017 modifier support."""
+    # -- Arrange --
+    _exercise_current_public_helpers()
+
+    # -- Act --
+    count_entry = _entry_by_name_or_fail("count")
+    sum_entry = _entry_by_name_or_fail("sum")
+    abs_entry = _entry_by_name_or_fail("abs")
+
+    # -- Assert --
+    assert count_entry.aggregate_modifiers.allows_distinct, "aggregate helpers should allow DISTINCT when they have input expressions"
+    assert count_entry.aggregate_modifiers.allows_filter, "aggregate helpers should allow aggregate-local filters"
+    assert not count_entry.aggregate_modifiers.allows_ordered_input, "core aggregates should reject ordered input until an order-sensitive aggregate lands"
+    assert sum_entry.aggregate_modifiers.allows_distinct, "numeric aggregates should allow DISTINCT"
+    assert sum_entry.aggregate_modifiers.allows_filter, "numeric aggregates should allow aggregate-local filters"
+    assert not abs_entry.aggregate_modifiers.allows_distinct, "scalar helpers should not expose aggregate modifier support"
+    assert not abs_entry.aggregate_modifiers.allows_filter, "scalar helpers should not expose aggregate modifier support"
 
 
 def test_function_registry__extension_policy_is_separate_from_scalar_class() -> None:
@@ -464,6 +488,8 @@ def test_function_registry__substrait_extension_mappings_are_structured() -> Non
     _assert_extension_mapping("sum", "sum", SUM_FUNCTION_ANCHOR)
     _assert_extension_mapping("count", "count", COUNT_FUNCTION_ANCHOR)
     _assert_extension_mapping("count_expr", "count", COUNT_FUNCTION_ANCHOR)
+    _assert_rewrite_mapping("count_distinct", "count_expr(expr).distinct()")
+    _assert_rewrite_mapping("count_if", "count().filter(predicate)")
     _assert_extension_mapping("avg", "avg", AVG_FUNCTION_ANCHOR)
     _assert_extension_mapping("min", "min", MIN_FUNCTION_ANCHOR)
     _assert_extension_mapping("max", "max", MAX_FUNCTION_ANCHOR)
@@ -556,6 +582,8 @@ def test_function_registry__public_helpers_preserve_existing_behavior() -> None:
     sum_measure = sum(amount)
     count_measure = count()
     expression_count_measure = count_expr(status)
+    distinct_count_measure = count_distinct(status)
+    filtered_count_measure = count_if(eq(status, str_lit("paid")))
     avg_measure = avg(amount)
     min_measure = min(amount)
     max_measure = max(amount)
@@ -581,6 +609,10 @@ def test_function_registry__public_helpers_preserve_existing_behavior() -> None:
     assert not count_measure.has_expr, "count wrapper should preserve argument-free count semantics"
     assert expression_count_measure.kind == AggregateKind.Count, "count(expr) wrapper should preserve aggregate kind"
     assert expression_count_measure.has_expr, "count(expr) wrapper should preserve expression-count semantics"
+    assert distinct_count_measure.kind == AggregateKind.Count, "count_distinct wrapper should preserve aggregate kind"
+    assert distinct_count_measure.is_distinct, "count_distinct should lower to the aggregate distinct modifier"
+    assert filtered_count_measure.kind == AggregateKind.Count, "count_if wrapper should preserve aggregate kind"
+    assert filtered_count_measure.has_filter, "count_if should lower to the aggregate-local filter modifier"
     assert avg_measure.kind == AggregateKind.Avg, "avg wrapper should preserve aggregate kind"
     assert min_measure.kind == AggregateKind.Min, "min wrapper should preserve aggregate kind"
     assert max_measure.kind == AggregateKind.Max, "max wrapper should preserve aggregate kind"

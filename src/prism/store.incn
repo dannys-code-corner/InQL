@@ -230,22 +230,45 @@ def _nodes_structurally_equal(candidate: PrismNode, source_node: PrismNode, rema
         return false
     if not _column_expr_lists_structurally_equal(candidate.sort_columns, source_node.sort_columns):
         return false
-    if len(candidate.aggregate_measures) != len(source_node.aggregate_measures):
+    if not _aggregate_measure_lists_structurally_equal(candidate.aggregate_measures, source_node.aggregate_measures):
         return false
-    for idx in range(len(candidate.aggregate_measures)):
-        if candidate.aggregate_measures[idx].kind != source_node.aggregate_measures[idx].kind:
-            return false
-        if not _column_exprs_structurally_equal(
-            candidate.aggregate_measures[idx].expr,
-            source_node.aggregate_measures[idx].expr,
-        ):
-            return false
     if not _projection_assignments_structurally_equal(
         candidate.projection_assignments,
         source_node.projection_assignments,
     ):
         return false
     return candidate.input_ids == remapped_input_ids
+
+
+def _aggregate_measure_lists_structurally_equal(left: list[AggregateMeasure], right: list[AggregateMeasure]) -> bool:
+    """Return whether two aggregate-measure lists carry identical semantics."""
+    if len(left) != len(right):
+        return false
+    for idx in range(len(left)):
+        if not _aggregate_measures_structurally_equal(left[idx], right[idx]):
+            return false
+    return true
+
+
+def _aggregate_measures_structurally_equal(left: AggregateMeasure, right: AggregateMeasure) -> bool:
+    """Return whether two aggregate measures carry identical registry identity and modifier state."""
+    if left.kind != right.kind:
+        return false
+    if left.function_ref != right.function_ref:
+        return false
+    if left.canonical_name != right.canonical_name:
+        return false
+    if left.has_expr != right.has_expr:
+        return false
+    if left.is_distinct != right.is_distinct:
+        return false
+    if left.has_filter != right.has_filter:
+        return false
+    if not _column_exprs_structurally_equal(left.expr, right.expr):
+        return false
+    if not _column_exprs_structurally_equal(left.filter_expr, right.filter_expr):
+        return false
+    return _column_expr_lists_structurally_equal(left.ordering, right.ordering)
 
 
 def _filter_predicates_structurally_equal(left: ColumnExpr, right: ColumnExpr) -> bool:

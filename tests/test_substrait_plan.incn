@@ -1,6 +1,6 @@
 """Tests for RFC 002 proto-backed Substrait emission and conformance alignment."""
 
-from std.testing import fail_t
+from std.testing import assert_is_err, fail_t
 from functions import (
     abs,
     add,
@@ -16,7 +16,9 @@ from functions import (
     col,
     coalesce,
     count,
+    count_distinct,
     count_expr,
+    count_if,
     desc,
     div,
     eq,
@@ -56,6 +58,9 @@ from substrait.function_extensions import (
 )
 from substrait.inspect import (
     aggregate_measure_function_names,
+    aggregate_measure_filter_flags,
+    aggregate_measure_invocation_names,
+    aggregate_measure_sort_counts,
     plan_contains_relation_kind,
     plan_has_extension_urn,
     read_kind_name,
@@ -98,6 +103,7 @@ from substrait.relations import (
     set_rel,
     set_rel_of_kind,
     sort_rel_of_columns,
+    try_aggregate_rel_of_columns,
 )
 from substrait.schema_registry import named_table_columns, register_named_table_schema
 from substrait.schema import RowColumnSpec, SubstraitPrimitiveKind
@@ -421,6 +427,59 @@ def test_plan__aggregate_rel_accepts_scalar_group_and_measure_expressions() -> N
     assert output_columns[3] == "avg", "computed avg measures should use stable fallback names"
     assert output_columns[4] == "min", "computed min measures should use stable fallback names"
     assert output_columns[5] == "max", "computed max measures should use stable fallback names"
+
+
+def test_plan__aggregate_rel_lowers_distinct_and_filter_modifiers() -> None:
+    # -- Arrange --
+    _register_orders_schema()
+    base = read_named_table_rel("orders")
+    aggregated = aggregate_rel(
+        base,
+        [col("id")],
+        [count_distinct(col("id")), count_if(gt(col("id"), lit(1))), sum(col("id")).distinct().filter(
+            gt(col("id"), lit(0)),
+        )],
+    )
+    plan = plan_from_root_relation(aggregated, ["id", "count_distinct_id", "count_filtered", "sum_distinct_id_filtered"])
+
+    # -- Act --
+    output_columns = relation_output_columns(aggregated)
+    aggregate_functions = aggregate_measure_function_names(aggregated)
+    aggregate_invocations = aggregate_measure_invocation_names(aggregated)
+    aggregate_filter_flags = aggregate_measure_filter_flags(aggregated)
+    aggregate_sort_counts = aggregate_measure_sort_counts(aggregated)
+
+    # -- Assert --
+    assert relation_kind_name(aggregated) == "AggregateRel", "aggregate modifiers should still lower through AggregateRel"
+    assert plan_has_extension_urn(plan, registered_substrait_extension_uris()[0]), "modified aggregate plans should register aggregate extensions"
+    assert output_columns == ["id", "count_distinct_id", "count_filtered", "sum_distinct_id_filtered"], "modified aggregate output names should remain stable"
+    assert aggregate_functions == ["count", "count", "sum"], "compatibility helpers should lower to canonical aggregate functions"
+    assert aggregate_invocations == ["Distinct", "All", "Distinct"], "distinct modifiers should lower to Substrait aggregate invocations"
+    assert aggregate_filter_flags == [false, true, true], "aggregate-local filters should lower onto the target measures"
+    assert aggregate_sort_counts == [0, 0, 0], "core aggregates should not emit ordered input fields"
+
+
+def test_plan__aggregate_rel_rejects_invalid_modifier_shapes() -> None:
+    # -- Arrange --
+    _register_orders_schema()
+    base = read_named_table_rel("orders")
+
+    # -- Act --
+    distinct_count_result = try_aggregate_rel_of_columns(base.clone(), ["id"], [col("id")], [count().distinct()])
+    ordered_sum_result = try_aggregate_rel_of_columns(
+        base,
+        ["id"],
+        [col("id")],
+        [sum(col("id")).order_by([asc(col("id"))])],
+    )
+    distinct_err = assert_is_err(distinct_count_result, "count().distinct() should require an input expression")
+    ordered_err = assert_is_err(ordered_sum_result, "core aggregates should reject ordered input for now")
+
+    # -- Assert --
+    assert distinct_err.kind == SubstraitLoweringErrorKind.InvalidScalarExpression, "invalid distinct count should be a scalar lowering diagnostic"
+    assert distinct_err.message.contains("DISTINCT"), "invalid distinct diagnostic should mention DISTINCT"
+    assert ordered_err.kind == SubstraitLoweringErrorKind.InvalidScalarExpression, "unsupported ordered aggregate should be a scalar lowering diagnostic"
+    assert ordered_err.message.contains("ordered aggregate input"), "ordered aggregate diagnostic should identify the unsupported modifier"
 
 
 def test_plan__set_rel_uses_operation_enum() -> None:
