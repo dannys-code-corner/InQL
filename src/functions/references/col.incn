@@ -1,0 +1,45 @@
+"""
+Column reference helper.
+
+`col` stays a structural scalar expression because column references are not scalar function applications. The registry
+entry records that this helper lowers as a direct field-reference rewrite.
+"""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    rewrite_mapping,
+    v0_1,
+)
+from functions.registry import function_registry
+from projection_builders import ColumnExpr, col as col_builder
+
+
+@function_registry.add("col", deterministic_spec(
+    FunctionClass.Scalar,
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionNullBehavior.DependsOnInputs,
+    rewrite_mapping("direct field reference selection"),
+))
+pub def col(name: str) -> ColumnExpr:
+    """
+    Build a named column reference.
+
+    Examples:
+        amount = col("amount")
+        status = col("status")
+
+    Parameters:
+        name: Column name as it appears in the input relation.
+    """
+    return col_builder(name)
+
+
+module tests:
+    from projection_builders import ColumnExprKind, column_expr_kind, column_expr_name
+    def test_col_builds_structural_column_reference() -> None:
+        expr = col("customer_id")
+        assert column_expr_kind(expr) == ColumnExprKind.Column
+        assert column_expr_name(expr) == "customer_id"

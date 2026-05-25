@@ -44,7 +44,9 @@ from rust::substrait::proto::rel_common import Direct, Emit, EmitKind
 from rust::substrait::proto::set_rel import SetOp
 from rust::substrait::proto::sort_field import SortDirection, SortKind
 from aggregate_builders import AggregateKind, AggregateMeasure
-from projection_builders import ColumnExpr, ProjectionAssignment
+from function_registry import SubstraitMappingKind
+from functions.registry import function_registry_entry
+from projection_builders import ColumnExpr, ProjectionAssignment, ScalarFunctionApplicationExpr, col
 from substrait.expr_lowering import (
     bool_expr,
     filter_predicate_expr,
@@ -55,7 +57,7 @@ from substrait.expr_lowering import (
     string_expr,
 )
 from substrait.errors import SubstraitLoweringError, invalid_scalar_expression
-from substrait.extensions import COUNT_FUNCTION_ANCHOR, SUM_FUNCTION_ANCHOR
+from substrait.function_extensions import COUNT_FUNCTION_ANCHOR, SUM_FUNCTION_ANCHOR
 from substrait.inspect import relation_output_columns
 from substrait.schema_registry import named_table_base_schema, unknown_named_struct
 
@@ -232,6 +234,60 @@ def _lowered_rel_or_raise(result: Result[Rel, SubstraitLoweringError]) -> Rel:
         Err(err) =>
             message = err.error_message()
             return raise_value_error(message)
+
+
+def _sort_direction_for_mapping_detail(direction: str) -> Result[SortDirection, SubstraitLoweringError]:
+    """Return the Substrait direction/null-placement encoded by one sort-field registry mapping."""
+    if direction == "asc_nulls_first":
+        return Ok(SortDirection.AscNullsFirst)
+    if direction == "asc_nulls_last":
+        return Ok(SortDirection.AscNullsLast)
+    if direction == "desc_nulls_first":
+        return Ok(SortDirection.DescNullsFirst)
+    if direction == "desc_nulls_last":
+        return Ok(SortDirection.DescNullsLast)
+    return Err(invalid_scalar_expression(f"unknown sort-field direction `{direction}`"))
+
+
+def _sort_field_direction_detail(application: ScalarFunctionApplicationExpr) -> str:
+    """Return the sort-field registry mapping detail for one ordering helper application, or empty."""
+    match function_registry_entry(application.function_ref):
+        Some(entry) =>
+            if entry.substrait.kind == SubstraitMappingKind.StructuralFunction and entry.substrait.function_name == "sort_field":
+                return entry.substrait.detail
+        None => pass
+    return ""
+
+
+def _sort_field(input_columns: list[str], key: ColumnExpr) -> Result[SortField, SubstraitLoweringError]:
+    """Lower one InQL sort-key expression into a Substrait SortField."""
+    match key:
+        ScalarFunctionApplicationExpr(application) =>
+            direction_detail = _sort_field_direction_detail(application)
+            if direction_detail != "":
+                if len(application.arguments) != 1:
+                    return Err(
+                        invalid_scalar_expression(f"{application.function_ref} requires exactly one sort-key argument"),
+                    )
+                return Ok(
+                    SortField(
+                        expr=Some(scalar_expr(input_columns, application.arguments[0])?),
+                        sort_kind=Some(SortKind.Direction(_sort_direction_for_mapping_detail(direction_detail)?.into())),
+                    ),
+                )
+            return Ok(
+                SortField(
+                    expr=Some(scalar_expr(input_columns, key)?),
+                    sort_kind=Some(SortKind.Direction(SortDirection.AscNullsFirst.into())),
+                ),
+            )
+        _ =>
+            return Ok(
+                SortField(
+                    expr=Some(scalar_expr(input_columns, key)?),
+                    sort_kind=Some(SortKind.Direction(SortDirection.AscNullsFirst.into())),
+                ),
+            )
 
 
 pub def read_named_table_rel(table_name: str) -> Rel:
@@ -451,13 +507,38 @@ pub def try_aggregate_rel_of_columns(
 
 
 pub def sort_rel(input: Rel) -> Rel:
-    """Wrap a child relation in `SortRel` with one placeholder ascending sort field."""
-    sort_field = SortField(
-        expr=Some(string_expr("__sort_key__")),
-        sort_kind=Some(SortKind.Direction(SortDirection.AscNullsFirst.into())),
-    )
-    return _rel_sort(
-        SortRel(common=Some(_direct_common()), input=Some(Box.new(input)), sorts=[sort_field], advanced_extension=None),
+    """Wrap a child relation in `SortRel` using the first known output column as the default sort key."""
+    input_columns = relation_output_columns(input.clone())
+    if len(input_columns) == 0:
+        return _lowered_rel_or_raise(
+            Err(invalid_scalar_expression("sort_rel requires at least one input column or explicit sort key")),
+        )
+    return sort_rel_of_columns(input, input_columns, [col(input_columns[0])])
+
+
+pub def sort_rel_of_columns(input: Rel, input_columns: list[str], sort_keys: list[ColumnExpr]) -> Rel:
+    """Wrap a child relation in `SortRel` using explicit input columns and sort-key expressions."""
+    return _lowered_rel_or_raise(try_sort_rel_of_columns(input, input_columns, sort_keys))
+
+
+pub def try_sort_rel_of_columns(
+    input: Rel,
+    input_columns: list[str],
+    sort_keys: list[ColumnExpr],
+) -> Result[Rel, SubstraitLoweringError]:
+    """Fallibly wrap a child relation in `SortRel` with real sort fields."""
+    if len(sort_keys) == 0:
+        return Err(invalid_scalar_expression("order_by requires at least one sort key"))
+    sort_fields = [_sort_field(input_columns, key)? for key in sort_keys]
+    return Ok(
+        _rel_sort(
+            SortRel(
+                common=Some(_direct_common()),
+                input=Some(Box.new(input)),
+                sorts=sort_fields,
+                advanced_extension=None,
+            ),
+        ),
     )
 
 

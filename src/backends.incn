@@ -1,9 +1,9 @@
 """
-Backend configuration objects for RFC 004.
+Backend configuration objects for session execution.
 
 The root `Session` API stays portable, while backend-specific configuration lives under `pub::inql.backends`.
-This module intentionally starts small: DataFusion is the first real backend configuration object and the only
-implemented backend in the current slice.
+Backend selection is an adapter-neutral kind plus options envelope so adding another backend does not require adding
+one field per implementation to the core Session state.
 """
 
 
@@ -21,6 +21,18 @@ pub class DataFusion:
 @derive(Clone)
 pub enum BackendKind(str):
     DataFusionEngine = "datafusion"
+
+
+@derive(Clone)
+pub class BackendOption:
+    """One stringly-encoded backend option carried by the portable backend-selection envelope."""
+
+    pub key: str
+    pub value: str
+
+    def clone(self) -> Self:
+        """Return one cloned backend option."""
+        return BackendOption(key=self.key, value=self.value)
 
 
 @derive(Clone)
@@ -47,16 +59,29 @@ pub class BackendSelection:
     """Portable backend selection envelope stored by `Session` and its builder."""
 
     pub kind: BackendKind
-    pub datafusion: DataFusion
+    pub options: list[BackendOption]
 
     def clone(self) -> Self:
-        """Return one cloned backend selection preserving engine-specific options."""
-        return BackendSelection(kind=self.kind, datafusion=self.datafusion)
+        """Return one cloned backend selection preserving encoded backend options."""
+        return BackendSelection(kind=self.kind, options=[option.clone() for option in self.options])
 
 
 pub def default_backend_selection() -> BackendSelection:
     """Return the default backend selection used by Session defaults/builders."""
-    return BackendSelection(kind=BackendKind.DataFusionEngine, datafusion=DataFusion(enable_optimizer=true))
+    return datafusion_backend_selection(DataFusion(enable_optimizer=true))
+
+
+pub def datafusion_backend_selection(backend: DataFusion) -> BackendSelection:
+    """Encode DataFusion backend options into one portable backend-selection envelope."""
+    return BackendSelection(
+        kind=BackendKind.DataFusionEngine,
+        options=[BackendOption(key="enable_optimizer", value=_bool_option_value(backend.enable_optimizer))],
+    )
+
+
+pub def datafusion_backend_from_selection(selection: BackendSelection) -> DataFusion:
+    """Decode DataFusion options from one backend-selection envelope."""
+    return DataFusion(enable_optimizer=_backend_bool_option(selection, "enable_optimizer", true))
 
 
 pub def backend_kind_name(selection: BackendSelection) -> str:
@@ -67,6 +92,21 @@ pub def backend_kind_name(selection: BackendSelection) -> str:
 pub def source_kind_name(kind: SourceKind) -> str:
     """Return one stable source-kind name for diagnostics and UX."""
     return kind.value()
+
+
+def _bool_option_value(value: bool) -> str:
+    """Encode one bool backend option as stable text."""
+    if value:
+        return "true"
+    return "false"
+
+
+def _backend_bool_option(selection: BackendSelection, key: str, default_value: bool) -> bool:
+    """Read one bool backend option from an encoded backend selection."""
+    for option in selection.options:
+        if option.key == key:
+            return option.value == "true"
+    return default_value
 
 
 pub def csv_source(uri: str) -> TableSource:

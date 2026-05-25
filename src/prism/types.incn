@@ -39,6 +39,7 @@ pub model PrismNode:
     pub filter_predicate: ColumnExpr
     pub limit_count: int
     pub group_columns: list[ColumnExpr]
+    pub sort_columns: list[ColumnExpr]
     pub aggregate_measures: list[AggregateMeasure]
     pub projection_assignments: list[ProjectionAssignment]
 

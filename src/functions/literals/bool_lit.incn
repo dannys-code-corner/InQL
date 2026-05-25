@@ -1,0 +1,41 @@
+"""
+Filter-style boolean literal helper.
+
+`bool_lit` keeps the predicate-friendly spelling while returning the same structural boolean literal as `bool_expr`.
+"""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    rewrite_mapping,
+    v0_1,
+)
+from functions.registry import function_registry
+from projection_builders import ColumnExpr, bool_expr
+
+
+@function_registry.add("bool_lit", deterministic_spec(
+    FunctionClass.Scalar,
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionNullBehavior.NonNullLiteral,
+    rewrite_mapping("filter-helper boolean literal expression"),
+))
+pub def bool_lit(value: bool) -> ColumnExpr:
+    """
+    Build a boolean literal expression using the filter-helper naming style.
+
+    Examples:
+        explicit_true = bool_lit(true)
+
+    Parameters:
+        value: Boolean value to embed in the expression tree.
+    """
+    return bool_expr(value)
+
+
+module tests:
+    from projection_builders import ColumnExprKind, column_expr_kind
+    def test_bool_lit_uses_structural_bool_literal() -> None:
+        assert column_expr_kind(bool_lit(false)) == ColumnExprKind.BoolLiteral

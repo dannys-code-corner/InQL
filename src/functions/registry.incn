@@ -1,0 +1,84 @@
+"""
+Shared declaration-side registry state for public InQL helpers.
+
+Helper modules attach metadata with `@function_registry.add(...)` next to the helper they expose. This module owns the
+runtime projection for helpers that have actually been loaded in the current process. Checked API metadata remains the
+source for the complete public catalog and helper signatures.
+"""
+
+from rust::incan_stdlib::errors import raise_value_error
+from function_registry import FunctionRegistry, FunctionRegistryEntry, SubstraitMapping, SubstraitMappingKind
+from projection_builders import ColumnExpr, ScalarFunctionOption, scalar_function_application
+
+pub static function_registry: FunctionRegistry = FunctionRegistry.new()
+
+
+pub def registered_substrait_mapping(canonical_name: str) -> SubstraitMapping:
+    """Return the decorator-registered Substrait mapping for one helper name."""
+    entry = registered_function_entry(canonical_name)
+    return entry.substrait
+
+
+pub def registered_function_entry(canonical_name: str) -> FunctionRegistryEntry:
+    """Return the decorator-registered metadata for one helper name."""
+    match function_registry.entry_by_name(canonical_name):
+        Some(entry) => return entry
+        None => pass
+    message = f"missing function registry entry for `{canonical_name}`"
+    return raise_value_error(message)
+
+
+pub def registered_application(canonical_name: str, arguments: list[ColumnExpr]) -> ColumnExpr:
+    """Build one scalar application using decorator-owned registry metadata."""
+    return registered_application_with_options(canonical_name, arguments, [])
+
+
+pub def registered_application_with_options(
+    canonical_name: str,
+    arguments: list[ColumnExpr],
+    options: list[ScalarFunctionOption],
+) -> ColumnExpr:
+    """Build one scalar application with non-expression options using decorator-owned registry metadata."""
+    registered_function_entry(canonical_name)
+    return scalar_function_application(canonical_name, arguments, options)
+
+
+pub def function_registry_entries() -> list[FunctionRegistryEntry]:
+    """Return runtime registry entries for helpers loaded in the current process."""
+    return function_registry.entries
+
+
+pub def function_registry_entry(function_ref: str) -> Option[FunctionRegistryEntry]:
+    """Return a loaded registry entry for one stable function reference when it is known."""
+    for entry in function_registry.entries:
+        if entry.function_ref == function_ref:
+            return Some(entry)
+    return None
+
+
+pub def function_registry_entry_by_name(canonical_name: str) -> Option[FunctionRegistryEntry]:
+    """Return a loaded registry entry for one canonical public function name when it is known."""
+    for entry in function_registry.entries:
+        if entry.canonical_name == canonical_name:
+            return Some(entry)
+    return None
+
+
+pub def function_registry_function_refs() -> list[str]:
+    """Return loaded function references in runtime registry order."""
+    return [entry.function_ref for entry in function_registry.entries]
+
+
+pub def function_registry_canonical_names() -> list[str]:
+    """Return loaded canonical function names in runtime registry order."""
+    return [entry.canonical_name for entry in function_registry.entries]
+
+
+pub def function_registry_entry_count() -> int:
+    """Return the number of loaded runtime registry entries."""
+    return len(function_registry.entries)
+
+
+pub def registered_substrait_mapped_function_refs() -> list[str]:
+    """Return function references with a concrete Substrait extension mapping."""
+    return [entry.function_ref for entry in function_registry.entries if entry.substrait.kind == SubstraitMappingKind.ExtensionFunction]

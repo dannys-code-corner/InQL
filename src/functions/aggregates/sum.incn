@@ -1,0 +1,44 @@
+"""
+Sum aggregate helper.
+
+`sum` records its aggregate signature and current Substrait extension anchor at the helper declaration site.
+"""
+
+from aggregate_builders import AggregateKind, AggregateMeasure, sum as sum_builder
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import function_registry
+from projection_builders import ColumnExpr
+from substrait.function_extensions import SUM_FUNCTION_ANCHOR
+
+
+@function_registry.add("sum", deterministic_spec(
+    FunctionClass.Aggregate,
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionNullBehavior.NullSkippingAggregate,
+    extension_mapping("sum", SUM_FUNCTION_ANCHOR),
+))
+pub def sum(expr: ColumnExpr) -> AggregateMeasure:
+    """
+    Build a sum aggregate measure.
+
+    Examples:
+        revenue = sum(col("amount"))
+
+    Parameters:
+        expr: Numeric expression to aggregate.
+    """
+    return sum_builder(expr)
+
+
+module tests:
+    from projection_builders import col
+    def test_sum_builds_sum_aggregate_measure() -> None:
+        measure = sum(col("amount"))
+        assert measure.kind == AggregateKind.Sum

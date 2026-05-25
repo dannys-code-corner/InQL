@@ -1,0 +1,41 @@
+"""
+Float literal expression helper.
+
+`float_expr` keeps floating-point literals as structural scalar nodes so lowering can emit a literal directly.
+"""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    rewrite_mapping,
+    v0_1,
+)
+from functions.registry import function_registry
+from projection_builders import ColumnExpr, float_expr as float_expr_builder
+
+
+@function_registry.add("float_expr", deterministic_spec(
+    FunctionClass.Scalar,
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionNullBehavior.NonNullLiteral,
+    rewrite_mapping("typed floating-point literal expression"),
+))
+pub def float_expr(value: float) -> ColumnExpr:
+    """
+    Build a floating-point literal expression.
+
+    Examples:
+        discounted = mul(col("price"), float_expr(0.9))
+
+    Parameters:
+        value: Floating-point value to embed in the expression tree.
+    """
+    return float_expr_builder(value)
+
+
+module tests:
+    from projection_builders import ColumnExprKind, column_expr_kind
+    def test_float_expr_uses_structural_float_literal() -> None:
+        assert column_expr_kind(float_expr(1.5)) == ColumnExprKind.FloatLiteral

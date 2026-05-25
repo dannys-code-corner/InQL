@@ -3,12 +3,9 @@
 from std.fs import Path
 from std.json import JsonValue
 from std.testing import fail_t
-from functions import function_registry_entries
-from function_registry import FunctionRegistryEntry
 
 const METADATA_PATH: str = "target/function_registry_api_metadata.json"
-const FUNCTION_REF_PREFIX: str = "inql.functions."
-const REGISTRY_DECORATOR: str = "FUNCTION_REGISTRY.add"
+const REGISTRY_DECORATOR: str = "function_registry.add"
 
 
 def metadata_fail[T](message: str) -> T:
@@ -49,6 +46,14 @@ def require_string_field(value: JsonValue, key: str, context: str) -> str:
     return require_string(require_field(value, key, context), f"{context}.{key}")
 
 
+def optional_field(value: JsonValue, key: str) -> Option[JsonValue]:
+    """Return one optional JSON object field."""
+    fields = require_object(value, key)
+    if has_key(fields, key):
+        return Some(require_field(value, key, key))
+    return None
+
+
 def optional_string_field(value: JsonValue, key: str) -> Option[str]:
     """Return one optional JSON string field."""
     fields = require_object(value, key)
@@ -80,22 +85,38 @@ def contains_text(items: list[str], expected: str) -> bool:
     return false
 
 
-def same_text_set(left: list[str], right: list[str]) -> bool:
-    """Return whether two string lists contain the same values, ignoring order."""
+def module_named(package_value: JsonValue, name: str) -> Option[JsonValue]:
+    """Return one checked API metadata module by single-segment module path."""
+    module_items = require_array(require_field(package_value, "modules", "package"), "package.modules")
+    for module in module_items:
+        module_path_items = require_array(require_field(module, "module_path", "module"), "module.module_path")
+        if len(module_path_items) == 1 and require_string(module_path_items[0], "module.module_path[0]") == name:
+            return Some(module)
+    return None
+
+
+def paths_equal(left: list[str], right: list[str]) -> bool:
+    """Return whether two module paths contain the same segments."""
     if len(left) != len(right):
         return false
-    for item in left:
-        if not contains_text(right, item):
+    for index in range(len(left)):
+        if left[index] != right[index]:
             return false
     return true
 
 
-def module_named(package: JsonValue, name: str) -> Option[JsonValue]:
-    """Return one checked API metadata module by single-segment module path."""
-    modules = require_array(require_field(package, "modules", "package"), "package.modules")
-    for module in modules:
-        module_path = require_array(require_field(module, "module_path", "module"), "module.module_path")
-        if len(module_path) == 1 and require_string(module_path[0], "module.module_path[0]") == name:
+def module_metadata_path(module: JsonValue) -> list[str]:
+    """Return one module metadata path as string segments."""
+    module_path = require_field(module, "module_path", "module")
+    module_path_items = require_array(module_path, "module.module_path")
+    return [require_string(segment, "module.module_path") for segment in module_path_items]
+
+
+def module_by_path(package_value: JsonValue, path: list[str]) -> Option[JsonValue]:
+    """Return one checked API metadata module by full module path."""
+    module_items = require_array(require_field(package_value, "modules", "package"), "package.modules")
+    for module in module_items:
+        if paths_equal(module_metadata_path(module), path):
             return Some(module)
     return None
 
@@ -112,25 +133,71 @@ def declarations_by_name(module: JsonValue, kind: str) -> dict[str, JsonValue]:
     return declarations
 
 
-def helper_name_from_function_ref(function_ref: str) -> str:
-    """Return the public helper name encoded by one stable function reference."""
-    parts = function_ref.split(FUNCTION_REF_PREFIX)
-    if len(parts) != 2 or parts[0] != "":
-        return metadata_fail[str](f"function ref must start with {FUNCTION_REF_PREFIX}, found {function_ref}")
-
-    helper_name = parts[1]
-    if len(helper_name) == 0 or helper_name.contains("."):
-        return metadata_fail[str](f"function ref must name one public helper, found {function_ref}")
-    return helper_name
+def declaration_named(module: JsonValue, name: str) -> Option[JsonValue]:
+    """Return one declaration by name from a module."""
+    items = require_array(require_field(module, "declarations", "module"), "module.declarations")
+    for declaration in items:
+        if require_string_field(declaration, "name", "declaration") == name:
+            return Some(declaration)
+    return None
 
 
-def registry_decorators(function: JsonValue) -> list[JsonValue]:
-    """Return registry decorators attached to one public helper."""
-    mut decorators: list[JsonValue] = []
-    for decorator in require_array(require_field(function, "decorators", "function"), "function.decorators"):
-        if decorator_source_matches(decorator):
-            decorators.append(decorator)
-    return decorators
+def resolve_declaration_path(
+    package_value: JsonValue,
+    target_path: list[str],
+    context: str,
+    depth: int,
+) -> Option[JsonValue]:
+    """Resolve an alias target path to its final declaration."""
+    if depth > 8:
+        return metadata_fail[Option[JsonValue]](f"{context}: alias resolution exceeded maximum depth")
+    if len(target_path) < 2:
+        return metadata_fail[Option[JsonValue]]("alias target path must contain a module path and declaration name")
+
+    module_path_value = target_path[:-1]
+    declaration_name = target_path[len(target_path) - 1]
+    target_module: JsonValue = match module_by_path(package_value, module_path_value):
+        Some(module) => module
+        None => return None
+
+    declaration: JsonValue = match declaration_named(target_module, declaration_name):
+        Some(item) => item
+        None => return None
+
+    declaration_kind = require_string_field(declaration, "kind", context)
+    if declaration_kind == "function":
+        return Some(declaration)
+    if declaration_kind == "alias":
+        nested_target = require_field(declaration, "target_path", context)
+        nested_context = f"{context}.target_path"
+        nested_items = require_array(nested_target, nested_context)
+        nested_path = [require_string(segment, nested_context) for segment in nested_items]
+        return resolve_declaration_path(package_value, nested_path, context, depth + 1)
+    return None
+
+
+def public_helper_declarations(package_value: JsonValue, functions_module: JsonValue) -> dict[str, JsonValue]:
+    """Return root public helper declarations, resolving facade aliases through family modules."""
+    mut functions = declarations_by_name(functions_module, "function")
+    aliases = declarations_by_name(functions_module, "alias")
+    for alias_name in aliases.keys():
+        alias = aliases[alias_name]
+        target_path_value = require_field(alias, "target_path", alias_name)
+        target_context = f"{alias_name}.target_path"
+        target_path_items = require_array(target_path_value, target_context)
+        target_path = [require_string(segment, target_context) for segment in target_path_items]
+        match resolve_declaration_path(package_value, target_path, alias_name, 0):
+            Some(function) =>
+                functions[alias_name] = function
+            None => pass
+    return functions
+
+
+def registry_decorators(value: JsonValue) -> list[JsonValue]:
+    """Return registry decorators attached to one metadata declaration or projection."""
+    decorators = require_field(value, "decorators", "decorated value")
+    decorator_items = require_array(decorators, "decorated value.decorators")
+    return [decorator for decorator in decorator_items if decorator_source_matches(decorator)]
 
 
 def decorator_source_matches(decorator: JsonValue) -> bool:
@@ -157,117 +224,130 @@ def decorator_canonical_name(decorator: JsonValue, context: str) -> str:
     return require_string_field(literal, "value", context)
 
 
-def metadata_type_names(value: JsonValue, context: str) -> list[str]:
-    """Return normalized leaf type names from API metadata type JSON."""
-    fields = require_object(value, context)
-
-    if has_key(fields, "Named"):
-        named = require_field(value, "Named", context)
-        return [require_string_field(named, "name", context)]
-
-    if has_key(fields, "Applied"):
-        applied = require_field(value, "Applied", context)
-        return applied_type_names(applied, context)
-
-    if has_key(fields, "TypeParam"):
-        param = require_field(value, "TypeParam", context)
-        return [require_string_field(param, "name", context)]
-
-    return metadata_fail[list[str]](f"{context}: unsupported type metadata shape")
+def projected_function(alias: JsonValue, alias_name: str) -> JsonValue:
+    """Return the rc17 projected function payload for one public facade alias."""
+    match optional_field(alias, "projected_function"):
+        Some(projection) => return projection
+        None => return metadata_fail[JsonValue](f"{alias_name}: public function alias is missing projected_function")
 
 
-def applied_type_names(applied: JsonValue, context: str) -> list[str]:
-    """Return normalized leaf type names from an applied type metadata node."""
-    applied_name = require_string_field(applied, "name", context)
-    args = require_array(require_field(applied, "args", context), f"{context}.args")
-    if applied_name == "Union":
-        mut names: list[str] = []
-        for arg in args:
-            leaves = metadata_type_names(arg, context)
-            for leaf in leaves:
-                names.append(leaf)
-        return names
-    return [applied_name]
+def projected_callable(projection: JsonValue, alias_name: str) -> JsonValue:
+    """Return the projected callable signature payload for one facade alias."""
+    return require_field(projection, "callable", f"{alias_name}.projected_function")
 
 
-def type_matches_rule(value: JsonValue, expected_rule: str, context: str) -> bool:
-    """Return whether an API metadata type matches one registry type-rule string."""
-    actual = metadata_type_names(value, context)
-    if expected_rule.contains("|"):
-        return same_text_set(actual, expected_rule.split(" | "))
-    return len(actual) == 1 and actual[0] == expected_rule
-
-
-def check_entry(entry: FunctionRegistryEntry, functions: dict[str, JsonValue]) -> None:
-    """Validate one runtime registry entry against checked public API metadata."""
-    expected_name = helper_name_from_function_ref(entry.function_ref)
-    if expected_name != entry.canonical_name:
-        return metadata_fail[None](f"{entry.function_ref}: function ref and canonical name disagree")
-    if not has_key(functions, entry.canonical_name):
-        return metadata_fail[None](f"{entry.function_ref}: missing public helper `{entry.canonical_name}`")
-
-    function = functions[entry.canonical_name]
-    decorators = registry_decorators(function)
-    if len(decorators) != 1:
-        return metadata_fail[None](
-            f"{entry.canonical_name}: expected exactly one registry decorator, found {len(decorators)}",
-        )
-    decorator_name = decorator_canonical_name(decorators[0], entry.canonical_name)
-    if decorator_name != entry.canonical_name:
-        return metadata_fail[None](f"{entry.canonical_name}: decorator registered `{decorator_name}`")
-
-    params = require_array(require_field(function, "params", entry.canonical_name), f"{entry.canonical_name}.params")
-    if len(params) != len(entry.signature.args):
-        return metadata_fail[None](f"{entry.canonical_name}: registry arity does not match public helper")
-
+def assert_callable_has_signature(callable: JsonValue, context: str) -> None:
+    """Assert one callable metadata node carries checked parameter and return type data."""
+    callable_name = require_string_field(callable, "name", context)
+    assert len(callable_name) > 0, f"{context}: callable name must not be empty"
+    params = require_array(require_field(callable, "params", context), f"{context}.params")
     for index in range(len(params)):
-        param = params[index]
-        expected_arg = entry.signature.args[index]
-        param_name = require_string_field(param, "name", entry.canonical_name)
-        if param_name != expected_arg.name:
-            return metadata_fail[None](f"{entry.canonical_name}: arg {index} name mismatch")
-        param_type = require_field(param, "ty", entry.canonical_name)
-        if not type_matches_rule(param_type, expected_arg.type_rule, f"{entry.canonical_name}.{param_name}"):
-            return metadata_fail[None](
-                f"{entry.canonical_name}.{param_name}: type does not match registry rule `{expected_arg.type_rule}`",
-            )
+        param_name = require_string_field(params[index], "name", context)
+        param_type = require_field(params[index], "ty", context)
+        param_type_fields = require_object(param_type, f"{context}.{param_name}")
+        assert len(param_name) > 0, f"{context}: checked parameter name must not be empty"
+        assert len(param_type_fields.keys()) > 0, f"{context}.{param_name}: checked parameter type is empty"
+    return_type = require_field(callable, "return_type", context)
+    return_type_fields = require_object(return_type, f"{context}.return")
+    assert len(return_type_fields.keys()) > 0, f"{context}: checked return type is empty"
 
-    return_type = require_field(function, "return_type", entry.canonical_name)
-    if not type_matches_rule(return_type, entry.signature.return_type_rule, f"{entry.canonical_name}.return"):
-        return metadata_fail[None](
-            f"{entry.canonical_name}: return type does not match registry rule `{entry.signature.return_type_rule}`",
+
+def assert_decorated_callable_matches_source(decorator: JsonValue, source_function: JsonValue, context: str) -> None:
+    """Assert decorator metadata carries the source callable signature it decorates."""
+    decorated = require_field(decorator, "decorated_callable", f"{context}.decorator")
+    decorated_name = require_string_field(decorated, "name", context)
+    source_name = require_string_field(source_function, "name", context)
+    if decorated_name != source_name:
+        return metadata_fail[None](f"{context}: decorated callable `{decorated_name}` does not match `{source_name}`")
+    assert_callable_has_signature(decorated, f"{context}.decorated_callable")
+
+
+def docstring_param_names(function: JsonValue, context: str) -> list[str]:
+    """Return parameter names documented in parsed docstring sections."""
+    sections = require_field(function, "docstring_sections", context)
+    params = require_array(require_field(sections, "params", context), f"{context}.docstring_sections.params")
+    for param in params:
+        name = require_string_field(param, "name", context)
+        description = require_string_field(param, "description", context)
+        assert len(description) > 0, f"{context}.{name}: docstring parameter description must not be empty"
+    return [require_string_field(param, "name", context) for param in params]
+
+
+def assert_docstring_documents_params(function: JsonValue, callable: JsonValue, context: str) -> None:
+    """Assert every checked parameter has human-facing docstring intent."""
+    documented_names = docstring_param_names(function, context)
+    for param in require_array(require_field(callable, "params", context), f"{context}.params"):
+        param_name = require_string_field(param, "name", context)
+        if not contains_text(documented_names, param_name):
+            return metadata_fail[None](f"{context}.{param_name}: registered helper parameter lacks docstring text")
+
+
+def check_registered_helper(alias_name: str, alias: JsonValue, source_function: JsonValue) -> list[str]:
+    """Validate one public helper alias and return the canonical registry names it exposes."""
+    projection = projected_function(alias, alias_name)
+    callable = projected_callable(projection, alias_name)
+    assert_callable_has_signature(callable, f"{alias_name}.projected_callable")
+
+    decorators = registry_decorators(projection)
+    if len(decorators) == 0:
+        return []
+    if len(decorators) != 1:
+        return metadata_fail[list[str]](
+            f"{alias_name}: expected exactly one registry decorator, found {len(decorators)}",
         )
 
+    canonical_name = decorator_canonical_name(decorators[0], alias_name)
+    assert_decorated_callable_matches_source(decorators[0], source_function, canonical_name)
 
-def check_unmatched_decorators(functions: dict[str, JsonValue], seen_names: dict[str, bool]) -> None:
-    """Fail if a function has a registry decorator but no runtime registry entry."""
-    for function_name in functions.keys():
-        decorators = registry_decorators(functions[function_name])
-        if len(decorators) > 0 and not has_key(seen_names, function_name):
-            return metadata_fail[None](f"{function_name}: registry decorator did not produce a runtime registry entry")
+    match optional_string_field(source_function, "docstring"):
+        Some(docstring) =>
+            if not docstring.contains("Examples:"):
+                return metadata_fail[list[str]](f"{canonical_name}: registered helper docstring must include examples")
+        None => return metadata_fail[list[str]](f"{canonical_name}: registered helper must have a docstring")
+    assert_docstring_documents_params(source_function, callable, canonical_name)
+
+    return [canonical_name]
 
 
-def check_metadata(package: JsonValue, entries: list[FunctionRegistryEntry]) -> int:
-    """Validate runtime registry entries against checked API metadata."""
-    functions_module: JsonValue = match module_named(package, "functions"):
+def check_unmatched_decorators(package_value: JsonValue, seen_names: dict[str, bool]) -> None:
+    """Fail if a function has a registry decorator but no public projected facade entry."""
+    module_items = require_array(require_field(package_value, "modules", "package"), "package.modules")
+    for module in module_items:
+        functions = declarations_by_name(module, "function")
+        for function_name in functions.keys():
+            function = functions[function_name]
+            decorators = registry_decorators(function)
+            for decorator in decorators:
+                canonical_name = decorator_canonical_name(decorator, function_name)
+                if not has_key(seen_names, canonical_name):
+                    return metadata_fail[None](
+                        f"{canonical_name}: registry decorator is not exposed through the public functions facade",
+                    )
+
+
+def check_metadata(package_value: JsonValue) -> int:
+    """Validate registry decorators through checked API metadata projections."""
+    functions_module: JsonValue = match module_named(package_value, "functions"):
         Some(module) => module
         None => return metadata_fail[int]("missing checked API metadata module: functions")
 
-    functions = declarations_by_name(functions_module, "function")
-    mut seen_refs: dict[str, bool] = {}
+    functions = public_helper_declarations(package_value, functions_module)
+    aliases = declarations_by_name(functions_module, "alias")
     mut seen_names: dict[str, bool] = {}
+    mut helper_count = 0
 
-    for entry in entries:
-        if has_key(seen_refs, entry.function_ref):
-            return metadata_fail[int](f"duplicate function ref in registry: {entry.function_ref}")
-        seen_refs[entry.function_ref] = true
-        check_entry(entry, functions)
-        if has_key(seen_names, entry.canonical_name):
-            return metadata_fail[int](f"duplicate canonical function name in registry: {entry.canonical_name}")
-        seen_names[entry.canonical_name] = true
+    for alias_name in aliases.keys():
+        if not has_key(functions, alias_name):
+            continue
 
-    check_unmatched_decorators(functions, seen_names)
-    return len(entries)
+        for canonical_name in check_registered_helper(alias_name, aliases[alias_name], functions[alias_name]):
+            if has_key(seen_names, canonical_name):
+                return metadata_fail[int](f"duplicate canonical function name in registry metadata: {canonical_name}")
+            seen_names[canonical_name] = true
+            helper_count += 1
+
+    check_unmatched_decorators(package_value, seen_names)
+    return helper_count
 
 
 def main() -> None:
@@ -276,9 +356,9 @@ def main() -> None:
         Ok(text) => text
         Err(err) => return metadata_fail[None](f"could not read {METADATA_PATH}: {err.message()}")
 
-    package: JsonValue = match JsonValue.parse(source):
+    parsed_package: JsonValue = match JsonValue.parse(source):
         Ok(value) => value
         Err(err) => return metadata_fail[None](f"could not parse {METADATA_PATH}: {err.message()}")
 
-    helper_count = check_metadata(package, function_registry_entries())
+    helper_count = check_metadata(parsed_package)
     println(f"function registry metadata check passed ({helper_count} helpers)")

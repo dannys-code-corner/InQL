@@ -1,0 +1,42 @@
+"""
+Filter-style integer literal helper.
+
+`int_lit` preserves the existing predicate-builder spelling while routing through the same canonical structural literal
+representation as `int_expr`.
+"""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    rewrite_mapping,
+    v0_1,
+)
+from functions.registry import function_registry
+from projection_builders import ColumnExpr, int_expr
+
+
+@function_registry.add("int_lit", deterministic_spec(
+    FunctionClass.Scalar,
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionNullBehavior.NonNullLiteral,
+    rewrite_mapping("filter-helper integer literal expression"),
+))
+pub def int_lit(value: int) -> ColumnExpr:
+    """
+    Build an integer literal expression using the filter-helper naming style.
+
+    Examples:
+        high_value = gt(col("amount"), int_lit(1000))
+
+    Parameters:
+        value: Integer value to embed in the expression tree.
+    """
+    return int_expr(value)
+
+
+module tests:
+    from projection_builders import ColumnExprKind, column_expr_kind
+    def test_int_lit_uses_structural_int_literal() -> None:
+        assert column_expr_kind(int_lit(7)) == ColumnExprKind.IntLiteral

@@ -1,0 +1,39 @@
+"""
+Count aggregate helper.
+
+`count` is registered as a zero-argument aggregate with a concrete Substrait extension mapping.
+"""
+
+from aggregate_builders import AggregateKind, AggregateMeasure, count as count_builder
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import function_registry
+from substrait.function_extensions import COUNT_FUNCTION_ANCHOR
+
+
+@function_registry.add("count", deterministic_spec(
+    FunctionClass.Aggregate,
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionNullBehavior.NullSkippingAggregate,
+    extension_mapping("count", COUNT_FUNCTION_ANCHOR),
+))
+pub def count() -> AggregateMeasure:
+    """
+    Build a row-count aggregate measure.
+
+    Examples:
+        rows = count()
+    """
+    return count_builder()
+
+
+module tests:
+    def test_count_builds_count_aggregate_measure() -> None:
+        measure = count()
+        assert measure.kind == AggregateKind.Count

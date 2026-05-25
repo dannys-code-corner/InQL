@@ -112,7 +112,12 @@ def _derive_rewrite_result(store_id: PrismStoreId, tip_id: int) -> PrismRewriteR
             applied_rule_names.append(str("collapse_adjacent_aggregate"))
             continue
         if _can_collapse_adjacent_order_by(authored_node, remapped_inputs, rewritten_nodes):
-            authored_to_rewritten_id[authored_node_id] = remapped_inputs[0]
+            collapsed_id = len(rewritten_nodes)
+            rewritten_nodes.append(
+                _build_collapsed_order_by_node(authored_node, remapped_inputs, rewritten_nodes, collapsed_id),
+            )
+            rewritten_origin_ids.append(authored_node_id)
+            authored_to_rewritten_id[authored_node_id] = collapsed_id
             applied_rule_names.append(str("collapse_adjacent_order_by"))
             continue
 
@@ -161,6 +166,7 @@ def _build_collapsed_limit_node(
         filter_predicate=always_true(),
         limit_count=_min_int(limit_input.limit_count, node.limit_count),
         group_columns=[],
+        sort_columns=[],
         aggregate_measures=[],
         projection_assignments=[],
     )
@@ -196,6 +202,7 @@ def _build_collapsed_project_node(
         filter_predicate=always_true(),
         limit_count=0,
         group_columns=[],
+        sort_columns=[],
         aggregate_measures=[],
         projection_assignments=merged_assignments,
     )
@@ -231,6 +238,7 @@ def _build_collapsed_aggregate_node(
         filter_predicate=always_true(),
         limit_count=0,
         group_columns=[],
+        sort_columns=[],
         aggregate_measures=merged_measures,
         projection_assignments=[],
     )
@@ -247,6 +255,29 @@ def _can_collapse_adjacent_order_by(
     return rewritten_nodes[remapped_inputs[0]].kind == PrismNodeKind.OrderBy
 
 
+def _build_collapsed_order_by_node(
+    node: PrismNode,
+    remapped_inputs: list[int],
+    rewritten_nodes: list[PrismNode],
+    rewritten_id: int,
+) -> PrismNode:
+    """Build one collapsed order-by node where the later ordering replaces the adjacent parent ordering."""
+    order_input = rewritten_nodes[remapped_inputs[0]]
+    return PrismNode(
+        node_id=rewritten_id,
+        kind=PrismNodeKind.OrderBy,
+        input_ids=[order_input.input_ids[0]],
+        named_table=str(""),
+        join_predicate=false,
+        filter_predicate=always_true(),
+        limit_count=0,
+        group_columns=[],
+        sort_columns=node.sort_columns,
+        aggregate_measures=[],
+        projection_assignments=[],
+    )
+
+
 def _build_rewritten_node(node: PrismNode, remapped_inputs: list[int], rewritten_id: int) -> PrismNode:
     """Build one rewritten node by copying authored fields with remapped input ids."""
     return PrismNode(
@@ -258,6 +289,7 @@ def _build_rewritten_node(node: PrismNode, remapped_inputs: list[int], rewritten
         filter_predicate=node.filter_predicate.clone(),
         limit_count=node.limit_count,
         group_columns=node.group_columns,
+        sort_columns=node.sort_columns,
         aggregate_measures=node.aggregate_measures,
         projection_assignments=node.projection_assignments,
     )
@@ -302,6 +334,7 @@ def _compact_optimized_view(view: PrismOptimizedView) -> PrismOptimizedView:
                 filter_predicate=old_node.filter_predicate.clone(),
                 limit_count=old_node.limit_count,
                 group_columns=old_node.group_columns,
+                sort_columns=old_node.sort_columns,
                 aggregate_measures=old_node.aggregate_measures,
                 projection_assignments=old_node.projection_assignments,
             ),

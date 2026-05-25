@@ -34,7 +34,7 @@ This RFC defines the InQL function registry: the single source of truth for scal
 2. A function belongs to one function class: scalar, aggregate, window, generator, table-valued, partition transform, or extension-only.
 3. A function signature defines accepted argument shapes, type coercion, return type rules, null behavior, error behavior, and determinism.
 4. A function entry records the required Substrait interchange strategy; backend availability must be declared by adapters and must not redefine the InQL semantic contract.
-5. A function entry is registered by attaching one `FUNCTION_REGISTRY.add(...)` decorator to a normal public helper; the decorator call supplies the canonical name and typed machine-readable metadata, while the helper docstring carries human-facing explanation.
+5. A function entry is registered by attaching one `function_registry.add(...)` decorator to a normal public helper; the decorator call supplies the canonical name and typed machine-readable metadata, while the helper docstring carries human-facing explanation.
 6. A function entry records lifecycle metadata such as introduced, changed, deprecated, removed, and replacement versions.
 
 ## Motivation
@@ -51,7 +51,7 @@ This is also necessary for diagnostics. If a function is known to InQL but canno
 - Require registered functions to carry Incan-standard human-facing docstrings without making docstring section policy part of this RFC.
 - Define version lifecycle metadata for generated docs and compatibility planning.
 - Define Substrait interchange requirements for portable core functions.
-- Require explicit diagnostics for unknown, ambiguous, unsupported, or incorrectly used functions.
+- Require explicit diagnostics for unknown, ambiguous, incorrectly used, or backend-rejected functions.
 - Require mechanical validation that public helper decorators, public helper signatures, and typed registry entries do not drift.
 - Provide the governance model that later catalog RFCs use when adding functions.
 
@@ -75,7 +75,7 @@ cleaned = orders.with_column("normalized_email", lower(trim(col("email"))))
 summary = cleaned.group_by([col("customer_id")]).agg([count(), avg(col("amount"))])
 ```
 
-The author does not need to know whether `avg` maps to a core Substrait function, a Substrait extension URI, or a semantics-preserving Substrait rewrite. The author does need clear feedback if a function is known but cannot be represented by the current portable interchange contract.
+The author does not need to know whether `avg` maps to a core Substrait function, a Substrait extension URI, or a semantics-preserving Substrait rewrite. The author does need clear feedback if a function is known but used in the wrong query context, or if an execution adapter cannot consume the emitted Substrait representation.
 
 ## Reference-level explanation (precise rules)
 
@@ -102,7 +102,7 @@ Each portable core function must declare a Substrait interchange strategy. The s
 - core Substrait expression or function
 - registered Substrait extension function
 - deterministic rewrite to supported Substrait expressions
-- explicitly unsupported until a Substrait mapping exists
+- structural relation-context lowering, such as sort-field helpers consumed by `SortRel`
 
 Prism must only accept portable core function calls that can be represented by the active InQL/Substrait contract. A function with no valid Substrait mapping must remain Draft, extension-only, or rejected for portable core until that mapping exists.
 
@@ -110,21 +110,21 @@ Execution backends must adapt from the Substrait representation rather than rede
 
 Each registered function must declare lifecycle metadata. The minimum lifecycle field is the InQL package version where the function was introduced. If a function's signature, semantics, alias set, Substrait mapping, or documentation contract changes in a user-visible way, the registry must record a versioned change entry. Deprecated functions must record the deprecation version, replacement guidance when a replacement exists, and removal status if removal is planned or completed.
 
-Each registered function must have a typed registry entry for machine-readable metadata and an Incan-standard docstring for human-facing explanation. For ordinary public built-in functions, the canonical declaration shape is a normal public helper annotated with `FUNCTION_REGISTRY.add(...)`. The decorator call registers the helper, derives its stable function reference from the canonical name, and supplies the typed machine-readable metadata. The checked InQL package source and typed registry data are the source from which compiler-facing metadata, generated docs, diagnostics metadata, and lowering tables are produced. Generated registry entries may exist for mechanically produced functions, and explicit registry objects may exist for advanced extension cases, but the registry must not depend on arbitrary body inspection, stringly alias metadata, or prose inference.
+Each registered function must have a typed registry entry for non-derivable machine metadata and an Incan-standard docstring for human-facing explanation. For ordinary public built-in functions, the canonical declaration shape is a normal public helper annotated with `function_registry.add(...)`. The decorator call registers the helper, derives its stable function reference from the canonical helper name, and supplies typed metadata that cannot be recovered from the public declaration. The checked helper declaration is the source for name, parameters, parameter types, and return type. The checked InQL package source and typed registry data are the source from which compiler-facing metadata, generated docs, diagnostics metadata, and lowering tables are produced. Generated registry entries may exist for mechanically produced functions, and explicit registry objects may exist for advanced extension cases, but the registry must not depend on arbitrary body inspection, stringly alias metadata, or prose inference.
 
-This RFC intentionally defines required metadata shapes rather than exact enum, model, class, or tagged-union implementations. The implementation may represent lifecycle, signatures, behavior categories, and Substrait mappings as enums, models, classes, generated records, or another typed representation, as long as the resulting normalized function catalog exposes the same fields to docs, typechecking, diagnostics, Prism, and backend capability checks.
+This RFC intentionally defines required metadata shapes rather than exact enum, model, class, or tagged-union implementations. The implementation may represent lifecycle, declaration-derived signatures, behavior categories, and Substrait mappings as enums, models, classes, generated records, or another typed representation, as long as the resulting normalized function catalog exposes the same fields to docs, typechecking, diagnostics, Prism, and backend capability checks.
 
 At minimum, a registered function's machine metadata must include:
 
 - lifecycle: introduced version, zero or more versioned changes, optional deprecation metadata, optional removal metadata, and replacement guidance when relevant
-- signature: argument names, argument type expressions or type-family constraints, required/optional/variadic/literal-only constraints, default values where supported, and return type rule
+- signature: argument names, argument type expressions or type-family constraints, required/optional/variadic constraints, default values where supported, and return type rule, derived from the checked public helper declaration whenever possible
 - classification: function class such as scalar, aggregate, window, generator, table-valued, partition transform, or extension-only
 - behavior: normalized determinism, null behavior, and error behavior categories, including strict versus `try_` behavior where relevant
-- interchange: Substrait mapping category, Substrait function or extension reference when applicable, rewrite description when applicable, and unsupported reason when no mapping exists
+- interchange: Substrait mapping category, Substrait function or extension reference when applicable, rewrite description when applicable, and structural relation context when the helper is consumed outside scalar Rex lowering
 
-The registry implementation must include a validation path that checks the public API surface against the typed registry. The validation must fail if a public helper is decorated with a canonical name that does not produce a registry entry, if a registry entry for an ordinary built-in function has no matching public helper, if the decorator canonical name and registry `function_ref` disagree, or if the helper's checked signature drifts from the registry signature. This validation is part of the RFC scope, not an optional future cleanup.
+The registry implementation must include a validation path that checks the public API surface against the typed registry metadata. The validation must fail if a public helper is decorated with a canonical name that is not projected through the public facade, if a decorated ordinary built-in function has no matching public helper, if canonical names are duplicated, or if checked API metadata cannot expose the helper signature needed by the generated catalog. This validation is part of the RFC scope, not an optional future cleanup.
 
-Generated Markdown must preserve the canonical registry facts and must use docstrings as the source for simple explanation and examples. Argument names, argument types, default values, accepted argument shapes, and return types must be derived from typed registry metadata and public helper signatures rather than copied from prose. Hand-written reference pages may add longer conceptual explanation, additional examples, or migration notes, but they must not contradict parsed docstrings and registry metadata.
+Generated Markdown must preserve the canonical registry facts and must use docstrings as the source for simple explanation, parameter intent, and examples. Argument names, argument types, default values, accepted argument shapes, and return types must be derived from checked public helper signatures rather than copied from prose. Hand-written reference pages may add longer conceptual explanation, additional examples, or migration notes, but they must not contradict parsed docstrings and registry metadata.
 
 ## Design details
 
@@ -142,9 +142,9 @@ The registry defines meaning, not just names. Backend-specific behavior may be u
 
 Function documentation is part of the registry contract, but exact required docstring sections are governed by the repository's implementation standards rather than by this RFC. Public registered functions must use Incan-standard docstrings as the canonical human-written format. Docstrings explain behavior, examples, and author intent; they must not be the source for argument shape, return type rules, null behavior, error behavior, determinism, lifecycle status, or Substrait mapping.
 
-For ordinary built-in functions, the declaration-site `FUNCTION_REGISTRY.add(...)` decorator is the canonical registration surface. The public helper should be ordinary code that delegates to the existing expression or aggregate builder, so authors call a normal function while tooling inspects explicit typed metadata from the decorator call. Docs, LSP, typechecking, Prism, and Substrait lowering must all inspect the same resulting function catalog entry produced from the checked source and typed registry metadata.
+For ordinary built-in functions, the declaration-site `function_registry.add(...)` decorator is the canonical registration surface. The public helper should be ordinary code that delegates to the existing expression or aggregate builder, so authors call a normal function while tooling inspects explicit typed metadata from the decorator call. Docs, LSP, typechecking, Prism, and Substrait lowering must all inspect the same resulting function catalog entry produced from the checked source and typed registry metadata.
 
-The registration decorator must be the single declaration-side registry event for ordinary built-ins. It links exactly one helper symbol to exactly one stable function reference and receives the typed function spec that records lifecycle, determinism, null behavior, error behavior, alias policy, and Substrait mapping. Backend capability declarations consume those facts; they do not redefine InQL function semantics.
+The registration decorator must be the single declaration-side registry event for ordinary built-ins. It links exactly one helper symbol to exactly one stable function reference and receives the typed function spec that records lifecycle, determinism, null behavior, error behavior, alias policy, and Substrait mapping. Helper name and signature come from the checked declaration. Backend capability declarations consume those facts; they do not redefine InQL function semantics.
 
 Compatibility aliases must be real callable symbols rather than strings inside a function spec. For example, `mean = avg` should make `mean` an alias of the registered `avg` helper. The function catalog may record that alias after name resolution, but the aggregate spec must not contain `aliases=["mean"]`. Backend spellings and backend aliases remain backend capability concerns.
 
@@ -153,27 +153,26 @@ Generated reference pages must render lifecycle metadata in a consistent form. A
 The public helper shape should stay compact enough to preserve authoring ergonomics while still making machine facts inspectable. Incan-standard docstrings are the canonical standard for explanation and examples; typed registry entries are canonical for machine facts. The following shape is illustrative only; constructor names, decorator names, enum/model/class boundaries, and helper implementation details may change:
 
 ```incan
-@FUNCTION_REGISTRY.add(
-    "avg",
-    deterministic_spec(
-        FunctionClass.Aggregate,
-        FunctionLifecycle(
-            since=v0_2,
-            changed=[
-                FunctionChange(version=v0_3, note="Added decimal return type rule."),
-            ],
-            deprecated=None,
-        ),
-        signature([required_arg("expr", "ScalarExpr[number]")], "AggregateMeasure[number]"),
-        FunctionNullBehavior.NullSkippingAggregate,
-        extension_mapping("avg", AVG_FUNCTION_ANCHOR),
+@function_registry.add(deterministic_spec(
+    FunctionClass.Aggregate,
+    FunctionLifecycle(
+        since=v0_2,
+        changed=[
+            FunctionChange(version=v0_3, note="Added decimal return type rule."),
+        ],
+        deprecated=None,
     ),
-)
+    FunctionNullBehavior.NullSkippingAggregate,
+    extension_mapping("avg", AVG_FUNCTION_ANCHOR),
+))
 pub def avg(expr: ScalarExpr[number]) -> AggregateMeasure[number]:
     """
     Return the average non-null numeric value in each group.
 
-    Args:
+    Examples:
+        average_order_value = avg(col("amount"))
+
+    Parameters:
         expr: Numeric scalar expression evaluated for each input row.
 
     Returns:
@@ -223,13 +222,13 @@ Existing helper names such as `sum`, `count`, `add`, `mul`, `eq`, and `gt` may c
 ### Phase 1: Registry metadata model
 
 - Add typed package-owned registry metadata for the current public function surface.
-- Represent canonical names, stable function references, function class, lifecycle, signature, behavior categories, alias policy, and Substrait mapping category.
+- Represent canonical names, stable function references, function class, lifecycle, declaration-derived signature, behavior categories, alias policy, and Substrait mapping category.
 - Provide lookup helpers for registry entries by function reference and canonical name.
 
 ### Phase 2: Public helper registration
 
 - Convert the current `functions` module surface from bare aliases to public helper functions where registration metadata needs to attach to the public call surface.
-- Link each registered helper to exactly one stable function reference through the `FUNCTION_REGISTRY.add(...)` decorator.
+- Link each registered helper to exactly one stable function reference through the `function_registry.add(...)` decorator.
 - Preserve existing helper behavior and import names.
 
 ### Phase 3: Docs and tests
@@ -279,8 +278,8 @@ Existing helper names such as `sum`, `count`, `add`, `mul`, `eq`, and `gt` may c
 
 - **Registry ownership:** the checked InQL package source is the source of truth. Compiler-facing metadata, generated docs metadata, diagnostics metadata, and lowering tables are derived from checked package source and typed registry data. The compiler must not maintain an independent InQL function registry.
 - **Authoring DX:** ordinary function authors should write normal public helpers and attach one registry decorator whose arguments contain the canonical name and typed function spec. The registry derives the stable function reference from that canonical name, avoiding a separate authored constant or central list.
-- **Decorator capability:** Incan issue #636 / PR #637 is required for decorator-authored helpers because checked API metadata must preserve source signatures for decorated functions. Incan issue #638 / PR #641 is required for decorator string argument materialization. Incan issue #640 / PR #643 provides generic signature-preserving decorator factories. Incan issue #645 is required for method-call decorators such as `FUNCTION_REGISTRY.add(...)`. The RFC design is one registry method decorator attached to the public helper.
+- **Decorator capability:** Incan issue #636 / PR #637 is required for decorator-authored helpers because checked API metadata must preserve source signatures for decorated functions. Incan issue #638 / PR #641 is required for decorator string argument materialization. Incan issue #640 / PR #643 provides generic signature-preserving decorator factories. Incan issue #645 is required for method-call decorators such as `function_registry.add(...)`. The RFC design is one registry method decorator attached to the public helper.
 - **Lifecycle constants:** typed lifecycle metadata uses immutable version constants such as `v0_1`. These are `const` model values, not mutable registry state or generated strings.
 - **Alias policy:** core semantic aliases may be available through normal public imports when they are real callable aliases of the canonical function. Dialect, warehouse, Spark, Snowflake, dbt, and backend compatibility aliases require explicit opt-in modules.
 - **Docstrings:** exact docstring section requirements are not an RFC 014 concern. Public registered functions must follow the repository's Incan-standard docstring policy, but registry metadata and public helper signatures own machine facts.
-- **Substrait mapping:** typed registry entries must represent whether a function maps to a core Substrait function, a registered extension function, a deterministic rewrite, or an explicit unsupported state. Backend capability declarations consume that mapping; they do not redefine InQL semantics.
+- **Substrait mapping:** typed registry entries must represent whether a function maps to a core Substrait function, a registered extension function, a deterministic rewrite, or structural relation-context lowering. Backend capability declarations consume the emitted Substrait representation; they do not redefine InQL semantics.

@@ -1,0 +1,41 @@
+"""
+Filter-style string literal helper.
+
+`str_lit` preserves existing filter helper imports while sharing the canonical string literal node.
+"""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    rewrite_mapping,
+    v0_1,
+)
+from functions.registry import function_registry
+from projection_builders import ColumnExpr, str_expr
+
+
+@function_registry.add("str_lit", deterministic_spec(
+    FunctionClass.Scalar,
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionNullBehavior.NonNullLiteral,
+    rewrite_mapping("filter-helper string literal expression"),
+))
+pub def str_lit(value: str) -> ColumnExpr:
+    """
+    Build a string literal expression using the filter-helper naming style.
+
+    Examples:
+        paid = eq(col("status"), str_lit("paid"))
+
+    Parameters:
+        value: String value to embed in the expression tree.
+    """
+    return str_expr(value)
+
+
+module tests:
+    from projection_builders import ColumnExprKind, column_expr_kind
+    def test_str_lit_uses_structural_string_literal() -> None:
+        assert column_expr_kind(str_lit("paid")) == ColumnExprKind.StringLiteral

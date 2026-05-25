@@ -1,0 +1,51 @@
+"""
+Non-null-test predicate helper.
+
+`is_not_null` is represented as a unary registry-backed predicate and lowers through `is_not_null`.
+"""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import function_registry, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import IS_NOT_NULL_FUNCTION_ANCHOR
+
+
+@function_registry.add("is_not_null", deterministic_spec(
+    FunctionClass.Scalar,
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionNullBehavior.Predicate,
+    extension_mapping("is_not_null", IS_NOT_NULL_FUNCTION_ANCHOR),
+))
+pub def is_not_null(expr: ColumnExpr) -> ColumnExpr:
+    """
+    Build a predicate that checks whether an expression is not null.
+
+    Examples:
+        has_email = is_not_null(col("email"))
+
+    Parameters:
+        expr: Expression to test for a non-null value.
+    """
+    return registered_application("is_not_null", [expr])
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        col,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+    )
+    def test_is_not_null_builds_registered_application() -> None:
+        expr = is_not_null(col("status"))
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "is_not_null"
+        assert column_expr_argument_count(expr) == 1

@@ -9,52 +9,82 @@ pub from dataset import BoundedDataSet, DataFrame, DataSet, DataStream, LazyFram
 pub from dataset.ops import agg_ds, explode_ds, filter_ds, group_by_ds, join_ds, limit_ds, order_by_ds, select_ds
 pub from aggregate_builders import AggregateKind, AggregateMeasure
 pub from projection_builders import (
-    AddExpr,
     BoolLiteralExpr,
     ColumnExpr,
     ColumnExprKind,
     ColumnRefExpr,
-    EqExpr,
     FloatLiteralExpr,
-    GtExpr,
     IntLiteralExpr,
-    MultiplyExpr,
     ProjectionAssignment,
+    ScalarFunctionApplicationExpr,
+    ScalarFunctionOption,
     StringLiteralExpr,
+    column_expr_argument_count,
+    column_expr_function_name,
+    column_expr_function_ref,
     column_expr_kind,
     column_expr_name,
+    column_expr_option_value,
 )
+pub from functions.registry import function_registry
 pub from functions import (
-    FUNCTION_REGISTRY,
-    add,
-    always_false,
-    always_true,
-    bool_expr,
-    bool_lit,
-    col,
-    count,
-    display,
-    eq,
-    float_expr,
     function_registry_canonical_names,
     function_registry_entries,
     function_registry_entry,
     function_registry_entry_by_name,
     function_registry_entry_count,
     function_registry_function_refs,
-    gt,
-    int_expr,
-    int_lit,
-    lit,
-    mul,
     registered_substrait_mapped_function_refs,
-    str_expr,
-    str_lit,
-    sum,
 )
+pub from functions.references.col import col
+pub from functions.literals.always_false import always_false
+pub from functions.literals.always_true import always_true
+pub from functions.literals.bool_expr import bool_expr
+pub from functions.literals.bool_lit import bool_lit
+pub from functions.literals.float_expr import float_expr
+pub from functions.literals.int_expr import int_expr
+pub from functions.literals.int_lit import int_lit
+pub from functions.literals.lit import lit
+pub from functions.literals.str_expr import str_expr
+pub from functions.literals.str_lit import str_lit
+pub from functions.aggregates.count import count
+pub from functions.aggregates.sum import sum
+pub from functions.operators.add import add
+pub from functions.operators.and_ import and_
+pub from functions.operators.div import div
+pub from functions.operators.eq import eq
+pub from functions.operators.equal_null import equal_null
+pub from functions.operators.gt import gt
+pub from functions.operators.gte import gte
+pub from functions.operators.lt import lt
+pub from functions.operators.lte import lte
+pub from functions.operators.modulo import modulo
+pub from functions.operators.mul import mul
+pub from functions.operators.ne import ne
+pub from functions.operators.neg import neg
+pub from functions.operators.not_ import not_
+pub from functions.operators.or_ import or_
+pub from functions.operators.sub import sub
+pub from functions.casts.cast import cast
+pub from functions.casts.try_cast import try_cast
+pub from functions.predicates.between import between
+pub from functions.predicates.in_ import in_
+pub from functions.predicates.is_nan import is_nan
+pub from functions.predicates.is_not_nan import is_not_nan
+pub from functions.predicates.is_not_null import is_not_null
+pub from functions.predicates.is_null import is_null
+pub from functions.conditionals.case_when import case_when
+pub from functions.conditionals.coalesce import coalesce
+pub from functions.conditionals.nullif import nullif
+pub from functions.ordering.asc import asc
+pub from functions.ordering.asc_nulls_first import asc_nulls_first
+pub from functions.ordering.asc_nulls_last import asc_nulls_last
+pub from functions.ordering.desc import desc
+pub from functions.ordering.desc_nulls_first import desc_nulls_first
+pub from functions.ordering.desc_nulls_last import desc_nulls_last
+pub from functions.formatting.display import display
 pub from function_registry import (
     FunctionAliasPolicy,
-    FunctionArg,
     FunctionChange,
     FunctionClass,
     FunctionDeprecation,
@@ -65,22 +95,31 @@ pub from function_registry import (
     FunctionRegistry,
     FunctionRegistryEntry,
     FunctionSpec,
-    FunctionSignature,
     FunctionVersion,
     SubstraitMapping,
     SubstraitMappingKind,
     deterministic_spec,
     extension_mapping,
     function_ref_for,
-    literal_arg,
-    required_arg,
     rewrite_mapping,
-    signature,
+    sort_field_mapping,
+    structural_mapping,
     v0_1,
     v0_2,
     v0_3,
 )
-pub from backends import BackendKind, DataFusion, TableSource, csv_source, parquet_source
+pub from backends import (
+    BackendKind,
+    BackendOption,
+    BackendSelection,
+    DataFusion,
+    TableSource,
+    arrow_source,
+    csv_source,
+    datafusion_backend_from_selection,
+    datafusion_backend_selection,
+    parquet_source,
+)
 pub from metadata import inql_version
 pub from session.types import Session, SessionBuilder
 pub from session.errors import SessionError, SessionErrorKind, format_session_diagnostic, report_session_error
@@ -114,6 +153,7 @@ pub from substrait.relations import (
     set_rel,
     set_rel_of_kind,
     sort_rel,
+    sort_rel_of_columns,
 )
 pub from substrait.plans import (
     empty_plan,
@@ -135,7 +175,11 @@ pub from substrait.inspect import (
     root_rel,
     set_operation_name,
 )
-pub from substrait.extensions import explode_extension_uri, function_extension_uri, registered_substrait_extension_uris
+pub from substrait.function_extensions import (
+    explode_extension_uri,
+    function_extension_uri,
+    registered_substrait_extension_uris,
+)
 pub from substrait.conformance_catalog import (
     ConformanceCapabilityTags,
     ConformancePortability,

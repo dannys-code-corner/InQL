@@ -7,6 +7,8 @@ This page documents the public execution surface in the InQL package. Normative 
 - `Session` is the public execution context for registration, binding, execution, collection, and writes.
 - `SessionBuilder` configures a `Session` before construction.
 - `SessionError` is the typed error surface for registration, planning, execution, materialization, and sink failures.
+- `BackendSelection` is the portable backend selection envelope stored by a session.
+- `BackendOption` carries adapter-specific configuration without adding one field per backend to `Session`.
 - `backends.DataFusion()` is the current reference backend configuration entry point.
 
 ## Construction
@@ -15,6 +17,7 @@ This page documents the public execution surface in the InQL package. Normative 
 | ------------------------------------------------------------------ | ------------------------------------------------------------------- |
 | `Session.default()`                                                | Create a session with the default backend and default configuration |
 | `Session.builder()`                                                | Create a builder for backend selection and configuration            |
+| `Session.builder().with_backend(selection).build()`                | Build a session from a portable backend-selection envelope           |
 | `Session.builder().with_datafusion(backends.DataFusion()).build()` | Build an explicit DataFusion-backed session                         |
 
 ## Read and registration surface
@@ -74,7 +77,7 @@ If no active session exists when a convenience API needs one, the operation fail
 
 ## Backend note
 
-DataFusion is the implemented execution backend. The public builder/configuration surface is designed so additional backends can be added without changing the `Session` entry point.
+DataFusion is the implemented execution backend. `Session` stores a backend kind plus encoded options, lowers work to Substrait, and dispatches through an internal backend adapter boundary. DataFusion is the first adapter behind that boundary; it is not the shape of the `Session` state.
 
 ## Related docs
 

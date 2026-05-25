@@ -1,0 +1,53 @@
+"""
+Greater-than-or-equal predicate helper.
+
+`gte` completes the core comparison family without introducing a dedicated expression variant.
+"""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import function_registry, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import GTE_FUNCTION_ANCHOR
+
+
+@function_registry.add("gte", deterministic_spec(
+    FunctionClass.Scalar,
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionNullBehavior.Predicate,
+    extension_mapping("gte", GTE_FUNCTION_ANCHOR),
+))
+pub def gte(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
+    """
+    Build a greater-than-or-equal predicate.
+
+    Examples:
+        qualifies = gte(col("score"), lit(90))
+
+    Parameters:
+        left: Expression expected to be greater than or equal to `right`.
+        right: Inclusive lower-bound expression.
+    """
+    return registered_application("gte", [left, right])
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        col,
+        int_expr,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+    )
+    def test_gte_builds_registered_application() -> None:
+        expr = gte(col("amount"), int_expr(10))
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "gte"
+        assert column_expr_argument_count(expr) == 2

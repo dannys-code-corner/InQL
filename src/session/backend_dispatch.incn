@@ -1,0 +1,62 @@
+"""Backend dispatch boundary for Session execution."""
+
+import std.async
+from rust::substrait::proto import Plan
+from rust::incan_stdlib::async::runtime import block_on
+from backends import BackendKind, BackendSelection
+from dataset.materialization import DataFrameMaterialization
+from session.backend_types import BackendError, BackendErrorKind, BackendRegistration, backend_error
+from session.domain import SinkKind
+from session.datafusion_backend import (
+    datafusion_collect_materialization_async,
+    datafusion_execute_async,
+    datafusion_write_csv_async,
+    datafusion_write_parquet_async,
+)
+
+
+pub def backend_execute_plan(
+    selection: BackendSelection,
+    registrations: list[BackendRegistration],
+    plan: Plan,
+) -> Result[None, BackendError]:
+    """Execute one Substrait plan through the selected backend adapter."""
+    match selection.kind:
+        BackendKind.DataFusionEngine =>
+            match block_on(datafusion_execute_async(registrations, plan)):
+                Ok(result) => return result
+                Err(err) => return Err(backend_error(BackendErrorKind.RuntimeInitError, err.message()))
+
+
+pub def backend_collect_plan(
+    selection: BackendSelection,
+    registrations: list[BackendRegistration],
+    plan: Plan,
+) -> Result[DataFrameMaterialization, BackendError]:
+    """Execute and materialize one Substrait plan through the selected backend adapter."""
+    match selection.kind:
+        BackendKind.DataFusionEngine =>
+            match block_on(datafusion_collect_materialization_async(registrations, plan)):
+                Ok(result) => return result
+                Err(err) => return Err(backend_error(BackendErrorKind.RuntimeInitError, err.message()))
+
+
+pub def backend_write_plan(
+    selection: BackendSelection,
+    registrations: list[BackendRegistration],
+    plan: Plan,
+    uri: str,
+    sink_kind: SinkKind,
+) -> Result[None, BackendError]:
+    """Execute one Substrait plan and write it through the selected backend adapter."""
+    match selection.kind:
+        BackendKind.DataFusionEngine =>
+            match sink_kind:
+                SinkKind.Csv =>
+                    match block_on(datafusion_write_csv_async(registrations, plan, uri)):
+                        Ok(result) => return result
+                        Err(err) => return Err(backend_error(BackendErrorKind.RuntimeInitError, err.message()))
+                SinkKind.Parquet =>
+                    match block_on(datafusion_write_parquet_async(registrations, plan, uri)):
+                        Ok(result) => return result
+                        Err(err) => return Err(backend_error(BackendErrorKind.RuntimeInitError, err.message()))

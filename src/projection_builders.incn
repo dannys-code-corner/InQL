@@ -6,6 +6,7 @@ grouping keys, aggregate inputs, and query-block lowering. Today they provide a 
 scalar intent without requiring parser or typechecker changes in the Incan compiler.
 """
 
+from function_registry import function_ref_for
 from rust::incan_stdlib::errors import raise_value_error
 
 
@@ -18,10 +19,7 @@ pub enum ColumnExprKind(str):
     FloatLiteral = "float_literal"
     StringLiteral = "string_literal"
     BoolLiteral = "bool_literal"
-    Add = "add"
-    Multiply = "multiply"
-    Eq = "eq"
-    Gt = "gt"
+    ScalarFunction = "scalar_function"
 
 
 @derive(Clone)
@@ -60,34 +58,24 @@ pub model BoolLiteralExpr:
 
 
 @derive(Clone)
-pub model AddExpr:
-    """Binary addition scalar expression."""
+pub model ScalarFunctionOption:
+    """One non-expression option attached to a scalar function application."""
 
-    pub arguments: list[ColumnExpr]
-
-
-@derive(Clone)
-pub model MultiplyExpr:
-    """Binary multiplication scalar expression."""
-
-    pub arguments: list[ColumnExpr]
+    pub name: str
+    pub value: str
 
 
 @derive(Clone)
-pub model EqExpr:
-    """Binary equality scalar expression."""
+pub model ScalarFunctionApplicationExpr:
+    """Registry-backed scalar function or operator application."""
 
+    pub function_ref: str
+    pub canonical_name: str
     pub arguments: list[ColumnExpr]
+    pub options: list[ScalarFunctionOption]
 
 
-@derive(Clone)
-pub model GtExpr:
-    """Binary greater-than scalar expression."""
-
-    pub arguments: list[ColumnExpr]
-
-
-pub type ColumnExpr = Union[ColumnRefExpr, IntLiteralExpr, FloatLiteralExpr, StringLiteralExpr, BoolLiteralExpr, AddExpr, MultiplyExpr, EqExpr, GtExpr]
+pub type ColumnExpr = Union[ColumnRefExpr, IntLiteralExpr, FloatLiteralExpr, StringLiteralExpr, BoolLiteralExpr, ScalarFunctionApplicationExpr]
 
 
 @derive(Clone)
@@ -132,24 +120,23 @@ pub def lit(value: Union[int, float, str, bool]) -> ColumnExpr:
         str(text) => return str_expr(text)
 
 
-pub def add(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
-    """Build one binary addition expression."""
-    return AddExpr(arguments=[left, right])
+pub def scalar_function_option(name: str, value: str) -> ScalarFunctionOption:
+    """Build one scalar function application option."""
+    return ScalarFunctionOption(name=name, value=value)
 
 
-pub def mul(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
-    """Build one binary multiply expression."""
-    return MultiplyExpr(arguments=[left, right])
-
-
-pub def eq(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
-    """Build one equality predicate scalar expression."""
-    return EqExpr(arguments=[left, right])
-
-
-pub def gt(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
-    """Build one greater-than predicate scalar expression."""
-    return GtExpr(arguments=[left, right])
+pub def scalar_function_application(
+    canonical_name: str,
+    arguments: list[ColumnExpr],
+    options: list[ScalarFunctionOption],
+) -> ColumnExpr:
+    """Build one registry-backed scalar function application expression."""
+    return ScalarFunctionApplicationExpr(
+        function_ref=function_ref_for(canonical_name),
+        canonical_name=canonical_name,
+        arguments=arguments,
+        options=options,
+    )
 
 
 pub def with_column_assignment(name: str, expr: ColumnExpr) -> ProjectionAssignment:
@@ -165,7 +152,7 @@ pub def column_expr_name(expr: ColumnExpr) -> str:
 
 
 pub def require_column_expr_name(expr: ColumnExpr, context: str) -> str:
-    """Return one direct column name or fail with a clear message for unsupported expression shapes."""
+    """Return one direct column name or fail with a clear message for invalid expression shapes."""
     match expr:
         ColumnRefExpr(column) => return column.column_name
         _ =>
@@ -188,10 +175,39 @@ pub def column_expr_kind(expr: ColumnExpr) -> ColumnExprKind:
         FloatLiteralExpr(_) => return ColumnExprKind.FloatLiteral
         StringLiteralExpr(_) => return ColumnExprKind.StringLiteral
         BoolLiteralExpr(_) => return ColumnExprKind.BoolLiteral
-        AddExpr(_) => return ColumnExprKind.Add
-        MultiplyExpr(_) => return ColumnExprKind.Multiply
-        EqExpr(_) => return ColumnExprKind.Eq
-        GtExpr(_) => return ColumnExprKind.Gt
+        ScalarFunctionApplicationExpr(_) => return ColumnExprKind.ScalarFunction
+
+
+pub def column_expr_function_ref(expr: ColumnExpr) -> str:
+    """Return the registry function reference for one scalar function expression, otherwise empty."""
+    match expr:
+        ScalarFunctionApplicationExpr(application) => return application.function_ref
+        _ => return ""
+
+
+pub def column_expr_function_name(expr: ColumnExpr) -> str:
+    """Return the canonical function name for one scalar function expression, otherwise empty."""
+    match expr:
+        ScalarFunctionApplicationExpr(application) => return application.canonical_name
+        _ => return ""
+
+
+pub def column_expr_argument_count(expr: ColumnExpr) -> int:
+    """Return the scalar argument count for one scalar function expression, otherwise zero."""
+    match expr:
+        ScalarFunctionApplicationExpr(application) => return len(application.arguments)
+        _ => return 0
+
+
+pub def column_expr_option_value(expr: ColumnExpr, option_name: str) -> str:
+    """Return one scalar function option value, or empty when absent."""
+    match expr:
+        ScalarFunctionApplicationExpr(application) =>
+            for option in application.options:
+                if option.name == option_name:
+                    return option.value
+            return ""
+        _ => return ""
 
 
 pub def is_bool_literal_expr(expr: ColumnExpr, expected: bool) -> bool:

@@ -1,0 +1,145 @@
+"""Test: RFC 015 core scalar helper surface and shared expression model."""
+
+from functions import (
+    add,
+    and_,
+    asc,
+    asc_nulls_first,
+    asc_nulls_last,
+    between,
+    bool_lit,
+    case_when,
+    cast,
+    col,
+    coalesce,
+    desc,
+    desc_nulls_first,
+    desc_nulls_last,
+    div,
+    eq,
+    equal_null,
+    gt,
+    gte,
+    in_,
+    int_expr,
+    int_lit,
+    is_nan,
+    is_not_nan,
+    is_not_null,
+    is_null,
+    lit,
+    lt,
+    lte,
+    modulo,
+    mul,
+    ne,
+    neg,
+    not_,
+    nullif,
+    or_,
+    str_lit,
+    sub,
+    try_cast,
+)
+from function_registry import function_ref_for
+from projection_builders import (
+    ColumnExpr,
+    ColumnExprKind,
+    column_expr_argument_count,
+    column_expr_function_name,
+    column_expr_function_ref,
+    column_expr_kind,
+    column_expr_option_value,
+)
+
+
+def _assert_scalar_application(expr: ColumnExpr, expected_name: str) -> None:
+    """Assert one helper result is represented by the shared scalar application node."""
+    assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction, f"{expected_name} should use the scalar function kind"
+    assert column_expr_function_name(expr) == expected_name, f"{expected_name} should preserve its canonical name"
+    expected_ref = function_ref_for(expected_name)
+    assert column_expr_function_ref(expr) == expected_ref, "scalar application should preserve its registry function ref"
+
+
+def test_core_scalar_functions__operator_helpers_share_one_application_node() -> None:
+    """Assert function and operator helpers do not create one expression model per function."""
+    # -- Arrange --
+    amount = col("amount")
+    status = col("status")
+
+    # -- Act / Assert --
+    _assert_scalar_application(cast(amount, "string"), "cast")
+    _assert_scalar_application(try_cast(status, "int64"), "try_cast")
+    _assert_scalar_application(add(amount, lit(1)), "add")
+    _assert_scalar_application(sub(amount, int_lit(1)), "sub")
+    _assert_scalar_application(mul(amount, int_lit(2)), "mul")
+    _assert_scalar_application(div(amount, int_lit(2)), "div")
+    _assert_scalar_application(modulo(amount, int_lit(2)), "mod")
+    _assert_scalar_application(neg(amount), "neg")
+    _assert_scalar_application(eq(status, str_lit("paid")), "eq")
+    _assert_scalar_application(ne(status, str_lit("void")), "ne")
+    _assert_scalar_application(lt(amount, int_lit(10)), "lt")
+    _assert_scalar_application(lte(amount, int_lit(10)), "lte")
+    _assert_scalar_application(gt(amount, int_lit(10)), "gt")
+    _assert_scalar_application(gte(amount, int_lit(10)), "gte")
+    _assert_scalar_application(equal_null(status, str_lit("paid")), "equal_null")
+    _assert_scalar_application(and_(gt(amount, int_lit(10)), eq(status, str_lit("paid"))), "and_")
+    _assert_scalar_application(or_(eq(status, str_lit("paid")), eq(status, str_lit("open"))), "or_")
+    _assert_scalar_application(not_(eq(status, str_lit("void"))), "not_")
+    _assert_scalar_application(is_null(status), "is_null")
+    _assert_scalar_application(is_not_null(status), "is_not_null")
+    _assert_scalar_application(is_nan(amount), "is_nan")
+    _assert_scalar_application(coalesce([status, str_lit("unknown")]), "coalesce")
+    _assert_scalar_application(nullif(status, str_lit("")), "nullif")
+    _assert_scalar_application(case_when([gt(amount, int_lit(10))], [str_lit("large")], str_lit("small")), "case_when")
+    _assert_scalar_application(in_(status, [str_lit("paid"), str_lit("open")]), "in_")
+    _assert_scalar_application(between(amount, int_lit(1), int_lit(10)), "between")
+    _assert_scalar_application(asc(amount), "asc")
+    _assert_scalar_application(desc(amount), "desc")
+    _assert_scalar_application(asc_nulls_first(amount), "asc_nulls_first")
+    _assert_scalar_application(asc_nulls_last(amount), "asc_nulls_last")
+    _assert_scalar_application(desc_nulls_first(amount), "desc_nulls_first")
+    _assert_scalar_application(desc_nulls_last(amount), "desc_nulls_last")
+
+
+def test_core_scalar_functions__is_not_nan_rewrites_to_canonical_expression() -> None:
+    """Assert is_not_nan returns the expression shape it documents in registry metadata."""
+    # -- Arrange / Act --
+    expr = is_not_nan(col("amount"))
+
+    # -- Assert --
+    _assert_scalar_application(expr, "not_")
+    assert column_expr_argument_count(expr) == 1, "is_not_nan should wrap one is_nan predicate in not_"
+
+
+def test_core_scalar_functions__cast_records_type_as_registry_option() -> None:
+    """Assert non-expression scalar helper metadata is attached as application options."""
+    # -- Arrange --
+    amount = col("amount")
+
+    # -- Act --
+    cast_expr = cast(amount, "decimal(10,2)")
+    try_cast_expr = try_cast(amount, "float64")
+
+    # -- Assert --
+    _assert_scalar_application(cast_expr, "cast")
+    _assert_scalar_application(try_cast_expr, "try_cast")
+    assert column_expr_argument_count(cast_expr) == 1, "cast should keep only scalar inputs in the argument list"
+    assert column_expr_argument_count(try_cast_expr) == 1, "try_cast should keep only scalar inputs in the argument list"
+    assert column_expr_option_value(cast_expr, "target_type") == "decimal(10,2)", "cast should preserve the target type option"
+    assert column_expr_option_value(try_cast_expr, "target_type") == "float64", "try_cast should preserve the target type option"
+
+
+def test_core_scalar_functions__literal_helpers_stay_structural() -> None:
+    """Assert literal compatibility helpers route through the canonical literal expression representation."""
+    # -- Arrange / Act --
+    canonical = lit(7)
+    typed_expr = int_expr(7)
+    filter_style = int_lit(7)
+    boolean_literal = bool_lit(true)
+
+    # -- Assert --
+    assert column_expr_kind(canonical) == ColumnExprKind.IntLiteral, "lit should still build structural literals"
+    assert column_expr_kind(typed_expr) == ColumnExprKind.IntLiteral, "int_expr should use the same literal node"
+    assert column_expr_kind(filter_style) == ColumnExprKind.IntLiteral, "int_lit should use the same literal node"
+    assert column_expr_kind(boolean_literal) == ColumnExprKind.BoolLiteral, "bool_lit should use the same literal node"

@@ -5,7 +5,9 @@ These names provide predicate-friendly helper spellings over the same scalar-exp
 projections, grouping keys, and aggregate inputs.
 """
 
-from projection_builders import ColumnExpr, bool_expr, eq as scalar_eq, gt as scalar_gt, int_expr, str_expr
+from functions.operators.eq import eq as scalar_eq
+from functions.operators.gt import gt as scalar_gt
+from projection_builders import ColumnExpr, bool_expr, int_expr, str_expr
 
 
 pub def int_lit(value: int) -> ColumnExpr:

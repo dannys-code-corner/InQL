@@ -2,7 +2,7 @@
 
 from std.testing import assert_is_err, assert_is_ok, fail, parametrize
 from rust::std::path import Path
-from backends import DataFusion, csv_source, parquet_source
+from backends import DataFusion, csv_source, datafusion_backend_selection, parquet_source
 from dataset import LazyFrame, lazy_frame_named_table
 from session import Session, SessionError, SessionErrorKind
 from substrait.inspect import read_kind_name, root_rel
@@ -53,6 +53,20 @@ def test_session__builder_selects_datafusion_backend() -> None:
     # -- Assert --
     assert session.backend_name() == "datafusion", "builder-selected backend should remain DataFusion in the first RFC 004 slice"
     assert backend.enable_optimizer is false, "builder should preserve backend-specific DataFusion options"
+
+
+def test_session__builder_accepts_portable_backend_selection() -> None:
+    """Session.builder().with_backend should accept an adapter-neutral backend selection envelope."""
+    # -- Arrange --
+    selection = datafusion_backend_selection(DataFusion(enable_optimizer=false))
+
+    # -- Act --
+    session = Session.builder().with_backend(selection).build()
+    backend: DataFusion = session.datafusion_backend()
+
+    # -- Assert --
+    assert session.backend_name() == "datafusion", "generic backend selection should preserve the selected kind"
+    assert backend.enable_optimizer is false, "generic backend selection should preserve encoded backend options"
 
 
 def test_session__public_types_construct_locally() -> None:

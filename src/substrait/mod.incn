@@ -38,6 +38,7 @@ pub from substrait.relations import (
     set_rel,
     set_rel_of_kind,
     sort_rel,
+    sort_rel_of_columns,
 )
 pub from substrait.plans import (
     empty_plan,
@@ -64,6 +65,13 @@ pub from substrait.inspect import (
     root_names,
     root_rel,
     set_operation_name,
+    sort_field_count,
+    sort_field_direction_name,
+    sort_field_expr_index,
     source_named_table_name,
 )
-pub from substrait.extensions import explode_extension_uri, function_extension_uri, registered_substrait_extension_uris
+pub from substrait.function_extensions import (
+    explode_extension_uri,
+    function_extension_uri,
+    registered_substrait_extension_uris,
+)

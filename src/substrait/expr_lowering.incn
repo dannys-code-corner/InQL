@@ -8,38 +8,43 @@ conversion helpers needed by proto fields along that path.
 from rust::incan_stdlib::errors import raise_value_error
 from rust::std::boxed import Box
 from rust::std::primitive import i32 as RustI32, u32 as RustU32
+from function_registry import FunctionRegistryEntry, SubstraitMappingKind
+from functions.registry import function_registry_entry
 from projection_builders import (
-    AddExpr,
     BoolLiteralExpr,
     ColumnExpr,
     ColumnRefExpr,
-    EqExpr,
     FloatLiteralExpr,
-    GtExpr,
     IntLiteralExpr,
-    MultiplyExpr,
     ProjectionAssignment,
+    ScalarFunctionApplicationExpr,
     StringLiteralExpr,
 )
-from rust::substrait::proto import Expression, FunctionArgument, ProjectRel
-from rust::substrait::proto::expression import FieldReference, Literal, ReferenceSegment, RexType, ScalarFunction
+from rust::substrait::proto import Expression, FunctionArgument, ProjectRel, Type
+from rust::substrait::proto::expression import (
+    Cast,
+    FieldReference,
+    IfThen,
+    Literal,
+    ReferenceSegment,
+    RexType,
+    ScalarFunction,
+    SingularOrList,
+)
+from rust::substrait::proto::expression::cast import FailureBehavior
 from rust::substrait::proto::expression::field_reference import (
     ReferenceType as FieldReferenceType,
     RootReference,
     RootType,
 )
+from rust::substrait::proto::expression::if_then import IfClause
 from rust::substrait::proto::expression::literal import LiteralType
 from rust::substrait::proto::expression::reference_segment import ReferenceType as SegmentReferenceType, StructField
 from rust::substrait::proto::function_argument import ArgType
 from rust::substrait::proto::rel_common import EmitKind
+from rust::substrait::proto::type import Boolean, Fp64, I64, Kind, Nullability, String as SubstraitString
 from substrait.errors import SubstraitLoweringError, invalid_scalar_expression, unknown_scalar_column
-from substrait.extensions import (
-    ADD_FUNCTION_ANCHOR,
-    EQUAL_FUNCTION_ANCHOR,
-    GT_FUNCTION_ANCHOR,
-    MULTIPLY_FUNCTION_ANCHOR,
-    scalar_function_name_from_anchor,
-)
+from substrait.extensions import scalar_function_name_from_anchor
 
 
 pub def bool_expr(value: bool) -> Expression:
@@ -134,6 +139,51 @@ pub def scalar_function_expr(function_reference: u32, arguments: list[Expression
     )
 
 
+def _nullable_type(kind: str) -> Result[Type, SubstraitLoweringError]:
+    """Lower one public cast target spelling into a nullable Substrait primitive type."""
+    n = Nullability.Nullable
+    normalized = kind.lower()
+    if normalized == "bool" or normalized == "boolean":
+        return Ok(Type(kind=Some(Kind.Bool(Boolean(type_variation_reference=0, nullability=n.into())))))
+    if normalized == "int" or normalized == "i64" or normalized == "int64":
+        return Ok(Type(kind=Some(Kind.I64(I64(type_variation_reference=0, nullability=n.into())))))
+    if normalized == "float" or normalized == "f64" or normalized == "float64" or normalized == "double":
+        return Ok(Type(kind=Some(Kind.Fp64(Fp64(type_variation_reference=0, nullability=n.into())))))
+    if normalized == "str" or normalized == "string" or normalized == "utf8":
+        return Ok(Type(kind=Some(Kind.String(SubstraitString(type_variation_reference=0, nullability=n.into())))))
+    return Err(invalid_scalar_expression(f"invalid cast target_type `{kind}`"))
+
+
+def _cast_expr(input: Expression, target_type: Type, failure_behavior: FailureBehavior) -> Expression:
+    """Build one Substrait Cast Rex expression."""
+    return Expression(
+        rex_type=Some(
+            RexType.Cast(
+                Box.new(
+                    Cast(type=Some(target_type), input=Some(Box.new(input)), failure_behavior=failure_behavior.into()),
+                ),
+            ),
+        ),
+    )
+
+
+def _singular_or_list_expr(value: Expression, options: list[Expression]) -> Expression:
+    """Build one Substrait SingularOrList Rex expression for membership predicates."""
+    return Expression(
+        rex_type=Some(RexType.SingularOrList(Box.new(SingularOrList(value=Some(Box.new(value)), options=options)))),
+    )
+
+
+def _if_then_expr(ifs: list[IfClause], otherwise: Expression) -> Expression:
+    """Build one Substrait IfThen Rex expression for searched case expressions."""
+    return Expression(rex_type=Some(RexType.IfThen(Box.new(IfThen(ifs=ifs, else=Some(Box.new(otherwise)))))))
+
+
+def _if_clause(condition: Expression, result: Expression) -> IfClause:
+    """Build one Substrait IfThen clause."""
+    return IfClause(if=Some(condition), then=Some(result))
+
+
 @derive(Clone)
 model ResolvedProjectionBinding:
     """One output-column binding mapped to a lowered Substrait expression relative to the current project input."""
@@ -201,54 +251,129 @@ def _resolved_projection_expr(
         FloatLiteralExpr(literal) => return Ok(f64_expr(literal.value))
         StringLiteralExpr(literal) => return Ok(string_expr(literal.value))
         BoolLiteralExpr(literal) => return Ok(bool_expr(literal.value))
-        AddExpr(add_expr) =>
-            if len(add_expr.arguments) != 2:
-                return Err(invalid_scalar_expression("binary scalar expression requires exactly two arguments"))
-            return _resolved_binary_scalar_function_expr(
-                bindings,
-                add_expr.arguments[0],
-                add_expr.arguments[1],
-                ADD_FUNCTION_ANCHOR,
-            )
-        MultiplyExpr(mul_expr) =>
-            if len(mul_expr.arguments) != 2:
-                return Err(invalid_scalar_expression("binary scalar expression requires exactly two arguments"))
-            return _resolved_binary_scalar_function_expr(
-                bindings,
-                mul_expr.arguments[0],
-                mul_expr.arguments[1],
-                MULTIPLY_FUNCTION_ANCHOR,
-            )
-        EqExpr(eq_expr) =>
-            if len(eq_expr.arguments) != 2:
-                return Err(invalid_scalar_expression("binary scalar expression requires exactly two arguments"))
-            return _resolved_binary_scalar_function_expr(
-                bindings,
-                eq_expr.arguments[0],
-                eq_expr.arguments[1],
-                EQUAL_FUNCTION_ANCHOR,
-            )
-        GtExpr(gt_expr) =>
-            if len(gt_expr.arguments) != 2:
-                return Err(invalid_scalar_expression("binary scalar expression requires exactly two arguments"))
-            return _resolved_binary_scalar_function_expr(
-                bindings,
-                gt_expr.arguments[0],
-                gt_expr.arguments[1],
-                GT_FUNCTION_ANCHOR,
-            )
+        ScalarFunctionApplicationExpr(application) =>
+            return _resolved_scalar_function_application_expr(bindings, application)
 
 
-def _resolved_binary_scalar_function_expr(
+def _registry_entry_for_application(
+    application: ScalarFunctionApplicationExpr,
+) -> Result[FunctionRegistryEntry, SubstraitLoweringError]:
+    """Resolve one scalar application through the loaded function registry."""
+    match function_registry_entry(application.function_ref):
+        Some(entry) => return Ok(entry)
+        None =>
+            return Err(invalid_scalar_expression(f"{application.function_ref} is not loaded in the function registry"))
+
+
+def _resolved_scalar_function_application_expr(
     bindings: list[ResolvedProjectionBinding],
-    left_expr: ColumnExpr,
-    right_expr: ColumnExpr,
-    function_anchor: u32,
+    application: ScalarFunctionApplicationExpr,
 ) -> Result[Expression, SubstraitLoweringError]:
-    """Lower one binary scalar-function expression against resolved bindings."""
-    left = _resolved_projection_expr(bindings, left_expr.clone())?
-    right = _resolved_projection_expr(bindings, right_expr.clone())?
-    return Ok(scalar_function_expr(function_anchor, [left, right]))
+    """Lower one scalar-function expression through its registry-owned Substrait mapping."""
+    entry = _registry_entry_for_application(application)?
+    match entry.substrait.kind:
+        SubstraitMappingKind.ExtensionFunction =>
+            lowered_arguments = [_resolved_projection_expr(bindings, argument)? for argument in application.arguments]
+            return Ok(scalar_function_expr(entry.substrait.anchor, lowered_arguments))
+        SubstraitMappingKind.StructuralFunction =>
+            return Err(
+                invalid_scalar_expression(
+                    f"{entry.function_ref} is only valid in {entry.substrait.function_name} context",
+                ),
+            )
+        SubstraitMappingKind.Rewrite =>
+            return Err(
+                invalid_scalar_expression(
+                    f"{entry.function_ref} is registered as a rewrite helper and must return its canonical expression shape: {entry.substrait.rewrite}",
+                ),
+            )
+        SubstraitMappingKind.CoreFunction =>
+            return _resolved_core_function_application_expr(bindings, application, entry)
+
+
+def _application_option_value(application: ScalarFunctionApplicationExpr, option_name: str) -> str:
+    """Return one scalar application option value, or empty when it is absent."""
+    for option in application.options:
+        if option.name == option_name:
+            return option.value
+    return ""
+
+
+def _resolved_cast_application_expr(
+    bindings: list[ResolvedProjectionBinding],
+    application: ScalarFunctionApplicationExpr,
+    failure_behavior: FailureBehavior,
+) -> Result[Expression, SubstraitLoweringError]:
+    """Lower one registry-backed cast application into Substrait's built-in Cast Rex shape."""
+    if len(application.arguments) != 1:
+        return Err(invalid_scalar_expression(f"{application.function_ref} requires exactly one scalar argument"))
+    target_type = _application_option_value(application, "target_type")
+    if target_type == "":
+        return Err(invalid_scalar_expression(f"{application.function_ref} requires a target_type option"))
+    input = _resolved_projection_expr(bindings, application.arguments[0])?
+    return Ok(_cast_expr(input, _nullable_type(target_type)?, failure_behavior))
+
+
+def _resolved_in_list_application_expr(
+    bindings: list[ResolvedProjectionBinding],
+    application: ScalarFunctionApplicationExpr,
+) -> Result[Expression, SubstraitLoweringError]:
+    """Lower one registry-backed membership predicate into Substrait's SingularOrList Rex shape."""
+    if len(application.arguments) < 2:
+        return Err(invalid_scalar_expression(f"{application.function_ref} requires one value and at least one option"))
+    value = _resolved_projection_expr(bindings, application.arguments[0])?
+    options = [_resolved_projection_expr(bindings, application.arguments[idx])? for idx in range(
+        1,
+        len(application.arguments),
+    )]
+    return Ok(_singular_or_list_expr(value, options))
+
+
+def _resolved_case_when_application_expr(
+    bindings: list[ResolvedProjectionBinding],
+    application: ScalarFunctionApplicationExpr,
+) -> Result[Expression, SubstraitLoweringError]:
+    """Lower one registry-backed searched case expression into Substrait's IfThen Rex shape."""
+    argument_count = len(application.arguments)
+    if argument_count < 3:
+        return Err(
+            invalid_scalar_expression(
+                f"{application.function_ref} requires at least one condition/result pair and an otherwise expression",
+            ),
+        )
+    pair_argument_count = argument_count - 1
+    mut condition_count = 0
+    while condition_count * 2 < pair_argument_count:
+        condition_count += 1
+    if condition_count * 2 != pair_argument_count:
+        return Err(invalid_scalar_expression(f"{application.function_ref} has mismatched condition/result arguments"))
+
+    clauses = [_if_clause(
+        _resolved_projection_expr(bindings, application.arguments[idx])?,
+        _resolved_projection_expr(bindings, application.arguments[idx + condition_count])?,
+    ) for idx in range(condition_count)]
+    otherwise = _resolved_projection_expr(bindings, application.arguments[argument_count - 1])?
+    return Ok(_if_then_expr(clauses, otherwise))
+
+
+def _resolved_core_function_application_expr(
+    bindings: list[ResolvedProjectionBinding],
+    application: ScalarFunctionApplicationExpr,
+    entry: FunctionRegistryEntry,
+) -> Result[Expression, SubstraitLoweringError]:
+    """Lower registry-backed applications that target built-in Substrait Rex shapes."""
+    core_name = entry.substrait.function_name
+    if core_name == "cast":
+        return _resolved_cast_application_expr(bindings, application, FailureBehavior.ThrowException)
+    if core_name == "try_cast":
+        return _resolved_cast_application_expr(bindings, application, FailureBehavior.ReturnNull)
+    if core_name == "singular_or_list":
+        return _resolved_in_list_application_expr(bindings, application)
+    if core_name == "if_then":
+        return _resolved_case_when_application_expr(bindings, application)
+    return Err(
+        invalid_scalar_expression(f"{entry.function_ref} has unknown Substrait core function mapping `{core_name}`"),
+    )
 
 
 def _apply_projection_assignments_to_bindings(

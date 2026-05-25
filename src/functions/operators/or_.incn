@@ -1,0 +1,54 @@
+"""
+Boolean disjunction helper.
+
+`or_` is a registry-backed boolean predicate helper that lowers through the Substrait `or` extension mapping.
+"""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import function_registry, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import OR_FUNCTION_ANCHOR
+
+
+@function_registry.add("or_", deterministic_spec(
+    FunctionClass.Scalar,
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionNullBehavior.Predicate,
+    extension_mapping("or", OR_FUNCTION_ANCHOR),
+))
+pub def or_(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
+    """
+    Build a boolean disjunction.
+
+    Use `or_` instead of `or` because `or` is reserved by the host language.
+
+    Examples:
+        visible = or_(eq(col("visibility"), lit("public")), eq(col("owner_id"), col("viewer_id")))
+
+    Parameters:
+        left: Predicate expression on the left side.
+        right: Predicate expression that may also make the result true.
+    """
+    return registered_application("or_", [left, right])
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        bool_expr,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+    )
+    def test_or_builds_registered_application() -> None:
+        expr = or_(bool_expr(true), bool_expr(false))
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "or_"
+        assert column_expr_argument_count(expr) == 2

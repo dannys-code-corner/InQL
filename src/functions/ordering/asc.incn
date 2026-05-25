@@ -1,0 +1,50 @@
+"""
+Ascending ordering helper.
+
+`asc` records ordering intent for `order_by(...)` and lowers to a Substrait sort field in sort context.
+"""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    sort_field_mapping,
+    v0_1,
+)
+from functions.registry import function_registry, registered_application
+from projection_builders import ColumnExpr
+
+
+@function_registry.add("asc", deterministic_spec(
+    FunctionClass.Ordering,
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionNullBehavior.DependsOnInputs,
+    sort_field_mapping("asc_nulls_first"),
+))
+pub def asc(expr: ColumnExpr) -> ColumnExpr:
+    """
+    Build an ascending ordering expression.
+
+    Examples:
+        by_amount = orders.order_by([asc(col("amount"))])
+
+    Parameters:
+        expr: Expression used as the sort key.
+    """
+    return registered_application("asc", [expr])
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        col,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+    )
+    def test_asc_builds_registered_application() -> None:
+        expr = asc(col("amount"))
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "asc"
+        assert column_expr_argument_count(expr) == 1

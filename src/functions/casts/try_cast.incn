@@ -1,0 +1,55 @@
+"""
+Try-cast scalar helper.
+
+`try_cast` mirrors `cast` metadata and lowers to Substrait's built-in Cast Rex shape with return-null failure behavior.
+"""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    core_mapping,
+    deterministic_spec,
+    v0_1,
+)
+from functions.registry import function_registry, registered_application_with_options
+from projection_builders import ColumnExpr, scalar_function_option
+
+
+@function_registry.add("try_cast", deterministic_spec(
+    FunctionClass.Scalar,
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionNullBehavior.DependsOnInputs,
+    core_mapping("try_cast"),
+))
+pub def try_cast(expr: ColumnExpr, target_type: str) -> ColumnExpr:
+    """
+    Build a null-on-failure cast expression.
+
+    `try_cast` represents a best-effort conversion where invalid values become null instead of failing the query.
+
+    Examples:
+        parsed_amount = try_cast(col("amount_text"), "float")
+
+    Parameters:
+        expr: Expression to convert.
+        target_type: InQL type spelling to cast to.
+    """
+    return registered_application_with_options("try_cast", [expr], [scalar_function_option("target_type", target_type)])
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        col,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+        column_expr_option_value,
+    )
+    def test_try_cast_records_target_type_option() -> None:
+        expr = try_cast(col("amount"), "float64")
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "try_cast"
+        assert column_expr_argument_count(expr) == 1
+        assert column_expr_option_value(expr, "target_type") == "float64"

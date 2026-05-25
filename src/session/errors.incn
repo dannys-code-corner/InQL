@@ -18,7 +18,6 @@ pub enum SessionErrorKind(str):
     BackendRegistrationError = "backend_registration_error"
     InvalidScalarExpression = "invalid_scalar_expression"
     UnknownScalarColumn = "unknown_scalar_column"
-    UnsupportedScalarExpression = "unsupported_scalar_expression"
 
 
 pub model SessionError:

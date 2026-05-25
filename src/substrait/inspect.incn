@@ -15,10 +15,11 @@ from rust::substrait::proto::read_rel import NamedTable as ReadNamedTable, ReadT
 from rust::substrait::proto::rel import RelType
 from rust::substrait::proto::rel_common import Direct, EmitKind
 from rust::substrait::proto::set_rel import SetOp
+from rust::substrait::proto::sort_field import SortDirection, SortKind
 from aggregate_builders import AggregateKind, AggregateMeasure
 from projection_builders import scalar_expr_output_name
 from substrait.expr_lowering import field_index_from_expression, project_output_columns_with_emit
-from substrait.extensions import COUNT_FUNCTION_ANCHOR
+from substrait.function_extensions import COUNT_FUNCTION_ANCHOR
 from substrait.schema_registry import named_table_columns, unknown_named_struct
 from substrait.traversal import relation_children
 
@@ -291,6 +292,54 @@ pub def set_operation_name(rel: Rel) -> str:
                 return "UnionAll"
             return "UnknownSetOp"
         _ => return "NotSet"
+
+
+def _sort_direction_name(value: RustI32) -> str:
+    """Return a stable Substrait sort-direction name for test and diagnostics."""
+    asc_nulls_first: RustI32 = SortDirection.AscNullsFirst.into()
+    asc_nulls_last: RustI32 = SortDirection.AscNullsLast.into()
+    desc_nulls_first: RustI32 = SortDirection.DescNullsFirst.into()
+    desc_nulls_last: RustI32 = SortDirection.DescNullsLast.into()
+    if value == asc_nulls_first:
+        return "AscNullsFirst"
+    if value == asc_nulls_last:
+        return "AscNullsLast"
+    if value == desc_nulls_first:
+        return "DescNullsFirst"
+    if value == desc_nulls_last:
+        return "DescNullsLast"
+    return "Unknown"
+
+
+pub def sort_field_count(rel: Rel) -> int:
+    """Return the number of sort fields on one SortRel, or zero for non-sort relations."""
+    match rel.rel_type:
+        Some(RelType.Sort(sort_rel)) => return len(sort_rel.sorts)
+        _ => return 0
+
+
+pub def sort_field_direction_name(rel: Rel, index: int) -> str:
+    """Return the direction/null-placement name for one SortRel field."""
+    match rel.rel_type:
+        Some(RelType.Sort(sort_rel)) =>
+            if index < 0 or index >= len(sort_rel.sorts):
+                return "Unknown"
+            match sort_rel.sorts[index].sort_kind:
+                Some(SortKind.Direction(direction)) => return _sort_direction_name(direction)
+                _ => return "Unknown"
+        _ => return "Unknown"
+
+
+pub def sort_field_expr_index(rel: Rel, index: int) -> int:
+    """Return the direct field-reference index used by one SortRel field, or `-1` when not a field reference."""
+    match rel.rel_type:
+        Some(RelType.Sort(sort_rel)) =>
+            if index < 0 or index >= len(sort_rel.sorts):
+                return -1
+            match sort_rel.sorts[index].expr:
+                Some(expr) => return field_index_from_expression(expr)
+                None => return -1
+        _ => return -1
 
 
 pub def reference_subtree_ordinal(rel: Rel) -> RustI32:

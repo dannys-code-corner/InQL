@@ -1,0 +1,62 @@
+"""
+Membership predicate helper.
+
+`in_` uses keyword-safe source spelling and stores the value-count option alongside the scalar arguments.
+"""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    core_mapping,
+    deterministic_spec,
+    v0_1,
+)
+from functions.registry import function_registry, registered_application_with_options
+from projection_builders import ColumnExpr, scalar_function_option
+
+
+@function_registry.add("in_", deterministic_spec(
+    FunctionClass.Scalar,
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionNullBehavior.Predicate,
+    core_mapping("singular_or_list"),
+))
+pub def in_(expr: ColumnExpr, values: list[ColumnExpr]) -> ColumnExpr:
+    """
+    Build a membership predicate.
+
+    Use `in_` instead of `in` because `in` is reserved by the host language.
+
+    Examples:
+        active_region = in_(col("region"), [lit("emea"), lit("amer")])
+
+    Parameters:
+        expr: Expression whose value is tested.
+        values: Candidate values to match against.
+    """
+    mut arguments = [expr]
+    arguments.extend(values)
+    return registered_application_with_options(
+        "in_",
+        arguments,
+        [scalar_function_option("value_count", f"{len(values)}")],
+    )
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        col,
+        str_expr,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+        column_expr_option_value,
+    )
+    def test_in_records_value_count_option() -> None:
+        expr = in_(col("status"), [str_expr("paid"), str_expr("open")])
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "in_"
+        assert column_expr_argument_count(expr) == 3
+        assert column_expr_option_value(expr, "value_count") == "2"

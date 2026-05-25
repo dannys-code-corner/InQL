@@ -22,7 +22,7 @@ pub class ActiveRegistration:
 
     def clone(self) -> Self:
         """Return one cloned active registration entry."""
-        return ActiveRegistration(logical_name=self.logical_name, source=self.source)
+        return ActiveRegistration(logical_name=self.logical_name, source=self.source.clone())
 
 
 @derive(Clone)
@@ -32,7 +32,10 @@ pub class ActiveSessionState:
 
     def clone(self) -> Self:
         """Return one cloned active-session snapshot."""
-        return ActiveSessionState(backend=self.backend, registrations=self.registrations)
+        return ActiveSessionState(
+            backend=self.backend.clone(),
+            registrations=[registration.clone() for registration in self.registrations],
+        )
 
 
 pub model ActiveSessionError:

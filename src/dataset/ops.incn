@@ -9,7 +9,7 @@ views stay aligned with the lowered relation tree.
 from rust::substrait::proto import Rel
 from aggregate_builders import AggregateMeasure
 from projection_builders import ColumnExpr, ProjectionAssignment, with_column_assignment
-from substrait.extensions import explode_extension_uri
+from substrait.function_extensions import explode_extension_uri
 from substrait.inspect import relation_output_columns
 from substrait.relations import (
     aggregate_rel_of_columns,
@@ -18,7 +18,7 @@ from substrait.relations import (
     filter_rel_of_columns,
     join_rel,
     project_rel_of_columns,
-    sort_rel,
+    sort_rel_of_columns,
 )
 
 
@@ -122,17 +122,23 @@ pub def agg_ds_of_columns(rel: Rel, input_columns: list[str], measures: list[Agg
     return aggregate_rel_of_columns(rel, input_columns, [], measures)
 
 
-pub def order_by_ds(rel: Rel) -> Rel:
+pub def order_by_ds(rel: Rel, columns: list[ColumnExpr]) -> Rel:
     """
     Apply dataset-level ordering intent to one relation.
 
     Args:
         rel: Input relation to sort.
+        columns: Sort key expressions, optionally wrapped with ordering helpers.
 
     Returns:
         A relation shaped as a sort over the input relation.
     """
-    return sort_rel(rel)
+    return order_by_ds_of_columns(rel, relation_output_columns(rel.clone()), columns)
+
+
+pub def order_by_ds_of_columns(rel: Rel, input_columns: list[str], columns: list[ColumnExpr]) -> Rel:
+    """Apply dataset-level ordering intent using explicit input-column names."""
+    return sort_rel_of_columns(rel, input_columns, columns)
 
 
 pub def limit_ds(rel: Rel, n: int) -> Rel:

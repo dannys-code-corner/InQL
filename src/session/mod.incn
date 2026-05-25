@@ -1,5 +1,5 @@
 """
-Session execution-context package (RFC 004).
+Session execution-context package.
 
 Module layout:
 - `session.types`: public Session API and read/execute/collect/write boundaries
@@ -8,7 +8,8 @@ Module layout:
 - `session.csv_schema`: CSV schema inference helpers used by Session read paths
 - `session.source_formats`: central source-format policy shared by planning and backend registration
 - `session.active`: active-session registry used by LazyFrame collect/display conveniences
-- `session.datafusion_backend`: internal DataFusion backend implementation
+- `session.backend_dispatch`: backend adapter dispatch over Substrait plans
+- `session.datafusion_backend`: DataFusion adapter implementation
 """
 
 pub from session.types import Session, SessionBuilder

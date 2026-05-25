@@ -1,0 +1,55 @@
+"""
+Addition scalar helper.
+
+`add` is a registry-backed scalar application. Its Substrait extension name and anchor live in the decorator metadata,
+not in a lowering switchboard.
+"""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import function_registry, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import ADD_FUNCTION_ANCHOR
+
+
+@function_registry.add("add", deterministic_spec(
+    FunctionClass.Scalar,
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionNullBehavior.DependsOnInputs,
+    extension_mapping("add", ADD_FUNCTION_ANCHOR),
+))
+pub def add(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
+    """
+    Build an addition expression.
+
+    Examples:
+        total = add(col("subtotal"), col("tax"))
+        adjusted = add(col("amount"), lit(5))
+
+    Parameters:
+        left: Numeric expression on the left side.
+        right: Numeric expression to add to `left`.
+    """
+    return registered_application("add", [left, right])
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        col,
+        int_expr,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+    )
+    def test_add_builds_registered_application() -> None:
+        expr = add(col("amount"), int_expr(1))
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "add"
+        assert column_expr_argument_count(expr) == 2

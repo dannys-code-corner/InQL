@@ -67,6 +67,7 @@ pub class PrismCursor[T with Clone]:
             filter_predicate=predicate,
             limit_count=0,
             group_columns=[],
+            sort_columns=[],
             aggregate_measures=[],
             projection_assignments=[],
         )
@@ -84,6 +85,7 @@ pub class PrismCursor[T with Clone]:
                 filter_predicate=always_true(),
                 limit_count=0,
                 group_columns=[],
+                sort_columns=[],
                 aggregate_measures=[],
                 projection_assignments=[],
             )
@@ -98,6 +100,7 @@ pub class PrismCursor[T with Clone]:
             filter_predicate=always_true(),
             limit_count=0,
             group_columns=[],
+            sort_columns=[],
             aggregate_measures=[],
             projection_assignments=[],
         )
@@ -114,6 +117,7 @@ pub class PrismCursor[T with Clone]:
             filter_predicate=always_true(),
             limit_count=0,
             group_columns=[],
+            sort_columns=[],
             aggregate_measures=[],
             projection_assignments=[],
         )
@@ -130,6 +134,7 @@ pub class PrismCursor[T with Clone]:
             filter_predicate=always_true(),
             limit_count=0,
             group_columns=[],
+            sort_columns=[],
             aggregate_measures=[],
             projection_assignments=[with_column_assignment(name, expr)],
         )
@@ -146,6 +151,7 @@ pub class PrismCursor[T with Clone]:
             filter_predicate=always_true(),
             limit_count=0,
             group_columns=columns,
+            sort_columns=[],
             aggregate_measures=[],
             projection_assignments=[],
         )
@@ -162,12 +168,13 @@ pub class PrismCursor[T with Clone]:
             filter_predicate=always_true(),
             limit_count=0,
             group_columns=[],
+            sort_columns=[],
             aggregate_measures=measures,
             projection_assignments=[],
         )
         return PrismCursor(store_id=self.store_id, tip_id=next_tip_id, _type_marker=[])
 
-    def order_by(self) -> Self:
+    def order_by(self, columns: list[ColumnExpr]) -> Self:
         """Append one ordering node and return the derived tip."""
         next_tip_id = append_node(
             store_id=self.store_id,
@@ -178,6 +185,7 @@ pub class PrismCursor[T with Clone]:
             filter_predicate=always_true(),
             limit_count=0,
             group_columns=[],
+            sort_columns=columns,
             aggregate_measures=[],
             projection_assignments=[],
         )
@@ -194,6 +202,7 @@ pub class PrismCursor[T with Clone]:
             filter_predicate=always_true(),
             limit_count=n,
             group_columns=[],
+            sort_columns=[],
             aggregate_measures=[],
             projection_assignments=[],
         )
@@ -210,6 +219,7 @@ pub class PrismCursor[T with Clone]:
             filter_predicate=always_true(),
             limit_count=0,
             group_columns=[],
+            sort_columns=[],
             aggregate_measures=[],
             projection_assignments=[],
         )
@@ -252,6 +262,7 @@ pub def prism_cursor_named_table[T with Clone](table_name: str) -> PrismCursor[T
         filter_predicate=always_true(),
         limit_count=0,
         group_columns=[],
+        sort_columns=[],
         aggregate_measures=[],
         projection_assignments=[],
     )
@@ -299,9 +310,9 @@ pub def prism_cursor_apply_agg[T with Clone](
     return cursor.agg(measures)
 
 
-pub def prism_cursor_apply_order_by[T with Clone](cursor: PrismCursor[T]) -> PrismCursor[T]:
+pub def prism_cursor_apply_order_by[T with Clone](cursor: PrismCursor[T], columns: list[ColumnExpr]) -> PrismCursor[T]:
     """Apply dataset-level ordering intent through Prism."""
-    return cursor.order_by()
+    return cursor.order_by(columns)
 
 
 pub def prism_cursor_apply_limit[T with Clone](cursor: PrismCursor[T], n: int) -> PrismCursor[T]:

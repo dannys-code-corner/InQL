@@ -2,27 +2,29 @@
 
 from aggregate_builders import AggregateMeasure
 from projection_builders import (
-    AddExpr,
     BoolLiteralExpr,
     ColumnExpr,
     ColumnRefExpr,
-    EqExpr,
     FloatLiteralExpr,
-    GtExpr,
     IntLiteralExpr,
-    MultiplyExpr,
     ProjectionAssignment,
+    ScalarFunctionApplicationExpr,
+    ScalarFunctionOption,
     StringLiteralExpr,
 )
 from prism.types import PrismNode, PrismNodeKind, PrismStoreAdoption, PrismStoreId
 
 
 model PrismStoredNode:
+    """One append-only node entry tagged with its owning store id."""
+
     store_id_raw: int
     node: PrismNode
 
 
 model PrismStoreNodeCount:
+    """The next node id allocated for one Prism store."""
+
     store_id_raw: int
     next_node_id: int
 
@@ -50,6 +52,7 @@ pub def append_node(
     filter_predicate: ColumnExpr,
     limit_count: int,
     group_columns: list[ColumnExpr],
+    sort_columns: list[ColumnExpr],
     aggregate_measures: list[AggregateMeasure],
     projection_assignments: list[ProjectionAssignment],
 ) -> int:
@@ -68,6 +71,7 @@ pub def append_node(
         filter_predicate=filter_predicate,
         limit_count=limit_count,
         group_columns=group_columns,
+        sort_columns=sort_columns,
         aggregate_measures=aggregate_measures,
         projection_assignments=projection_assignments,
     )
@@ -113,9 +117,11 @@ pub def adopt_cursor_subgraph(
             id_map[source_node_id] = reused_adopted_id
         else:
             adopted_group_columns = [column for column in source_node.group_columns]
+            adopted_sort_columns = [column for column in source_node.sort_columns]
             adopted_measures = [measure for measure in source_node.aggregate_measures]
             adopted_assignments = [assignment for assignment in source_node.projection_assignments]
             target_group_columns = [column for column in source_node.group_columns]
+            target_sort_columns = [column for column in source_node.sort_columns]
             target_measures = [measure for measure in source_node.aggregate_measures]
             target_assignments = [assignment for assignment in source_node.projection_assignments]
             adopted_id = append_node(
@@ -127,6 +133,7 @@ pub def adopt_cursor_subgraph(
                 filter_predicate=source_node.filter_predicate.clone(),
                 limit_count=source_node.limit_count,
                 group_columns=adopted_group_columns,
+                sort_columns=adopted_sort_columns,
                 aggregate_measures=adopted_measures,
                 projection_assignments=adopted_assignments,
             )
@@ -140,6 +147,7 @@ pub def adopt_cursor_subgraph(
                     filter_predicate=source_node.filter_predicate.clone(),
                     limit_count=source_node.limit_count,
                     group_columns=target_group_columns,
+                    sort_columns=target_sort_columns,
                     aggregate_measures=target_measures,
                     projection_assignments=target_assignments,
                 ),
@@ -220,6 +228,8 @@ def _nodes_structurally_equal(candidate: PrismNode, source_node: PrismNode, rema
         return false
     if not _column_expr_lists_structurally_equal(candidate.group_columns, source_node.group_columns):
         return false
+    if not _column_expr_lists_structurally_equal(candidate.sort_columns, source_node.sort_columns):
+        return false
     if len(candidate.aggregate_measures) != len(source_node.aggregate_measures):
         return false
     for idx in range(len(candidate.aggregate_measures)):
@@ -291,42 +301,35 @@ def _column_exprs_structurally_equal(left: ColumnExpr, right: ColumnExpr) -> boo
             match right:
                 BoolLiteralExpr(right_literal) => return left_literal.value == right_literal.value
                 _ => return false
-        AddExpr(left_add) =>
+        ScalarFunctionApplicationExpr(left_application) =>
             match right:
-                AddExpr(right_add) =>
-                    if len(left_add.arguments) != 2 or len(right_add.arguments) != 2:
+                ScalarFunctionApplicationExpr(right_application) =>
+                    if left_application.function_ref != right_application.function_ref:
                         return false
-                    if not _column_exprs_structurally_equal(left_add.arguments[0], right_add.arguments[0]):
+                    if left_application.canonical_name != right_application.canonical_name:
                         return false
-                    return _column_exprs_structurally_equal(left_add.arguments[1], right_add.arguments[1])
+                    if not _scalar_function_options_structurally_equal(
+                        left_application.options,
+                        right_application.options,
+                    ):
+                        return false
+                    return _column_expr_lists_structurally_equal(left_application.arguments, right_application.arguments)
                 _ => return false
-        MultiplyExpr(left_multiply) =>
-            match right:
-                MultiplyExpr(right_multiply) =>
-                    if len(left_multiply.arguments) != 2 or len(right_multiply.arguments) != 2:
-                        return false
-                    if not _column_exprs_structurally_equal(left_multiply.arguments[0], right_multiply.arguments[0]):
-                        return false
-                    return _column_exprs_structurally_equal(left_multiply.arguments[1], right_multiply.arguments[1])
-                _ => return false
-        EqExpr(left_eq) =>
-            match right:
-                EqExpr(right_eq) =>
-                    if len(left_eq.arguments) != 2 or len(right_eq.arguments) != 2:
-                        return false
-                    if not _column_exprs_structurally_equal(left_eq.arguments[0], right_eq.arguments[0]):
-                        return false
-                    return _column_exprs_structurally_equal(left_eq.arguments[1], right_eq.arguments[1])
-                _ => return false
-        GtExpr(left_gt) =>
-            match right:
-                GtExpr(right_gt) =>
-                    if len(left_gt.arguments) != 2 or len(right_gt.arguments) != 2:
-                        return false
-                    if not _column_exprs_structurally_equal(left_gt.arguments[0], right_gt.arguments[0]):
-                        return false
-                    return _column_exprs_structurally_equal(left_gt.arguments[1], right_gt.arguments[1])
-                _ => return false
+
+
+def _scalar_function_options_structurally_equal(
+    left: list[ScalarFunctionOption],
+    right: list[ScalarFunctionOption],
+) -> bool:
+    """Return whether two scalar function option lists are structurally equivalent."""
+    if len(left) != len(right):
+        return false
+    for idx in range(len(left)):
+        if left[idx].name != right[idx].name:
+            return false
+        if left[idx].value != right[idx].value:
+            return false
+    return true
 
 
 def _latest_store_next_node_id(store_id: PrismStoreId) -> int:

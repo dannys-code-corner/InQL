@@ -1,0 +1,78 @@
+"""
+Searched case helper.
+
+`case_when` records condition/result pairs in one generic application node. Lowering derives the pair boundary from the
+validated flattened argument list.
+"""
+
+from rust::incan_stdlib::errors import raise_value_error
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    core_mapping,
+    deterministic_spec,
+    v0_1,
+)
+from functions.registry import function_registry, registered_application
+from projection_builders import ColumnExpr
+
+
+@function_registry.add("case_when", deterministic_spec(
+    FunctionClass.Scalar,
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionNullBehavior.DependsOnInputs,
+    core_mapping("if_then"),
+))
+pub def case_when(conditions: list[ColumnExpr], results: list[ColumnExpr], otherwise: ColumnExpr) -> ColumnExpr:
+    """
+    Build a searched conditional expression.
+
+    Conditions and results are paired by index. The `otherwise` expression is used when none of the conditions match.
+
+    Examples:
+        bucket = case_when(
+            [gt(col("amount"), lit(1000)), gt(col("amount"), lit(100))],
+            [lit("large"), lit("medium")],
+            lit("small"),
+        )
+
+    Parameters:
+        conditions: Predicate expressions evaluated in order.
+        results: Result expressions paired with `conditions`.
+        otherwise: Result expression used when no condition matches.
+    """
+    if len(conditions) == 0:
+        return raise_value_error("case_when requires at least one condition/result pair")
+    if len(conditions) != len(results):
+        return raise_value_error("case_when requires one result for each condition")
+    mut arguments: list[ColumnExpr] = []
+    arguments.extend(conditions)
+    arguments.extend(results)
+    arguments.append(otherwise)
+    return registered_application("case_when", arguments)
+
+
+module tests:
+    from std.testing import assert_raises
+    from projection_builders import (
+        ColumnExprKind,
+        bool_expr,
+        str_expr,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+    )
+    def test_case_when_records_condition_and_result_arguments() -> None:
+        expr = case_when([bool_expr(true)], [str_expr("large")], str_expr("small"))
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "case_when"
+        assert column_expr_argument_count(expr) == 3
+    def _call_case_when_without_conditions() -> None:
+        case_when([], [], str_expr("fallback"))
+    def _call_case_when_with_mismatched_results() -> None:
+        case_when([bool_expr(true)], [], str_expr("fallback"))
+    def test_case_when_rejects_empty_conditions() -> None:
+        assert_raises[ValueError](_call_case_when_without_conditions)
+    def test_case_when_rejects_mismatched_results() -> None:
+        assert_raises[ValueError](_call_case_when_with_mismatched_results)

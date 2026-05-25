@@ -1,0 +1,55 @@
+"""
+Null-safe equality predicate helper.
+
+`equal_null` exposes null-safe equality intent and lowers through the Substrait `is_not_distinct_from` mapping.
+"""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import function_registry, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import IS_NOT_DISTINCT_FROM_FUNCTION_ANCHOR
+
+
+@function_registry.add("equal_null", deterministic_spec(
+    FunctionClass.Scalar,
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionNullBehavior.Predicate,
+    extension_mapping("is_not_distinct_from", IS_NOT_DISTINCT_FROM_FUNCTION_ANCHOR),
+))
+pub def equal_null(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
+    """
+    Build a null-safe equality predicate.
+
+    `equal_null` treats two null values as equal, unlike ordinary equality semantics where null usually propagates.
+
+    Examples:
+        same_optional_code = equal_null(col("source_code"), col("target_code"))
+
+    Parameters:
+        left: Nullable expression on the left side.
+        right: Nullable expression to compare against `left`.
+    """
+    return registered_application("equal_null", [left, right])
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        col,
+        str_expr,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+    )
+    def test_equal_null_builds_registered_application() -> None:
+        expr = equal_null(col("status"), str_expr("paid"))
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "equal_null"
+        assert column_expr_argument_count(expr) == 2

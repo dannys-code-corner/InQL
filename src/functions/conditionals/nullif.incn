@@ -1,0 +1,53 @@
+"""
+Null-if conditional helper.
+
+`nullif` is represented as a binary registry-backed scalar application.
+"""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import function_registry, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import NULLIF_FUNCTION_ANCHOR
+
+
+@function_registry.add("nullif", deterministic_spec(
+    FunctionClass.Scalar,
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionNullBehavior.DependsOnInputs,
+    extension_mapping("nullif", NULLIF_FUNCTION_ANCHOR),
+))
+pub def nullif(expr: ColumnExpr, null_expr: ColumnExpr) -> ColumnExpr:
+    """
+    Build an expression that returns null when two expressions are equal.
+
+    Examples:
+        normalized_discount = nullif(col("discount_code"), lit(""))
+
+    Parameters:
+        expr: Expression returned when the comparison does not match.
+        null_expr: Expression compared with `expr` to decide whether to return null.
+    """
+    return registered_application("nullif", [expr, null_expr])
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        col,
+        str_expr,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+    )
+    def test_nullif_builds_registered_application() -> None:
+        expr = nullif(col("status"), str_expr(""))
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "nullif"
+        assert column_expr_argument_count(expr) == 2

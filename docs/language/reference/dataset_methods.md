@@ -19,7 +19,7 @@ The Substrait helper surface behind these methods is split by semantic role:
 | `with_column` | `def with_column(self, name: str, expr: ColumnExpr) -> Self` | Add or replace one projected column using a scalar expression.                                 |
 | `group_by`    | `def group_by(self, columns: list[ColumnExpr]) -> Self`      | Define grouping keys using scalar expressions.                                                 |
 | `agg`         | `def agg(self, measures: list[AggregateMeasure]) -> Self`    | Apply aggregate measures over the current relation or current grouping.                        |
-| `order_by`    | `def order_by(self) -> Self`                                 | Preserve order-planning shape for the package sort boundary.                                   |
+| `order_by`    | `def order_by(self, columns: list[ColumnExpr]) -> Self`      | Sort rows by scalar expressions or ordering helpers such as `asc(...)` and `desc(...)`.        |
 | `limit`       | `def limit(self, n: int) -> Self`                            | Cap row count.                                                                                 |
 | `explode`     | `def explode(self) -> Self`                                  | Expand a nested list column into rows.                                                         |
 

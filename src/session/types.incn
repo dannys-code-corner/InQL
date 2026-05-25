@@ -1,14 +1,13 @@
 """Public Session API and execution-context types."""
 
-import std.async
 from rust::substrait::proto import Plan
-from rust::incan_stdlib::async::runtime import block_on
 from backends import (
-    BackendKind,
     BackendSelection,
     DataFusion,
     TableSource,
     backend_kind_name,
+    datafusion_backend_from_selection,
+    datafusion_backend_selection,
     source_kind_name,
     arrow_source,
     csv_source,
@@ -29,15 +28,8 @@ from session.active import (
     get_active_session_state,
     set_active_session_state,
 )
-from session.datafusion_backend import (
-    BackendError,
-    BackendErrorKind,
-    BackendRegistration,
-    datafusion_collect_materialization_async,
-    datafusion_execute_async,
-    datafusion_write_csv_async,
-    datafusion_write_parquet_async,
-)
+from session.backend_dispatch import backend_collect_plan, backend_execute_plan, backend_write_plan
+from session.backend_types import BackendError, BackendErrorKind, BackendRegistration
 from substrait.errors import SubstraitLoweringError, SubstraitLoweringErrorKind
 from substrait.schema_registry import register_named_table_schema
 from substrait.inspect import root_rel, read_named_table_name
@@ -77,9 +69,13 @@ pub class Session:
         """Return one stable backend name for this Session instance."""
         return backend_kind_name(self._backend)
 
+    def backend_selection(self) -> BackendSelection:
+        """Return one cloned backend selection envelope for adapter-level inspection."""
+        return self._backend.clone()
+
     def datafusion_backend(self) -> DataFusion:
         """Return the current DataFusion backend configuration."""
-        return self._backend.datafusion.clone()
+        return datafusion_backend_from_selection(self._backend)
 
     def registration_count(self) -> int:
         """Return the number of registered logical sources in this Session."""
@@ -170,37 +166,25 @@ pub class Session:
 
     def execute[T with Clone](self, data: LazyFrame[T]) -> Result[LazyFrame[T], SessionError]:
         """Validate and execute one lazy plan while preserving deferred carrier shape."""
-        _ensure_datafusion_backend(self._backend)?
         plan = _plan_from_lazy_frame(data)?
         _validate_named_table_binding(self._registrations, plan)?
 
-        match block_on(datafusion_execute_async(_to_backend_registrations(self._registrations), plan)):
-            Ok(exec_result) =>
-                match exec_result:
-                    Ok(_) => return Ok(data)
-                    Err(err) => return Err(_session_error_from_backend_error(err))
-            Err(err) => return Err(SessionError(kind=SessionErrorKind.RuntimeInitError, message=err.message()))
+        match backend_execute_plan(self._backend, _to_backend_registrations(self._registrations), plan):
+            Ok(_) => return Ok(data)
+            Err(err) => return Err(_session_error_from_backend_error(err))
 
     def collect[T with Clone](self, data: LazyFrame[T]) -> Result[DataFrame[T], SessionError]:
         """Validate and execute one lazy plan, returning a structured materialized DataFrame."""
-        _ensure_datafusion_backend(self._backend)?
         plan = _plan_from_lazy_frame(data)?
         rel = root_rel(plan.clone())
         _validate_named_table_binding(self._registrations, plan)?
 
-        match block_on(datafusion_collect_materialization_async(_to_backend_registrations(self._registrations), plan)):
-            Ok(collect_result) =>
-                match collect_result:
-                    Ok(materialization) =>
-                        return Ok(
-                            DataFrame(
-                                _type_witness=_empty_type_witness(),
-                                _materialization=materialization,
-                                _substrait_rel=rel,
-                            ),
-                        )
-                    Err(err) => return Err(_session_error_from_backend_error(err))
-            Err(err) => return Err(SessionError(kind=SessionErrorKind.RuntimeInitError, message=err.message()))
+        match backend_collect_plan(self._backend, _to_backend_registrations(self._registrations), plan):
+            Ok(materialization) =>
+                return Ok(
+                    DataFrame(_type_witness=_empty_type_witness(), _materialization=materialization, _substrait_rel=rel),
+                )
+            Err(err) => return Err(_session_error_from_backend_error(err))
 
     def write_csv[T with Clone](self, data: LazyFrame[T], uri: str) -> Result[None, SessionError]:
         """Execute one lazy plan and write result rows to a CSV sink URI."""
@@ -221,19 +205,12 @@ pub class Session:
     def _write_plan_to_sink(self, plan: Plan, uri: str, sink_kind: SinkKind) -> Result[None, SessionError]:
         """Run one validated plan through the selected sink writer and normalize runtime/backend errors."""
         sink_uri = _sink_uri_from_text(uri)?
-        _ensure_datafusion_backend(self._backend)?
         _validate_named_table_binding(self._registrations, plan)?
         registrations = _to_backend_registrations(self._registrations)
 
-        match sink_kind:
-            SinkKind.Csv =>
-                match block_on(datafusion_write_csv_async(registrations, plan, sink_uri.0)):
-                    Ok(write_result) => return _write_result_from_backend_result(write_result)
-                    Err(err) => return Err(SessionError(kind=SessionErrorKind.RuntimeInitError, message=err.message()))
-            SinkKind.Parquet =>
-                match block_on(datafusion_write_parquet_async(registrations, plan, sink_uri.0)):
-                    Ok(write_result) => return _write_result_from_backend_result(write_result)
-                    Err(err) => return Err(SessionError(kind=SessionErrorKind.RuntimeInitError, message=err.message()))
+        return _write_result_from_backend_result(
+            backend_write_plan(self._backend, registrations, plan, sink_uri.0, sink_kind),
+        )
 
 
 pub class SessionBuilder:
@@ -241,9 +218,13 @@ pub class SessionBuilder:
 
     pub _backend: BackendSelection
 
+    def with_backend(self, backend: BackendSelection) -> Self:
+        """Select one backend through the portable backend-selection envelope."""
+        return SessionBuilder(_backend=backend.clone())
+
     def with_datafusion(self, backend: DataFusion) -> Self:
         """Select DataFusion backend options for the Session being built."""
-        return SessionBuilder(_backend=BackendSelection(kind=BackendKind.DataFusionEngine, datafusion=backend.clone()))
+        return self.with_backend(datafusion_backend_selection(backend.clone()))
 
     def build(self) -> Session:
         """Build one Session from the current builder backend selection."""
@@ -285,6 +266,8 @@ def _session_error_from_backend_error(err: BackendError) -> SessionError:
             return SessionError(kind=SessionErrorKind.BackendSinkError, message=err.message)
         BackendErrorKind.BackendRegistrationError =>
             return SessionError(kind=SessionErrorKind.BackendRegistrationError, message=err.message)
+        BackendErrorKind.RuntimeInitError =>
+            return SessionError(kind=SessionErrorKind.RuntimeInitError, message=err.message)
 
 
 def _session_error_from_lowering_error(err: SubstraitLoweringError) -> SessionError:
@@ -294,8 +277,6 @@ def _session_error_from_lowering_error(err: SubstraitLoweringError) -> SessionEr
             return SessionError(kind=SessionErrorKind.InvalidScalarExpression, message=err.message)
         SubstraitLoweringErrorKind.UnknownScalarColumn =>
             return SessionError(kind=SessionErrorKind.UnknownScalarColumn, message=err.message)
-        SubstraitLoweringErrorKind.UnsupportedScalarExpression =>
-            return SessionError(kind=SessionErrorKind.UnsupportedScalarExpression, message=err.message)
 
 
 def _duplicate_registration_error(logical_name: str) -> SessionError:
@@ -354,18 +335,6 @@ def _source_uri_from_text(uri: str) -> Result[SourceUri, SessionError]:
 def _sink_uri_from_text(uri: str) -> Result[SinkUri, SessionError]:
     """Validate one sink URI and normalize validation failures for Session callers."""
     return SinkUri.from_underlying(uri).map_err(_invalid_sink_from_validation_error)
-
-
-def _ensure_datafusion_backend(selection: BackendSelection) -> Result[None, SessionError]:
-    """Guard backend dispatch: this slice only supports DataFusion execution."""
-    if selection.kind == BackendKind.DataFusionEngine:
-        return Ok(None)
-    return Err(
-        SessionError(
-            kind=SessionErrorKind.UnsupportedBackend,
-            message=f"backend '{backend_kind_name(selection)}' is not implemented",
-        ),
-    )
 
 
 def _empty_type_witness[T with Clone]() -> list[T]:

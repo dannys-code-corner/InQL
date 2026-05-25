@@ -1,0 +1,54 @@
+"""
+Equality predicate helper.
+
+`eq` is a registry-backed predicate application using the existing Substrait equality extension anchor.
+"""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import function_registry, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import EQUAL_FUNCTION_ANCHOR
+
+
+@function_registry.add("eq", deterministic_spec(
+    FunctionClass.Scalar,
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionNullBehavior.Predicate,
+    extension_mapping("equal", EQUAL_FUNCTION_ANCHOR),
+))
+pub def eq(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
+    """
+    Build an equality predicate.
+
+    Examples:
+        paid = eq(col("status"), lit("paid"))
+        high_value_paid = and_(paid, gt(col("amount"), lit(100)))
+
+    Parameters:
+        left: Expression on the left side of the comparison.
+        right: Expression to compare against `left`.
+    """
+    return registered_application("eq", [left, right])
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        col,
+        str_expr,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+    )
+    def test_eq_builds_registered_application() -> None:
+        expr = eq(col("status"), str_expr("paid"))
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "eq"
+        assert column_expr_argument_count(expr) == 2

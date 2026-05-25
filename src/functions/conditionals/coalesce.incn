@@ -1,0 +1,63 @@
+"""
+Coalesce conditional helper.
+
+`coalesce` accepts a non-empty expression list and stores the call as a variadic registry-backed scalar application.
+"""
+
+from rust::incan_stdlib::errors import raise_value_error
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import function_registry, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import COALESCE_FUNCTION_ANCHOR
+
+
+@function_registry.add("coalesce", deterministic_spec(
+    FunctionClass.Scalar,
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionNullBehavior.DependsOnInputs,
+    extension_mapping("coalesce", COALESCE_FUNCTION_ANCHOR),
+))
+pub def coalesce(values: list[ColumnExpr]) -> ColumnExpr:
+    """
+    Build a first-non-null expression.
+
+    `coalesce` requires at least one candidate expression. It returns the first candidate that evaluates to a non-null
+    value according to backend null semantics.
+
+    Examples:
+        display_name = coalesce([col("preferred_name"), col("legal_name"), lit("unknown")])
+
+    Parameters:
+        values: Candidate expressions in priority order.
+    """
+    if len(values) == 0:
+        return raise_value_error("coalesce requires at least one scalar expression")
+    return registered_application("coalesce", values)
+
+
+module tests:
+    from std.testing import assert_raises
+    from projection_builders import (
+        ColumnExprKind,
+        col,
+        str_expr,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+    )
+    def test_coalesce_builds_variadic_registered_application() -> None:
+        expr = coalesce([col("status"), str_expr("unknown")])
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "coalesce"
+        assert column_expr_argument_count(expr) == 2
+    def _call_empty_coalesce() -> None:
+        coalesce([])
+    def test_coalesce_rejects_empty_values() -> None:
+        assert_raises[ValueError](_call_empty_coalesce)

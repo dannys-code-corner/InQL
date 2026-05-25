@@ -1,11 +1,12 @@
 """
 Package-owned function registry metadata for the current public InQL function surface.
 
-Public helpers register themselves by calling `FUNCTION_REGISTRY.add(...)` as their decorator. The decorator method owns
-the typed metadata and records one normalized entry while returning the helper unchanged.
+Public helpers register themselves by calling `function_registry.add(...)` as their decorator. The decorator method owns
+non-derivable machine metadata and records one runtime entry while returning the helper unchanged. Public helper names
+and signatures are checked API metadata facts, not second copies in this runtime shape.
 """
 
-from substrait.extensions import function_extension_uri
+from substrait.function_extensions import function_extension_uri
 
 const FUNCTION_REF_PREFIX: str = "inql.functions."
 
@@ -16,6 +17,7 @@ pub enum FunctionClass(str):
 
     Scalar = "scalar"
     Aggregate = "aggregate"
+    Ordering = "ordering"
     Window = "window"
     Generator = "generator"
     TableValued = "table_valued"
@@ -64,7 +66,7 @@ pub enum SubstraitMappingKind(str):
     CoreFunction = "core_function"
     ExtensionFunction = "extension_function"
     Rewrite = "rewrite"
-    Unsupported = "unsupported"
+    StructuralFunction = "structural_function"
 
 
 @derive(Clone)
@@ -107,25 +109,6 @@ pub model FunctionLifecycle:
 
 
 @derive(Clone)
-pub model FunctionArg:
-    """One registry-visible function argument shape."""
-
-    pub name: str
-    pub type_rule: str
-    pub required: bool
-    pub literal_only: bool
-
-
-@derive(Clone)
-pub model FunctionSignature:
-    """Registry-visible callable signature metadata."""
-
-    pub args: list[FunctionArg]
-    pub return_type_rule: str
-    pub variadic: bool
-
-
-@derive(Clone)
 pub model SubstraitMapping:
     """Portable interchange mapping metadata for one registered function."""
 
@@ -134,18 +117,17 @@ pub model SubstraitMapping:
     pub function_name: str
     pub anchor: u32
     pub rewrite: str
-    pub unsupported_reason: str
+    pub detail: str
 
 
 @derive(Clone)
 pub model FunctionSpec:
-    """Machine-readable contract supplied to the registry decorator."""
+    """Machine-readable function facts supplied to the registry decorator."""
 
     pub function_class: FunctionClass
     pub aliases: list[str]
     pub alias_policy: FunctionAliasPolicy
     pub lifecycle: FunctionLifecycle
-    pub signature: FunctionSignature
     pub determinism: FunctionDeterminism
     pub null_behavior: FunctionNullBehavior
     pub error_behavior: FunctionErrorBehavior
@@ -154,7 +136,7 @@ pub model FunctionSpec:
 
 @derive(Clone)
 pub model FunctionRegistryEntry:
-    """Normalized metadata for one registered InQL function."""
+    """Runtime projection for one registered InQL function."""
 
     pub function_ref: str
     pub canonical_name: str
@@ -162,7 +144,6 @@ pub model FunctionRegistryEntry:
     pub aliases: list[str]
     pub alias_policy: FunctionAliasPolicy
     pub lifecycle: FunctionLifecycle
-    pub signature: FunctionSignature
     pub determinism: FunctionDeterminism
     pub null_behavior: FunctionNullBehavior
     pub error_behavior: FunctionErrorBehavior
@@ -202,7 +183,6 @@ pub class FunctionRegistry:
                 aliases=spec.aliases,
                 alias_policy=spec.alias_policy,
                 lifecycle=spec.lifecycle,
-                signature=spec.signature,
                 determinism=spec.determinism,
                 null_behavior=spec.null_behavior,
                 error_behavior=spec.error_behavior,
@@ -247,21 +227,6 @@ pub def function_ref_for(canonical_name: str) -> str:
     return f"{FUNCTION_REF_PREFIX}{canonical_name}"
 
 
-pub def required_arg(name: str, type_rule: str) -> FunctionArg:
-    """Build one required non-literal-only function argument metadata record."""
-    return FunctionArg(name=name, type_rule=type_rule, required=true, literal_only=false)
-
-
-pub def literal_arg(name: str, type_rule: str) -> FunctionArg:
-    """Build one required literal-only function argument metadata record."""
-    return FunctionArg(name=name, type_rule=type_rule, required=true, literal_only=true)
-
-
-pub def signature(args: list[FunctionArg], return_type_rule: str) -> FunctionSignature:
-    """Build one fixed-arity function signature metadata record."""
-    return FunctionSignature(args=args, return_type_rule=return_type_rule, variadic=false)
-
-
 pub def extension_mapping(function_name: str, anchor: u32) -> SubstraitMapping:
     """Build one registered Substrait extension-function mapping."""
     return SubstraitMapping(
@@ -270,7 +235,19 @@ pub def extension_mapping(function_name: str, anchor: u32) -> SubstraitMapping:
         function_name=function_name,
         anchor=anchor,
         rewrite="",
-        unsupported_reason="",
+        detail="",
+    )
+
+
+pub def core_mapping(function_name: str) -> SubstraitMapping:
+    """Build one mapping for a built-in Substrait Rex shape rather than an extension function declaration."""
+    return SubstraitMapping(
+        kind=SubstraitMappingKind.CoreFunction,
+        uri="",
+        function_name=function_name,
+        anchor=0,
+        rewrite="",
+        detail="",
     )
 
 
@@ -282,14 +259,37 @@ pub def rewrite_mapping(rewrite: str) -> SubstraitMapping:
         function_name="",
         anchor=0,
         rewrite=rewrite,
-        unsupported_reason="",
+        detail="",
+    )
+
+
+pub def structural_mapping(context: str) -> SubstraitMapping:
+    """Build one mapping for helpers lowered by a relation-specific Substrait context."""
+    return SubstraitMapping(
+        kind=SubstraitMappingKind.StructuralFunction,
+        uri="",
+        function_name=context,
+        anchor=0,
+        rewrite="",
+        detail="",
+    )
+
+
+pub def sort_field_mapping(direction: str) -> SubstraitMapping:
+    """Build one structural sort-field mapping with explicit direction/null-placement detail."""
+    return SubstraitMapping(
+        kind=SubstraitMappingKind.StructuralFunction,
+        uri="",
+        function_name="sort_field",
+        anchor=0,
+        rewrite="",
+        detail=direction,
     )
 
 
 pub def deterministic_spec(
     function_class: FunctionClass,
     lifecycle: FunctionLifecycle,
-    signature: FunctionSignature,
     null_behavior: FunctionNullBehavior,
     substrait: SubstraitMapping,
 ) -> FunctionSpec:
@@ -299,7 +299,6 @@ pub def deterministic_spec(
         aliases=[],
         alias_policy=FunctionAliasPolicy.CoreImport,
         lifecycle=lifecycle,
-        signature=signature,
         determinism=FunctionDeterminism.Deterministic,
         null_behavior=null_behavior,
         error_behavior=FunctionErrorBehavior.Typechecked,

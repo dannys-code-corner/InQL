@@ -1,9 +1,51 @@
 """Tests for RFC 002 proto-backed Substrait emission and conformance alignment."""
 
-from aggregate_builders import AggregateMeasure, AggregateKind
-from functions import add, always_true, col, lit, mul
-from projection_builders import with_column_assignment
-from substrait.extensions import explode_extension_uri, function_extension_uri, registered_substrait_extension_uris
+from std.testing import fail_t
+from functions import (
+    add,
+    always_true,
+    and_,
+    asc,
+    asc_nulls_last,
+    between,
+    case_when,
+    cast,
+    col,
+    coalesce,
+    count,
+    desc,
+    div,
+    eq,
+    equal_null,
+    gt,
+    gte,
+    in_,
+    is_nan,
+    is_not_nan,
+    is_not_null,
+    is_null,
+    lit,
+    lt,
+    lte,
+    modulo,
+    mul,
+    ne,
+    neg,
+    not_,
+    nullif,
+    or_,
+    sub,
+    sum,
+    try_cast,
+)
+from projection_builders import ColumnExpr, with_column_assignment
+from substrait.errors import SubstraitLoweringErrorKind
+from substrait.expr_lowering import scalar_expr
+from substrait.function_extensions import (
+    explode_extension_uri,
+    function_extension_uri,
+    registered_substrait_extension_uris,
+)
 from substrait.inspect import (
     plan_contains_relation_kind,
     plan_has_extension_urn,
@@ -14,6 +56,9 @@ from substrait.inspect import (
     root_names,
     root_rel,
     set_operation_name,
+    sort_field_count,
+    sort_field_direction_name,
+    sort_field_expr_index,
 )
 from substrait.plans import (
     plan_encoded_len,
@@ -43,7 +88,7 @@ from substrait.relations import (
     reference_rel,
     set_rel,
     set_rel_of_kind,
-    sort_rel,
+    sort_rel_of_columns,
 )
 from substrait.schema_registry import named_table_columns, register_named_table_schema
 from substrait.schema import RowColumnSpec, SubstraitPrimitiveKind
@@ -201,7 +246,7 @@ def test_plan__combinators_compose_deterministically() -> None:
     # -- Arrange --
     base = read_named_table_rel("orders")
     with_filter = filter_rel(base, always_true())
-    with_sort = sort_rel(with_filter)
+    with_sort = sort_rel_of_columns(with_filter, ["id"], [asc(col("id"))])
     with_fetch = fetch_rel(with_sort, 0, 10)
 
     # -- Act --
@@ -241,18 +286,80 @@ def test_plan__project_rel_supports_projection_expression_payloads() -> None:
     assert root_output_names[2] == "id_plus_one", "project root should preserve all derived aliases"
 
 
+def test_plan__ordering_helper_is_invalid_outside_sort_context() -> None:
+    """Assert ordering helpers are valid only as order_by sort-key wrappers."""
+    # -- Arrange --
+    expr = asc(col("id"))
+
+    # -- Act --
+    result = scalar_expr(["id"], expr)
+
+    # -- Assert --
+    match result:
+        Err(err) =>
+            assert err.kind == SubstraitLoweringErrorKind.InvalidScalarExpression, "context errors should be invalid scalar expressions"
+            assert err.message.contains("inql.functions.asc"), "diagnostic should name the registered function reference"
+            assert err.message.contains("sort_field context"), "diagnostic should explain the valid lowering context"
+        Ok(_) => return fail_t("asc should not lower as a standalone scalar expression")
+
+
+def test_plan__ordering_helpers_lower_to_real_sort_fields() -> None:
+    """Assert order_by sort-key helpers become Substrait SortField direction/null-placement metadata."""
+    # -- Arrange --
+    base = read_named_table_rel("orders")
+
+    # -- Act --
+    sorted = sort_rel_of_columns(base, ["id", "amount"], [desc(col("amount")), asc_nulls_last(col("id"))])
+
+    # -- Assert --
+    assert relation_kind_name(sorted) == "SortRel", "ordering helpers should lower to SortRel"
+    assert sort_field_count(sorted) == 2, "SortRel should carry one field per requested sort key"
+    assert sort_field_expr_index(sorted, 0) == 1, "first sort field should target amount"
+    assert sort_field_direction_name(sorted, 0) == "DescNullsLast", "desc should use descending nulls-last ordering"
+    assert sort_field_expr_index(sorted, 1) == 0, "second sort field should target id"
+    assert sort_field_direction_name(sorted, 1) == "AscNullsLast", "asc_nulls_last should preserve null placement"
+
+
+def _assert_scalar_expr_lowers(expr: ColumnExpr) -> None:
+    """Assert one scalar expression lowers successfully against the shared scalar fixture columns."""
+    match scalar_expr(["id", "amount", "status"], expr):
+        Ok(_) => pass
+        Err(err) => return fail_t(err.error_message())
+
+
+def test_plan__core_scalar_extension_mappings_lower_to_substrait() -> None:
+    """Assert RFC 015 core scalar helpers emit Substrait scalar functions."""
+    # -- Arrange / Act / Assert --
+    _assert_scalar_expr_lowers(ne(col("id"), lit(1)))
+    _assert_scalar_expr_lowers(cast(col("id"), "string"))
+    _assert_scalar_expr_lowers(try_cast(col("status"), "int64"))
+    _assert_scalar_expr_lowers(lt(col("id"), lit(10)))
+    _assert_scalar_expr_lowers(lte(col("id"), lit(10)))
+    _assert_scalar_expr_lowers(gte(col("id"), lit(1)))
+    _assert_scalar_expr_lowers(equal_null(col("status"), lit("open")))
+    _assert_scalar_expr_lowers(and_(gt(col("id"), lit(1)), eq(col("status"), lit("open"))))
+    _assert_scalar_expr_lowers(or_(eq(col("status"), lit("open")), eq(col("status"), lit("closed"))))
+    _assert_scalar_expr_lowers(not_(eq(col("status"), lit("void"))))
+    _assert_scalar_expr_lowers(is_null(col("status")))
+    _assert_scalar_expr_lowers(is_not_null(col("status")))
+    _assert_scalar_expr_lowers(is_nan(col("amount")))
+    _assert_scalar_expr_lowers(is_not_nan(col("amount")))
+    _assert_scalar_expr_lowers(in_(col("status"), [lit("open"), lit("closed")]))
+    _assert_scalar_expr_lowers(case_when([gt(col("amount"), lit(10))], [lit("large")], lit("small")))
+    _assert_scalar_expr_lowers(sub(col("amount"), lit(1)))
+    _assert_scalar_expr_lowers(div(col("amount"), lit(2)))
+    _assert_scalar_expr_lowers(modulo(col("amount"), lit(2)))
+    _assert_scalar_expr_lowers(neg(col("amount")))
+    _assert_scalar_expr_lowers(coalesce([col("status"), lit("unknown")]))
+    _assert_scalar_expr_lowers(nullif(col("status"), lit("")))
+    _assert_scalar_expr_lowers(between(col("amount"), lit(1), lit(10)))
+
+
 def test_plan__aggregate_rel_surfaces_group_and_measure_output_columns() -> None:
     # -- Arrange --
     _register_orders_schema()
     base = read_named_table_rel("orders")
-    aggregated = aggregate_rel(
-        base,
-        [col("id")],
-        [AggregateMeasure(kind=AggregateKind.Sum, expr=col("id")), AggregateMeasure(
-            kind=AggregateKind.Count,
-            expr=col(""),
-        )],
-    )
+    aggregated = aggregate_rel(base, [col("id")], [sum(col("id")), count()])
     plan = plan_from_root_relation(aggregated, ["id", "sum_id", "count"])
 
     # -- Act --
@@ -271,11 +378,7 @@ def test_plan__aggregate_rel_accepts_scalar_group_and_measure_expressions() -> N
     # -- Arrange --
     _register_orders_schema()
     base = read_named_table_rel("orders")
-    aggregated = aggregate_rel(
-        base,
-        [add(col("id"), lit(1))],
-        [AggregateMeasure(kind=AggregateKind.Sum, expr=add(col("id"), lit(2)))],
-    )
+    aggregated = aggregate_rel(base, [add(col("id"), lit(1))], [sum(add(col("id"), lit(2)))])
 
     # -- Act --
     output_columns = relation_output_columns(aggregated)
@@ -416,16 +519,16 @@ def test_conformance__core_scenarios_validate_emission_output() -> None:
                 )
             CoreScenarioKey.AggregateGroupingSets =>
                 plan = plan_from_root_relation(
-                    aggregate_rel(
-                        read_named_table_rel(_fixture_table_main()),
-                        [col(_fixture_col_primary())],
-                        [AggregateMeasure(kind=AggregateKind.Count, expr=col(""))],
-                    ),
+                    aggregate_rel(read_named_table_rel(_fixture_table_main()), [col(_fixture_col_primary())], [count()]),
                     [_fixture_col_primary()],
                 )
             CoreScenarioKey.SortRelOrdering =>
                 plan = plan_from_root_relation(
-                    sort_rel(read_named_table_rel(_fixture_table_main())),
+                    sort_rel_of_columns(
+                        read_named_table_rel(_fixture_table_main()),
+                        [_fixture_col_primary()],
+                        [asc(col(_fixture_col_primary()))],
+                    ),
                     [_fixture_col_primary()],
                 )
             CoreScenarioKey.FetchRelLimitOffset =>

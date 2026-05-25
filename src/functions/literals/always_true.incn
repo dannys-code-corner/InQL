@@ -1,0 +1,39 @@
+"""
+Constant true predicate helper.
+
+`always_true` is registered as a predicate helper but remains a structural boolean literal so filter rewrites can treat
+it as a no-op predicate.
+"""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    rewrite_mapping,
+    v0_1,
+)
+from functions.registry import function_registry
+from projection_builders import ColumnExpr, bool_expr
+
+
+@function_registry.add("always_true", deterministic_spec(
+    FunctionClass.Scalar,
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionNullBehavior.Predicate,
+    rewrite_mapping("boolean true literal predicate"),
+))
+pub def always_true() -> ColumnExpr:
+    """
+    Build a predicate that accepts every row.
+
+    Examples:
+        default_filter = always_true()
+    """
+    return bool_expr(true)
+
+
+module tests:
+    from projection_builders import ColumnExprKind, column_expr_kind
+    def test_always_true_uses_structural_bool_literal() -> None:
+        assert column_expr_kind(always_true()) == ColumnExprKind.BoolLiteral

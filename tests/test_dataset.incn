@@ -21,7 +21,7 @@ from functions import (
     sum,
 )
 from projection_builders import ColumnExprKind, column_expr_kind, column_expr_name
-from substrait.extensions import explode_extension_uri
+from substrait.function_extensions import explode_extension_uri
 from substrait.inspect import plan_contains_relation_kind, plan_has_extension_urn, relation_kind_name, root_rel
 from substrait.plans import plan_encoded_len, plan_from_named_table, plan_from_root_relation
 from substrait.relations import read_named_table_rel
@@ -406,7 +406,7 @@ def test_lazy_frame__native_prism_ops_preserve_current_boundary_shapes() -> None
 
     # -- Act --
     aggregated = grouped.agg([count()])
-    ordered: LazyFrame[Order] = lazy_frame_named_table("orders").order_by()
+    ordered: LazyFrame[Order] = lazy_frame_named_table("orders").order_by([col("id")])
     limited: LazyFrame[Order] = lazy_frame_named_table("orders").limit(10)
     exploded: LazyFrame[Order] = lazy_frame_named_table("orders").explode()
 
@@ -421,12 +421,14 @@ def test_lazy_frame__native_prism_ops_preserve_current_boundary_shapes() -> None
 
 def test_lazy_frame__deeper_independent_roots_still_lower_with_stable_shapes() -> None:
     # -- Arrange --
+    _register_order_schema("orders")
+    _register_order_schema("orders_archive")
     left: LazyFrame[Order] = lazy_frame_named_table("orders").filter(always_false())
     right_base: LazyFrame[Order] = lazy_frame_named_table("orders_archive")
 
     # -- Act --
-    right_joined: LazyFrame[Order] = right_base.filter(always_false()).order_by().join(
-        right_base.filter(always_false()).order_by(),
+    right_joined: LazyFrame[Order] = right_base.filter(always_false()).order_by([col("id")]).join(
+        right_base.filter(always_false()).order_by([col("id")]),
         true,
     )
     joined: LazyFrame[Order] = left.join(right_joined, true)

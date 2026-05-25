@@ -1,0 +1,53 @@
+"""
+Boolean negation helper.
+
+`not_` uses the generic unary scalar application shape and keeps keyword-safe source spelling.
+"""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import function_registry, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import NOT_FUNCTION_ANCHOR
+
+
+@function_registry.add("not_", deterministic_spec(
+    FunctionClass.Scalar,
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionNullBehavior.Predicate,
+    extension_mapping("not", NOT_FUNCTION_ANCHOR),
+))
+pub def not_(expr: ColumnExpr) -> ColumnExpr:
+    """
+    Build a boolean negation.
+
+    Use `not_` instead of `not` because `not` is reserved by the host language.
+
+    Examples:
+        active = not_(eq(col("status"), lit("archived")))
+
+    Parameters:
+        expr: Predicate expression to negate.
+    """
+    return registered_application("not_", [expr])
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        bool_expr,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+    )
+    def test_not_builds_registered_application() -> None:
+        expr = not_(bool_expr(true))
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "not_"
+        assert column_expr_argument_count(expr) == 1

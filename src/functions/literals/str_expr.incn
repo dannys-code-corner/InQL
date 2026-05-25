@@ -1,0 +1,41 @@
+"""
+String literal expression helper.
+
+`str_expr` is the typed literal spelling for string values and shares the same structural node as `lit("...")`.
+"""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    rewrite_mapping,
+    v0_1,
+)
+from functions.registry import function_registry
+from projection_builders import ColumnExpr, str_expr as str_expr_builder
+
+
+@function_registry.add("str_expr", deterministic_spec(
+    FunctionClass.Scalar,
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionNullBehavior.NonNullLiteral,
+    rewrite_mapping("typed string literal expression"),
+))
+pub def str_expr(value: str) -> ColumnExpr:
+    """
+    Build a string literal expression.
+
+    Examples:
+        paid = eq(col("status"), str_expr("paid"))
+
+    Parameters:
+        value: String value to embed in the expression tree.
+    """
+    return str_expr_builder(value)
+
+
+module tests:
+    from projection_builders import ColumnExprKind, column_expr_kind
+    def test_str_expr_uses_structural_string_literal() -> None:
+        assert column_expr_kind(str_expr("paid")) == ColumnExprKind.StringLiteral

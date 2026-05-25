@@ -1,0 +1,36 @@
+"""Backend adapter boundary types shared by Session and concrete adapters."""
+
+from backends import TableSource
+
+
+@derive(Clone)
+pub enum BackendErrorKind(str):
+    """Stable categories for backend adapter failures."""
+
+    BackendPlanningError = "backend_planning_error"
+    BackendExecutionError = "backend_execution_error"
+    BackendSinkError = "backend_sink_error"
+    BackendRegistrationError = "backend_registration_error"
+    RuntimeInitError = "runtime_init_error"
+
+
+@derive(Clone)
+pub class BackendRegistration:
+    """One logical source binding passed from Session state into a backend adapter."""
+
+    pub logical_name: str
+    pub source: TableSource
+
+    def clone(self) -> Self:
+        """Return one cloned backend registration entry."""
+        return BackendRegistration(logical_name=self.logical_name, source=self.source.clone())
+
+
+pub model BackendError:
+    pub kind: BackendErrorKind
+    pub message: str
+
+
+pub def backend_error(kind: BackendErrorKind, message: str) -> BackendError:
+    """Build one backend error with stable kind/message fields."""
+    return BackendError(kind=kind, message=message)

@@ -15,44 +15,22 @@ pub enum PlannedSchemaPolicy(str):
 
 
 @derive(Clone)
-pub enum DataFusionSourceRegistration(str):
-    """DataFusion registration path for one portable source format."""
-
-    Csv = "csv"
-    Parquet = "parquet"
-    Arrow = "arrow"
-
-
-@derive(Clone)
 pub class SourceFormatPolicy:
-    """Source-format policy shared by Session schema planning and backend registration."""
+    """Portable source-format policy used by Session schema planning."""
 
     pub schema_policy: PlannedSchemaPolicy
-    pub datafusion_registration: DataFusionSourceRegistration
 
     def clone(self) -> Self:
         """Return one cloned source-format policy."""
-        return SourceFormatPolicy(schema_policy=self.schema_policy, datafusion_registration=self.datafusion_registration)
+        return SourceFormatPolicy(schema_policy=self.schema_policy)
 
 
 pub def source_format_policy_for_kind(kind: SourceKind) -> SourceFormatPolicy:
     """Return the central policy for one closed source kind."""
     match kind:
-        SourceKind.Csv =>
-            return SourceFormatPolicy(
-                schema_policy=PlannedSchemaPolicy.InferCsvHeader,
-                datafusion_registration=DataFusionSourceRegistration.Csv,
-            )
-        SourceKind.Parquet =>
-            return SourceFormatPolicy(
-                schema_policy=PlannedSchemaPolicy.Empty,
-                datafusion_registration=DataFusionSourceRegistration.Parquet,
-            )
-        SourceKind.Arrow =>
-            return SourceFormatPolicy(
-                schema_policy=PlannedSchemaPolicy.Empty,
-                datafusion_registration=DataFusionSourceRegistration.Arrow,
-            )
+        SourceKind.Csv => return SourceFormatPolicy(schema_policy=PlannedSchemaPolicy.InferCsvHeader)
+        SourceKind.Parquet => return SourceFormatPolicy(schema_policy=PlannedSchemaPolicy.Empty)
+        SourceKind.Arrow => return SourceFormatPolicy(schema_policy=PlannedSchemaPolicy.Empty)
 
 
 pub def source_format_policy(source: TableSource) -> SourceFormatPolicy:
@@ -66,8 +44,3 @@ pub def planned_schema_columns_for_source(source: TableSource) -> Result[list[Ro
     match policy.schema_policy:
         PlannedSchemaPolicy.InferCsvHeader => return infer_csv_schema_columns(source.uri)
         PlannedSchemaPolicy.Empty => return Ok([])
-
-
-pub def datafusion_registration_for_source(source: TableSource) -> DataFusionSourceRegistration:
-    """Return the DataFusion registration path for one source descriptor."""
-    return source_format_policy(source).datafusion_registration

@@ -1,0 +1,53 @@
+"""
+Less-than-or-equal predicate helper.
+
+`lte` is registered as a predicate and uses the generic scalar application node.
+"""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import function_registry, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import LTE_FUNCTION_ANCHOR
+
+
+@function_registry.add("lte", deterministic_spec(
+    FunctionClass.Scalar,
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionNullBehavior.Predicate,
+    extension_mapping("lte", LTE_FUNCTION_ANCHOR),
+))
+pub def lte(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
+    """
+    Build a less-than-or-equal predicate.
+
+    Examples:
+        within_limit = lte(col("amount"), lit(1000))
+
+    Parameters:
+        left: Expression expected to be less than or equal to `right`.
+        right: Inclusive upper-bound expression.
+    """
+    return registered_application("lte", [left, right])
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        col,
+        int_expr,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+    )
+    def test_lte_builds_registered_application() -> None:
+        expr = lte(col("amount"), int_expr(10))
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "lte"
+        assert column_expr_argument_count(expr) == 2

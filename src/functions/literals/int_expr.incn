@@ -1,0 +1,42 @@
+"""
+Integer literal expression helper.
+
+`int_expr` is a typed spelling over the canonical structural literal model used by projections, filters, and aggregate
+inputs.
+"""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    rewrite_mapping,
+    v0_1,
+)
+from functions.registry import function_registry
+from projection_builders import ColumnExpr, int_expr as int_expr_builder
+
+
+@function_registry.add("int_expr", deterministic_spec(
+    FunctionClass.Scalar,
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionNullBehavior.NonNullLiteral,
+    rewrite_mapping("typed integer literal expression"),
+))
+pub def int_expr(value: int) -> ColumnExpr:
+    """
+    Build an integer literal expression.
+
+    Examples:
+        high_value = gt(col("amount"), int_expr(1000))
+
+    Parameters:
+        value: Integer value to embed in the expression tree.
+    """
+    return int_expr_builder(value)
+
+
+module tests:
+    from projection_builders import ColumnExprKind, column_expr_kind
+    def test_int_expr_uses_structural_int_literal() -> None:
+        assert column_expr_kind(int_expr(42)) == ColumnExprKind.IntLiteral

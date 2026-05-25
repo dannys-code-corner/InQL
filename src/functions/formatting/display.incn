@@ -1,0 +1,48 @@
+"""
+Interactive LazyFrame display helper.
+
+`display` lives in its own module to keep the public function facade regular and easy to scan.
+"""
+
+from dataset import DataFrame, LazyFrame
+
+
+pub def display[T with Clone](data: LazyFrame[T]) -> None:
+    """
+    Collect a `LazyFrame` and render a compact preview.
+
+    `display` is a public convenience helper, not a registry-backed scalar function.
+
+    Examples:
+        display(query)
+
+    Parameters:
+        data: Lazy relational plan to collect and print.
+    """
+    match data.clone().collect():
+        Ok(df) => _render_data_frame(df)
+        Err(err) => println(f"InQL display failed: {err.error_message()}")
+
+
+def _join_columns(columns: list[str]) -> str:
+    """Join column names for one compact display header line."""
+    return ", ".join(columns)
+
+
+def _render_data_frame[T with Clone](data: DataFrame[T]) -> None:
+    """Render one collected DataFrame preview using structured materialization metadata."""
+    preview = data.preview_text()
+    columns = data.columns()
+    println("InQL display")
+    if len(columns) > 0:
+        println(f"columns: [{_join_columns(columns)}]")
+    println(f"rows: {data.row_count()}")
+    if len(preview) == 0:
+        println("(empty)")
+        return
+    println(preview)
+
+
+module tests:
+    def test_join_columns_renders_compact_header() -> None:
+        assert _join_columns(["id", "amount"]) == "id, amount"

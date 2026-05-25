@@ -1,0 +1,41 @@
+"""
+Boolean literal expression helper.
+
+`bool_expr` is the typed literal spelling for boolean scalar values and is also used by predicate constants.
+"""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    rewrite_mapping,
+    v0_1,
+)
+from functions.registry import function_registry
+from projection_builders import ColumnExpr, bool_expr as bool_expr_builder
+
+
+@function_registry.add("bool_expr", deterministic_spec(
+    FunctionClass.Scalar,
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionNullBehavior.NonNullLiteral,
+    rewrite_mapping("typed boolean literal expression"),
+))
+pub def bool_expr(value: bool) -> ColumnExpr:
+    """
+    Build a boolean literal expression.
+
+    Examples:
+        literal_true = bool_expr(true)
+
+    Parameters:
+        value: Boolean value to embed in the expression tree.
+    """
+    return bool_expr_builder(value)
+
+
+module tests:
+    from projection_builders import ColumnExprKind, column_expr_kind
+    def test_bool_expr_uses_structural_bool_literal() -> None:
+        assert column_expr_kind(bool_expr(true)) == ColumnExprKind.BoolLiteral

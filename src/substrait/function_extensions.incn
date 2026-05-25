@@ -1,0 +1,66 @@
+"""
+Stable Substrait extension anchors and URIs for registry-backed InQL functions.
+
+Function helpers import anchors from this module when declaring their registry metadata. Runtime extension declarations
+derive names and kinds from those registry entries instead of keeping a second hand-written function catalog.
+"""
+
+
+@derive(Clone)
+pub enum ExtensionFunctionKind(str):
+    """Function extension categories used by the current Substrait extension registry."""
+
+    Aggregate = "aggregate"
+    Scalar = "scalar"
+
+
+@derive(Clone)
+pub model FunctionExtensionSpec:
+    """One function-extension anchor/name/kind fact derived from function registry metadata."""
+
+    pub anchor: u32
+    pub name: str
+    pub kind: ExtensionFunctionKind
+
+
+pub const SUM_FUNCTION_ANCHOR: u32 = 0
+pub const COUNT_FUNCTION_ANCHOR: u32 = 1
+pub const EQUAL_FUNCTION_ANCHOR: u32 = 2
+pub const GT_FUNCTION_ANCHOR: u32 = 3
+pub const ADD_FUNCTION_ANCHOR: u32 = 4
+pub const MULTIPLY_FUNCTION_ANCHOR: u32 = 5
+pub const NOT_EQUAL_FUNCTION_ANCHOR: u32 = 6
+pub const LT_FUNCTION_ANCHOR: u32 = 7
+pub const LTE_FUNCTION_ANCHOR: u32 = 8
+pub const GTE_FUNCTION_ANCHOR: u32 = 9
+pub const IS_NOT_DISTINCT_FROM_FUNCTION_ANCHOR: u32 = 10
+pub const AND_FUNCTION_ANCHOR: u32 = 11
+pub const OR_FUNCTION_ANCHOR: u32 = 12
+pub const NOT_FUNCTION_ANCHOR: u32 = 13
+pub const IS_NULL_FUNCTION_ANCHOR: u32 = 14
+pub const IS_NOT_NULL_FUNCTION_ANCHOR: u32 = 15
+pub const IS_NAN_FUNCTION_ANCHOR: u32 = 16
+pub const SUBTRACT_FUNCTION_ANCHOR: u32 = 17
+pub const DIVIDE_FUNCTION_ANCHOR: u32 = 18
+pub const MODULUS_FUNCTION_ANCHOR: u32 = 19
+pub const NEGATE_FUNCTION_ANCHOR: u32 = 20
+pub const COALESCE_FUNCTION_ANCHOR: u32 = 21
+pub const NULLIF_FUNCTION_ANCHOR: u32 = 22
+pub const BETWEEN_FUNCTION_ANCHOR: u32 = 23
+const FUNCTION_EXTENSION_URI: str = "https://inql.io/extensions/v0.1/functions.yaml"
+const EXPLODE_EXTENSION_URI: str = "https://inql.io/extensions/v0.1/unnest.yaml#explode"
+
+
+pub def function_extension_uri() -> str:
+    """Return the registered extension URI used for shared function anchors."""
+    return FUNCTION_EXTENSION_URI
+
+
+pub def explode_extension_uri() -> str:
+    """Return the registered extension URI used for EXPLODE-style gap encoding."""
+    return EXPLODE_EXTENSION_URI
+
+
+pub def registered_substrait_extension_uris() -> list[str]:
+    """Return the registered extension URIs used by current package-level Substrait lowering."""
+    return [FUNCTION_EXTENSION_URI, EXPLODE_EXTENSION_URI]

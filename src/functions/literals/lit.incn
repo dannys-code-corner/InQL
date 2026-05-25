@@ -1,0 +1,47 @@
+"""
+Canonical literal helper.
+
+`lit` chooses the structural literal node for the host value type. It is registered for documentation and metadata but
+does not create a scalar function application.
+"""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    rewrite_mapping,
+    v0_1,
+)
+from functions.registry import function_registry
+from projection_builders import ColumnExpr, lit as lit_builder
+
+
+@function_registry.add("lit", deterministic_spec(
+    FunctionClass.Scalar,
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionNullBehavior.NonNullLiteral,
+    rewrite_mapping("typed Substrait literal expression"),
+))
+pub def lit(value: Union[int, float, str, bool]) -> ColumnExpr:
+    """
+    Build a canonical scalar literal expression.
+
+    `lit` chooses the structural literal node for the provided host value type instead of wrapping literals as scalar
+    function calls.
+
+    Examples:
+        paid = eq(col("status"), lit("paid"))
+        expensive = gt(col("amount"), lit(100))
+
+    Parameters:
+        value: Literal value to embed in the expression tree.
+    """
+    return lit_builder(value)
+
+
+module tests:
+    from projection_builders import ColumnExprKind, column_expr_kind
+    def test_lit_selects_structural_literal_node() -> None:
+        assert column_expr_kind(lit(7)) == ColumnExprKind.IntLiteral
+        assert column_expr_kind(lit("paid")) == ColumnExprKind.StringLiteral

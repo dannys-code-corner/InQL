@@ -1,8 +1,8 @@
 """
 Substrait extension and function-anchor bookkeeping for InQL.
 
-This module owns stable function anchors, extension URIs, anchor-name mapping, and recursive extension-declaration
-collection over relation and expression trees.
+This module derives extension declarations from registry metadata and collects required extension URNs over relation and
+expression trees.
 """
 
 from rust::incan_stdlib::errors import raise_value_error
@@ -12,7 +12,10 @@ from rust::substrait::proto::extensions::simple_extension_declaration import Ext
 from rust::substrait::proto::function_argument import ArgType
 from rust::substrait::proto::expression import RexType
 from rust::substrait::proto::rel import RelType
+from function_registry import FunctionClass, SubstraitMappingKind
+from functions.registry import function_registry_entries
 from substrait.errors import SubstraitLoweringError, invalid_scalar_expression
+from substrait.function_extensions import ExtensionFunctionKind, FunctionExtensionSpec, function_extension_uri
 from substrait.traversal import relation_children
 
 
@@ -24,48 +27,8 @@ model ExtensionUrnSpec:
     urn: str
 
 
-@derive(Clone)
-enum ExtensionFunctionKind(str):
-    """Function extension categories used by the current Substrait extension registry."""
-
-    Aggregate = "aggregate"
-    Scalar = "scalar"
-
-
-@derive(Clone)
-model FunctionExtensionSpec:
-    """One function-extension anchor/name/kind fact."""
-
-    anchor: u32
-    name: str
-    kind: ExtensionFunctionKind
-
-
-pub const SUM_FUNCTION_ANCHOR: u32 = 0
-pub const COUNT_FUNCTION_ANCHOR: u32 = 1
-pub const EQUAL_FUNCTION_ANCHOR: u32 = 2
-pub const GT_FUNCTION_ANCHOR: u32 = 3
-pub const ADD_FUNCTION_ANCHOR: u32 = 4
-pub const MULTIPLY_FUNCTION_ANCHOR: u32 = 5
 const FUNCTION_EXTENSION_URN_ANCHOR: u32 = 0
 const RELATION_EXTENSION_URN_ANCHOR: u32 = 1
-const FUNCTION_EXTENSION_URI: str = "https://inql.io/extensions/v0.1/functions.yaml"
-const EXPLODE_EXTENSION_URI: str = "https://inql.io/extensions/v0.1/unnest.yaml#explode"
-
-
-pub def function_extension_uri() -> str:
-    """Return the registered extension URI used for shared function anchors."""
-    return FUNCTION_EXTENSION_URI
-
-
-pub def explode_extension_uri() -> str:
-    """Return the registered extension URI used for EXPLODE-style gap encoding."""
-    return EXPLODE_EXTENSION_URI
-
-
-pub def registered_substrait_extension_uris() -> list[str]:
-    """Return the registered extension URIs used by current package-level Substrait lowering."""
-    return [FUNCTION_EXTENSION_URI, EXPLODE_EXTENSION_URI]
 
 
 pub def aggregate_function_name_from_anchor(anchor: u32) -> str:
@@ -79,20 +42,29 @@ pub def scalar_function_name_from_anchor(anchor: u32) -> str:
 
 
 def _function_extension_specs() -> list[FunctionExtensionSpec]:
-    """Return all known function-extension specs in stable declaration order."""
-    return [FunctionExtensionSpec(anchor=SUM_FUNCTION_ANCHOR, name="sum", kind=ExtensionFunctionKind.Aggregate), FunctionExtensionSpec(
-        anchor=COUNT_FUNCTION_ANCHOR,
-        name="count",
-        kind=ExtensionFunctionKind.Aggregate,
-    ), FunctionExtensionSpec(anchor=EQUAL_FUNCTION_ANCHOR, name="equal", kind=ExtensionFunctionKind.Scalar), FunctionExtensionSpec(
-        anchor=GT_FUNCTION_ANCHOR,
-        name="gt",
-        kind=ExtensionFunctionKind.Scalar,
-    ), FunctionExtensionSpec(anchor=ADD_FUNCTION_ANCHOR, name="add", kind=ExtensionFunctionKind.Scalar), FunctionExtensionSpec(
-        anchor=MULTIPLY_FUNCTION_ANCHOR,
-        name="multiply",
-        kind=ExtensionFunctionKind.Scalar,
-    )]
+    """Return Substrait extension specs derived from declaration-side registry metadata."""
+    mut specs: list[FunctionExtensionSpec] = []
+    for entry in function_registry_entries():
+        if entry.substrait.kind != SubstraitMappingKind.ExtensionFunction:
+            continue
+
+        if entry.function_class == FunctionClass.Aggregate:
+            specs.append(
+                FunctionExtensionSpec(
+                    anchor=entry.substrait.anchor,
+                    name=entry.substrait.function_name,
+                    kind=ExtensionFunctionKind.Aggregate,
+                ),
+            )
+        elif entry.function_class == FunctionClass.Scalar:
+            specs.append(
+                FunctionExtensionSpec(
+                    anchor=entry.substrait.anchor,
+                    name=entry.substrait.function_name,
+                    kind=ExtensionFunctionKind.Scalar,
+                ),
+            )
+    return specs
 
 
 def _function_spec_from_anchor(anchor: u32) -> Result[FunctionExtensionSpec, SubstraitLoweringError]:
@@ -158,14 +130,53 @@ def _scalar_extension_decl(anchor: u32) -> SimpleExtensionDeclaration:
 
 def _expr_uses_scalar_function_anchor(expr: Expression, expected_anchor: u32) -> bool:
     """Return whether one expression tree uses the requested scalar-function anchor."""
-    if let Some(RexType.ScalarFunction(fun)) = expr.rex_type:
-        if fun.function_reference == expected_anchor:
-            return true
+    match expr.rex_type:
+        Some(RexType.ScalarFunction(fun)) =>
+            if fun.function_reference == expected_anchor:
+                return true
 
-        for argument in fun.arguments:
-            if let Some(ArgType.Value(value)) = argument.arg_type:
-                if _expr_uses_scalar_function_anchor(value, expected_anchor):
+            for argument in fun.arguments:
+                if let Some(ArgType.Value(value)) = argument.arg_type:
+                    if _expr_uses_scalar_function_anchor(value, expected_anchor):
+                        return true
+        Some(RexType.Cast(cast)) =>
+            if let Some(input) = cast.input:
+                if _expr_uses_scalar_function_anchor(input.as_ref().clone(), expected_anchor):
                     return true
+        Some(RexType.SingularOrList(singular_or_list)) =>
+            list_expr = singular_or_list.as_ref().clone()
+            if let Some(value) = list_expr.value:
+                if _expr_uses_scalar_function_anchor(value.as_ref().clone(), expected_anchor):
+                    return true
+            for option in list_expr.options:
+                if _expr_uses_scalar_function_anchor(option, expected_anchor):
+                    return true
+        _ => pass
+    return false
+
+
+def _expr_uses_if_then(expr: Expression) -> bool:
+    """Return whether one expression tree contains a Substrait IfThen Rex shape."""
+    match expr.rex_type:
+        Some(RexType.IfThen(_)) => return true
+        Some(RexType.ScalarFunction(fun)) =>
+            for argument in fun.arguments:
+                if let Some(ArgType.Value(value)) = argument.arg_type:
+                    if _expr_uses_if_then(value):
+                        return true
+        Some(RexType.Cast(cast)) =>
+            if let Some(input) = cast.input:
+                if _expr_uses_if_then(input.as_ref().clone()):
+                    return true
+        Some(RexType.SingularOrList(singular_or_list)) =>
+            list_expr = singular_or_list.as_ref().clone()
+            if let Some(value) = list_expr.value:
+                if _expr_uses_if_then(value.as_ref().clone()):
+                    return true
+            for option in list_expr.options:
+                if _expr_uses_if_then(option):
+                    return true
+        _ => pass
     return false
 
 
@@ -202,27 +213,45 @@ def _rel_uses_scalar_function_anchor(rel: Rel, expected_anchor: u32) -> bool:
     return false
 
 
+def _rel_uses_if_then(rel: Rel) -> bool:
+    """Return whether one relation subtree contains a Substrait IfThen Rex expression."""
+    match rel.rel_type.clone():
+        Some(RelType.Filter(filter_rel)) =>
+            if let Some(condition) = filter_rel.condition:
+                if _expr_uses_if_then(condition.as_ref().clone()):
+                    return true
+        Some(RelType.Project(project_rel)) =>
+            for expr in project_rel.expressions:
+                if _expr_uses_if_then(expr):
+                    return true
+        _ => pass
+
+    for child in relation_children(rel):
+        if _rel_uses_if_then(child):
+            return true
+    return false
+
+
 def _aggregate_extension_anchors_for_rel(rel: Rel) -> list[u32]:
     """Collect aggregate-function anchors used by one relation subtree in stable declaration order."""
     mut anchors: list[u32] = []
-    if _rel_uses_aggregate_function_anchor(rel.clone(), SUM_FUNCTION_ANCHOR):
-        anchors.append(SUM_FUNCTION_ANCHOR)
-    if _rel_uses_aggregate_function_anchor(rel, COUNT_FUNCTION_ANCHOR):
-        anchors.append(COUNT_FUNCTION_ANCHOR)
+    for spec in _function_extension_specs():
+        if spec.kind == ExtensionFunctionKind.Aggregate and _rel_uses_aggregate_function_anchor(rel.clone(), spec.anchor):
+            anchors.append(spec.anchor)
     return anchors
 
 
 def _scalar_extension_anchors_for_rel(rel: Rel) -> list[u32]:
     """Collect scalar-function anchors used by one relation subtree in stable declaration order."""
+    if _rel_uses_if_then(rel.clone()):
+        # `IfThen` branch fields are generated from keyword-named proto fields. Declare scalar extensions
+        # conservatively for now so nested case predicates execute without relying on field-level traversal here.
+        return [spec.anchor for spec in _function_extension_specs() if spec.kind == ExtensionFunctionKind.Scalar]
+
     mut anchors: list[u32] = []
-    if _rel_uses_scalar_function_anchor(rel.clone(), EQUAL_FUNCTION_ANCHOR):
-        anchors.append(EQUAL_FUNCTION_ANCHOR)
-    if _rel_uses_scalar_function_anchor(rel.clone(), GT_FUNCTION_ANCHOR):
-        anchors.append(GT_FUNCTION_ANCHOR)
-    if _rel_uses_scalar_function_anchor(rel.clone(), ADD_FUNCTION_ANCHOR):
-        anchors.append(ADD_FUNCTION_ANCHOR)
-    if _rel_uses_scalar_function_anchor(rel, MULTIPLY_FUNCTION_ANCHOR):
-        anchors.append(MULTIPLY_FUNCTION_ANCHOR)
+    for spec in _function_extension_specs():
+        if spec.kind == ExtensionFunctionKind.Scalar and _rel_uses_scalar_function_anchor(rel.clone(), spec.anchor):
+            anchors.append(spec.anchor)
     return anchors
 
 
@@ -297,7 +326,7 @@ pub def extension_urns_for_rel(rel: Rel) -> list[SimpleExtensionUrn]:
     """Collect extension URNs required by one relation subtree."""
     mut specs: list[ExtensionUrnSpec] = []
     if _function_extension_urn_is_required(rel.clone()):
-        specs.append(ExtensionUrnSpec(anchor=FUNCTION_EXTENSION_URN_ANCHOR, urn=FUNCTION_EXTENSION_URI))
+        specs.append(ExtensionUrnSpec(anchor=FUNCTION_EXTENSION_URN_ANCHOR, urn=function_extension_uri()))
     for urn in _collect_extension_urn_strings(rel):
         specs.append(ExtensionUrnSpec(anchor=RELATION_EXTENSION_URN_ANCHOR, urn=urn))
     return [SimpleExtensionUrn(extension_urn_anchor=spec.anchor, urn=spec.urn) for spec in specs]

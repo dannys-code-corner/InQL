@@ -1,0 +1,55 @@
+"""
+Boolean conjunction helper.
+
+`and_` uses a trailing underscore to avoid host-language keyword collisions while keeping the canonical helper spelling
+stable for InQL users.
+"""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import function_registry, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import AND_FUNCTION_ANCHOR
+
+
+@function_registry.add("and_", deterministic_spec(
+    FunctionClass.Scalar,
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionNullBehavior.Predicate,
+    extension_mapping("and", AND_FUNCTION_ANCHOR),
+))
+pub def and_(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
+    """
+    Build a boolean conjunction.
+
+    Use `and_` instead of `and` because `and` is reserved by the host language.
+
+    Examples:
+        eligible = and_(gt(col("amount"), lit(1000)), eq(col("status"), lit("paid")))
+
+    Parameters:
+        left: Predicate expression on the left side.
+        right: Predicate expression that must also be true.
+    """
+    return registered_application("and_", [left, right])
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        bool_expr,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+    )
+    def test_and_builds_registered_application() -> None:
+        expr = and_(bool_expr(true), bool_expr(false))
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "and_"
+        assert column_expr_argument_count(expr) == 2

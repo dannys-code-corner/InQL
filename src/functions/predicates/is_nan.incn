@@ -1,0 +1,51 @@
+"""
+NaN-test predicate helper.
+
+`is_nan` captures floating-point NaN test intent and lowers through the Substrait `is_nan` mapping.
+"""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import function_registry, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import IS_NAN_FUNCTION_ANCHOR
+
+
+@function_registry.add("is_nan", deterministic_spec(
+    FunctionClass.Scalar,
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionNullBehavior.Predicate,
+    extension_mapping("is_nan", IS_NAN_FUNCTION_ANCHOR),
+))
+pub def is_nan(expr: ColumnExpr) -> ColumnExpr:
+    """
+    Build a predicate that checks whether a floating-point expression is NaN.
+
+    Examples:
+        invalid_ratio = is_nan(col("conversion_rate"))
+
+    Parameters:
+        expr: Floating-point expression to test.
+    """
+    return registered_application("is_nan", [expr])
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        col,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+    )
+    def test_is_nan_builds_registered_application() -> None:
+        expr = is_nan(col("amount"))
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "is_nan"
+        assert column_expr_argument_count(expr) == 1

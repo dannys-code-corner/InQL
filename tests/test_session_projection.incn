@@ -1,10 +1,10 @@
 """End-to-end Session projection execution tests over the DataFusion backend."""
 
-from functions import add, col, lit, mul
-from dataset import LazyFrame
+from functions import add, case_when, cast, coalesce, col, desc, div, gt, lit, modulo, mul, neg, nullif, sub, try_cast
+from dataset import DataFrame, LazyFrame
 from session import Session, SessionErrorKind
-from std.testing import assert_is_err, assert_is_ok
-from substrait.inspect import root_names
+from std.testing import assert_is_err, assert_is_ok, fail_t
+from substrait.inspect import relation_kind_name, root_names, root_rel, sort_field_count, sort_field_direction_name
 
 
 @derive(Clone)
@@ -14,6 +14,13 @@ pub model AggregateOrder:
 
 
 const AGGREGATE_ORDERS_CSV_FIXTURE: str = "tests/fixtures/aggregate_orders.csv"
+
+
+def _collect_or_fail(mut session: Session, projected: LazyFrame[AggregateOrder]) -> DataFrame[AggregateOrder]:
+    """Collect a projected aggregate-order frame or fail with the backend diagnostic."""
+    match session.collect(projected):
+        Ok(df) => return df
+        Err(err) => return fail_t(err.error_message())
 
 
 def test_session_projection__plan_root_names_match_append_projection() -> None:
@@ -83,6 +90,47 @@ def test_session_projection__collect_executes_with_column_append() -> None:
     assert payload.contains("14"), "materialized projection should include 7 * 2"
 
 
+def test_session_projection__collect_executes_core_scalar_projection_functions() -> None:
+    """collect should execute newly mapped RFC 015 scalar projection helpers through DataFusion."""
+    # -- Arrange --
+    mut session = Session.default()
+
+    # -- Act --
+    lazy: LazyFrame[AggregateOrder] = assert_is_ok(
+        session.read_csv("aggregate_orders", AGGREGATE_ORDERS_CSV_FIXTURE),
+        "aggregate orders fixture should load",
+    )
+    projected = lazy.with_column("amount_minus_one", sub(col("amount"), lit(1))).with_column(
+        "amount_div_five",
+        div(col("amount"), lit(5)),
+    ).with_column("amount_mod_two", modulo(col("amount"), lit(2))).with_column("negative_amount", neg(col("amount"))).with_column(
+        "customer_or_unknown",
+        coalesce([col("customer_id"), lit("unknown")]),
+    ).with_column("customer_null_if_a", nullif(col("customer_id"), lit("A"))).with_column(
+        "amount_text",
+        cast(col("amount"), "string"),
+    ).with_column("customer_try_int", try_cast(col("customer_id"), "int64")).with_column(
+        "amount_bucket",
+        case_when([gt(col("amount"), lit(10))], [lit("large")], lit("small")),
+    )
+    df = _collect_or_fail(session, projected)
+    payload = df.preview_text()
+    resolved = df.resolved_columns()
+
+    # -- Assert --
+    assert df.row_count() == 3, "projected scalar helpers should preserve the input rows"
+    assert len(resolved) == 11, "projection should expose all appended scalar helper outputs"
+    assert payload.contains("amount_minus_one"), "sub projection should materialize its alias"
+    assert payload.contains("amount_div_five"), "div projection should materialize its alias"
+    assert payload.contains("amount_mod_two"), "mod projection should materialize its alias"
+    assert payload.contains("negative_amount"), "neg projection should materialize its alias"
+    assert payload.contains("customer_or_unknown"), "coalesce projection should materialize its alias"
+    assert payload.contains("customer_null_if_a"), "nullif projection should materialize its alias"
+    assert payload.contains("amount_text"), "cast projection should materialize its alias"
+    assert payload.contains("customer_try_int"), "try_cast projection should materialize its alias"
+    assert payload.contains("amount_bucket"), "case_when projection should materialize its alias"
+
+
 def test_session_projection__collect_executes_identity_select() -> None:
     # -- Arrange --
     mut session = Session.default()
@@ -100,6 +148,27 @@ def test_session_projection__collect_executes_identity_select() -> None:
     assert len(resolved) == 2, "identity select should preserve the original column count after collect"
     assert resolved[0] == "customer_id", "identity select should preserve the first input name"
     assert resolved[1] == "amount", "identity select should preserve the second input name"
+
+
+def test_session_projection__collect_executes_order_by_sort_fields() -> None:
+    """collect should execute order_by plans that carry real Substrait sort fields."""
+    # -- Arrange --
+    mut session = Session.default()
+
+    # -- Act --
+    lazy: LazyFrame[AggregateOrder] = assert_is_ok(
+        session.read_csv("aggregate_orders", AGGREGATE_ORDERS_CSV_FIXTURE),
+        "aggregate orders fixture should load",
+    )
+    ordered = lazy.order_by([desc(col("amount"))])
+    plan_root = root_rel(ordered.to_substrait_plan())
+    df = _collect_or_fail(session, ordered)
+
+    # -- Assert --
+    assert relation_kind_name(plan_root) == "SortRel", "order_by should lower to a Substrait SortRel"
+    assert sort_field_count(plan_root) == 1, "order_by should emit one Substrait sort field"
+    assert sort_field_direction_name(plan_root, 0) == "DescNullsLast", "desc should preserve direction/null placement"
+    assert df.row_count() == 3, "ordered collect should preserve input row count"
 
 
 def test_session_projection__collect_unknown_projection_column_returns_planning_error() -> None:
