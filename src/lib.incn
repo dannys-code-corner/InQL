@@ -92,6 +92,7 @@ pub from functions.ordering.desc_nulls_first import desc_nulls_first
 pub from functions.ordering.desc_nulls_last import desc_nulls_last
 pub from functions.formatting.display import display
 pub from function_registry import (
+    CORE_FUNCTION_NAMESPACE,
     FunctionAliasPolicy,
     FunctionChange,
     FunctionClass,
@@ -109,13 +110,11 @@ pub from function_registry import (
     SubstraitMapping,
     SubstraitMappingKind,
     compatibility_alias_spec,
-    core_function_namespace,
     deterministic_spec,
     engine_specific_spec,
     extension_only_spec,
     extension_mapping,
     function_ref_for,
-    function_policy_spec,
     namespaced_function_ref,
     rejected_function_policy,
     rewrite_mapping,

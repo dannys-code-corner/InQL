@@ -14,7 +14,7 @@ from function_registry import (
     FunctionLifecycle,
     FunctionNullBehavior,
     compatibility_alias_spec,
-    core_function_namespace,
+    CORE_FUNCTION_NAMESPACE,
     deterministic_spec,
     extension_mapping,
     v0_1,
@@ -25,10 +25,10 @@ from substrait.function_extensions import COUNT_FUNCTION_ANCHOR
 
 
 @function_registry.add("count", deterministic_spec(
-    FunctionClass.Aggregate,
-    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-    FunctionNullBehavior.NullSkippingAggregate,
-    extension_mapping("count", COUNT_FUNCTION_ANCHOR),
+    function_class=FunctionClass.Aggregate,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.NullSkippingAggregate,
+    substrait=extension_mapping("count", COUNT_FUNCTION_ANCHOR),
 ))
 pub def count() -> AggregateMeasure:
     """
@@ -41,14 +41,14 @@ pub def count() -> AggregateMeasure:
 
 
 @function_registry.add("count_expr", compatibility_alias_spec(
-    core_function_namespace(),
-    FunctionClass.Aggregate,
-    ["count"],
-    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-    FunctionDeterminism.Deterministic,
-    FunctionNullBehavior.NullSkippingAggregate,
-    FunctionErrorBehavior.Typechecked,
-    extension_mapping("count", COUNT_FUNCTION_ANCHOR),
+    namespace=CORE_FUNCTION_NAMESPACE,
+    function_class=FunctionClass.Aggregate,
+    aliases=["count"],
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    determinism=FunctionDeterminism.Deterministic,
+    null_behavior=FunctionNullBehavior.NullSkippingAggregate,
+    error_behavior=FunctionErrorBehavior.Typechecked,
+    substrait=extension_mapping("count", COUNT_FUNCTION_ANCHOR),
 ))
 pub def count_expr(expr: ColumnExpr) -> AggregateMeasure:
     """

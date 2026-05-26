@@ -18,10 +18,10 @@ from substrait.function_extensions import MULTIPLY_FUNCTION_ANCHOR
 
 
 @function_registry.add("mul", deterministic_spec(
-    FunctionClass.Scalar,
-    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-    FunctionNullBehavior.DependsOnInputs,
-    extension_mapping("multiply", MULTIPLY_FUNCTION_ANCHOR),
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=extension_mapping("multiply", MULTIPLY_FUNCTION_ANCHOR),
 ))
 pub def mul(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
     """

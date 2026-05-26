@@ -18,10 +18,10 @@ from substrait.function_extensions import NOT_FUNCTION_ANCHOR
 
 
 @function_registry.add("not_", deterministic_spec(
-    FunctionClass.Scalar,
-    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-    FunctionNullBehavior.Predicate,
-    extension_mapping("not", NOT_FUNCTION_ANCHOR),
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.Predicate,
+    substrait=extension_mapping("not", NOT_FUNCTION_ANCHOR),
 ))
 pub def not_(expr: ColumnExpr) -> ColumnExpr:
     """

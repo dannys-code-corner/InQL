@@ -2,18 +2,19 @@
 Package-owned function registry metadata for the current public InQL function surface.
 
 Public helpers register themselves by calling `function_registry.add(...)` as their decorator. The decorator method owns
-non-derivable machine metadata and records one runtime entry while returning the helper unchanged. Public helper names
-and signatures are checked API metadata facts, not second copies in this runtime shape.
+non-derivable machine metadata and records one runtime entry while returning the helper unchanged. Function signatures
+come from checked API metadata; the canonical name is still explicit until Incan exposes decorated-helper identity to
+ordinary decorator callables.
 """
 
 from substrait.function_extensions import function_extension_uri
 
-const CORE_FUNCTION_NAMESPACE: str = "inql.functions"
+pub const CORE_FUNCTION_NAMESPACE: str = "inql.functions"
 
 
 @derive(Clone)
 pub enum FunctionPolicyCategory(str):
-    """RFC 024 portability and extension-policy category for one function-like metadata item."""
+    """InQL RFC 024 portability and extension-policy category for one function-like metadata item."""
 
     PortableCore = "portable_core"
     ExtensionOnly = "extension_only"
@@ -227,7 +228,7 @@ pub class FunctionRegistry:
 
     def entry_by_name(self, canonical_name: str) -> Option[FunctionRegistryEntry]:
         """Return the core registry entry for one canonical public function name when it is known."""
-        return self.entry_by_namespace_and_name(core_function_namespace(), canonical_name)
+        return self.entry_by_namespace_and_name(CORE_FUNCTION_NAMESPACE, canonical_name)
 
     def entry_by_namespace_and_name(self, namespace: str, canonical_name: str) -> Option[FunctionRegistryEntry]:
         """Return the registry entry for one namespace-qualified canonical function name when it is known."""
@@ -255,12 +256,7 @@ pub class FunctionRegistry:
 
 pub def function_ref_for(canonical_name: str) -> str:
     """Return the durable registry reference for one canonical InQL function name."""
-    return namespaced_function_ref(core_function_namespace(), canonical_name)
-
-
-pub def core_function_namespace() -> str:
-    """Return the namespace used by portable core package functions."""
-    return CORE_FUNCTION_NAMESPACE
+    return namespaced_function_ref(CORE_FUNCTION_NAMESPACE, canonical_name)
 
 
 pub def namespaced_function_ref(namespace: str, canonical_name: str) -> str:
@@ -330,33 +326,6 @@ pub def sort_field_mapping(direction: str) -> SubstraitMapping:
     )
 
 
-pub def function_policy_spec(
-    namespace: str,
-    policy_category: FunctionPolicyCategory,
-    function_class: FunctionClass,
-    aliases: list[str],
-    alias_policy: FunctionAliasPolicy,
-    lifecycle: FunctionLifecycle,
-    determinism: FunctionDeterminism,
-    null_behavior: FunctionNullBehavior,
-    error_behavior: FunctionErrorBehavior,
-    substrait: SubstraitMapping,
-) -> FunctionSpec:
-    """Build one function spec with explicit RFC 024 namespace and policy metadata."""
-    return FunctionSpec(
-        namespace=namespace,
-        policy_category=policy_category,
-        function_class=function_class,
-        aliases=aliases,
-        alias_policy=alias_policy,
-        lifecycle=lifecycle,
-        determinism=determinism,
-        null_behavior=null_behavior,
-        error_behavior=error_behavior,
-        substrait=substrait,
-    )
-
-
 pub def deterministic_spec(
     function_class: FunctionClass,
     lifecycle: FunctionLifecycle,
@@ -365,7 +334,7 @@ pub def deterministic_spec(
 ) -> FunctionSpec:
     """Build one deterministic core-import function spec."""
     return FunctionSpec(
-        namespace=core_function_namespace(),
+        namespace=CORE_FUNCTION_NAMESPACE,
         policy_category=FunctionPolicyCategory.PortableCore,
         function_class=function_class,
         aliases=[],
@@ -388,17 +357,17 @@ pub def extension_only_spec(
     substrait: SubstraitMapping,
 ) -> FunctionSpec:
     """Build one explicitly namespaced extension-only function spec."""
-    return function_policy_spec(
-        namespace,
-        FunctionPolicyCategory.ExtensionOnly,
-        function_class,
-        [],
-        FunctionAliasPolicy.OptInCompatibility,
-        lifecycle,
-        determinism,
-        null_behavior,
-        error_behavior,
-        substrait,
+    return FunctionSpec(
+        namespace=namespace,
+        policy_category=FunctionPolicyCategory.ExtensionOnly,
+        function_class=function_class,
+        aliases=[],
+        alias_policy=FunctionAliasPolicy.OptInCompatibility,
+        lifecycle=lifecycle,
+        determinism=determinism,
+        null_behavior=null_behavior,
+        error_behavior=error_behavior,
+        substrait=substrait,
     )
 
 
@@ -413,17 +382,17 @@ pub def compatibility_alias_spec(
     substrait: SubstraitMapping,
 ) -> FunctionSpec:
     """Build one opt-in compatibility alias spec for semantics that remain typeable by InQL."""
-    return function_policy_spec(
-        namespace,
-        FunctionPolicyCategory.CompatibilityAlias,
-        function_class,
-        aliases,
-        FunctionAliasPolicy.OptInCompatibility,
-        lifecycle,
-        determinism,
-        null_behavior,
-        error_behavior,
-        substrait,
+    return FunctionSpec(
+        namespace=namespace,
+        policy_category=FunctionPolicyCategory.CompatibilityAlias,
+        function_class=function_class,
+        aliases=aliases,
+        alias_policy=FunctionAliasPolicy.OptInCompatibility,
+        lifecycle=lifecycle,
+        determinism=determinism,
+        null_behavior=null_behavior,
+        error_behavior=error_behavior,
+        substrait=substrait,
     )
 
 
@@ -437,17 +406,17 @@ pub def engine_specific_spec(
     substrait: SubstraitMapping,
 ) -> FunctionSpec:
     """Build one explicitly namespaced engine-specific function spec."""
-    return function_policy_spec(
-        namespace,
-        FunctionPolicyCategory.EngineSpecific,
-        function_class,
-        [],
-        FunctionAliasPolicy.OptInCompatibility,
-        lifecycle,
-        determinism,
-        null_behavior,
-        error_behavior,
-        substrait,
+    return FunctionSpec(
+        namespace=namespace,
+        policy_category=FunctionPolicyCategory.EngineSpecific,
+        function_class=function_class,
+        aliases=[],
+        alias_policy=FunctionAliasPolicy.OptInCompatibility,
+        lifecycle=lifecycle,
+        determinism=determinism,
+        null_behavior=null_behavior,
+        error_behavior=error_behavior,
+        substrait=substrait,
     )
 
 

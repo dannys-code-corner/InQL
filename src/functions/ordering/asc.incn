@@ -17,10 +17,10 @@ from projection_builders import ColumnExpr
 
 
 @function_registry.add("asc", deterministic_spec(
-    FunctionClass.Ordering,
-    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-    FunctionNullBehavior.DependsOnInputs,
-    sort_field_mapping("asc_nulls_first"),
+    function_class=FunctionClass.Ordering,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=sort_field_mapping("asc_nulls_first"),
 ))
 pub def asc(expr: ColumnExpr) -> ColumnExpr:
     """

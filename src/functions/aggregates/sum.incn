@@ -19,10 +19,10 @@ from substrait.function_extensions import SUM_FUNCTION_ANCHOR
 
 
 @function_registry.add("sum", deterministic_spec(
-    FunctionClass.Aggregate,
-    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-    FunctionNullBehavior.NullSkippingAggregate,
-    extension_mapping("sum", SUM_FUNCTION_ANCHOR),
+    function_class=FunctionClass.Aggregate,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.NullSkippingAggregate,
+    substrait=extension_mapping("sum", SUM_FUNCTION_ANCHOR),
 ))
 pub def sum(expr: ColumnExpr) -> AggregateMeasure:
     """

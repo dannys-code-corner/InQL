@@ -18,10 +18,10 @@ from substrait.function_extensions import ABS_FUNCTION_ANCHOR
 
 
 @function_registry.add("abs", deterministic_spec(
-    FunctionClass.Scalar,
-    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-    FunctionNullBehavior.DependsOnInputs,
-    extension_mapping("abs", ABS_FUNCTION_ANCHOR),
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=extension_mapping("abs", ABS_FUNCTION_ANCHOR),
 ))
 pub def abs(expr: ColumnExpr) -> ColumnExpr:
     """

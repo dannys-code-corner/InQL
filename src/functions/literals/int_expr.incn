@@ -18,10 +18,10 @@ from projection_builders import ColumnExpr, int_expr as int_expr_builder
 
 
 @function_registry.add("int_expr", deterministic_spec(
-    FunctionClass.Scalar,
-    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-    FunctionNullBehavior.NonNullLiteral,
-    rewrite_mapping("typed integer literal expression"),
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.NonNullLiteral,
+    substrait=rewrite_mapping("typed integer literal expression"),
 ))
 pub def int_expr(value: int) -> ColumnExpr:
     """

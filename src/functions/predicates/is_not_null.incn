@@ -18,10 +18,10 @@ from substrait.function_extensions import IS_NOT_NULL_FUNCTION_ANCHOR
 
 
 @function_registry.add("is_not_null", deterministic_spec(
-    FunctionClass.Scalar,
-    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-    FunctionNullBehavior.Predicate,
-    extension_mapping("is_not_null", IS_NOT_NULL_FUNCTION_ANCHOR),
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.Predicate,
+    substrait=extension_mapping("is_not_null", IS_NOT_NULL_FUNCTION_ANCHOR),
 ))
 pub def is_not_null(expr: ColumnExpr) -> ColumnExpr:
     """

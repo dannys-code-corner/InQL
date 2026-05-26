@@ -17,10 +17,10 @@ from projection_builders import ColumnExpr, bool_expr
 
 
 @function_registry.add("bool_lit", deterministic_spec(
-    FunctionClass.Scalar,
-    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-    FunctionNullBehavior.NonNullLiteral,
-    rewrite_mapping("filter-helper boolean literal expression"),
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.NonNullLiteral,
+    substrait=rewrite_mapping("filter-helper boolean literal expression"),
 ))
 pub def bool_lit(value: bool) -> ColumnExpr:
     """

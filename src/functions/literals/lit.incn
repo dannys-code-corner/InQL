@@ -18,10 +18,10 @@ from projection_builders import ColumnExpr, lit as lit_builder
 
 
 @function_registry.add("lit", deterministic_spec(
-    FunctionClass.Scalar,
-    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-    FunctionNullBehavior.NonNullLiteral,
-    rewrite_mapping("typed Substrait literal expression"),
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.NonNullLiteral,
+    substrait=rewrite_mapping("typed Substrait literal expression"),
 ))
 pub def lit(value: Union[int, float, str, bool]) -> ColumnExpr:
     """

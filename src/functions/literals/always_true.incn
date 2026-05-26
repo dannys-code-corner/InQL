@@ -18,10 +18,10 @@ from projection_builders import ColumnExpr, bool_expr
 
 
 @function_registry.add("always_true", deterministic_spec(
-    FunctionClass.Scalar,
-    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-    FunctionNullBehavior.Predicate,
-    rewrite_mapping("boolean true literal predicate"),
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.Predicate,
+    substrait=rewrite_mapping("boolean true literal predicate"),
 ))
 pub def always_true() -> ColumnExpr:
     """

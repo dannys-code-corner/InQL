@@ -17,10 +17,10 @@ from projection_builders import ColumnExpr, str_expr as str_expr_builder
 
 
 @function_registry.add("str_expr", deterministic_spec(
-    FunctionClass.Scalar,
-    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-    FunctionNullBehavior.NonNullLiteral,
-    rewrite_mapping("typed string literal expression"),
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.NonNullLiteral,
+    substrait=rewrite_mapping("typed string literal expression"),
 ))
 pub def str_expr(value: str) -> ColumnExpr:
     """

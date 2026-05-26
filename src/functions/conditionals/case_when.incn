@@ -19,10 +19,10 @@ from projection_builders import ColumnExpr
 
 
 @function_registry.add("case_when", deterministic_spec(
-    FunctionClass.Scalar,
-    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-    FunctionNullBehavior.DependsOnInputs,
-    core_mapping("if_then"),
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=core_mapping("if_then"),
 ))
 pub def case_when(conditions: list[ColumnExpr], results: list[ColumnExpr], otherwise: ColumnExpr) -> ColumnExpr:
     """

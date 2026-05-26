@@ -19,10 +19,10 @@ from substrait.function_extensions import ROUND_FUNCTION_ANCHOR
 
 
 @function_registry.add("round", deterministic_spec(
-    FunctionClass.Scalar,
-    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-    FunctionNullBehavior.DependsOnInputs,
-    extension_mapping("round", ROUND_FUNCTION_ANCHOR),
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=extension_mapping("round", ROUND_FUNCTION_ANCHOR),
 ))
 pub def round(expr: ColumnExpr) -> ColumnExpr:
     """

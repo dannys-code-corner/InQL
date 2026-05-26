@@ -154,16 +154,16 @@ The public helper shape should stay compact enough to preserve authoring ergonom
 
 ```incan
 @function_registry.add(deterministic_spec(
-    FunctionClass.Aggregate,
-    FunctionLifecycle(
+    function_class=FunctionClass.Aggregate,
+    lifecycle=FunctionLifecycle(
         since=v0_2,
         changed=[
             FunctionChange(version=v0_3, note="Added decimal return type rule."),
         ],
         deprecated=None,
     ),
-    FunctionNullBehavior.NullSkippingAggregate,
-    extension_mapping("avg", AVG_FUNCTION_ANCHOR),
+    null_behavior=FunctionNullBehavior.NullSkippingAggregate,
+    substrait=extension_mapping("avg", AVG_FUNCTION_ANCHOR),
 ))
 pub def avg(expr: ScalarExpr[number]) -> AggregateMeasure[number]:
     """

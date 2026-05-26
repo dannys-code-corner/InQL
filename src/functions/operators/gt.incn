@@ -18,10 +18,10 @@ from substrait.function_extensions import GT_FUNCTION_ANCHOR
 
 
 @function_registry.add("gt", deterministic_spec(
-    FunctionClass.Scalar,
-    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-    FunctionNullBehavior.Predicate,
-    extension_mapping("gt", GT_FUNCTION_ANCHOR),
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.Predicate,
+    substrait=extension_mapping("gt", GT_FUNCTION_ANCHOR),
 ))
 pub def gt(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
     """

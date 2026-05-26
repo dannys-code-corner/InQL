@@ -18,10 +18,10 @@ from substrait.function_extensions import LTE_FUNCTION_ANCHOR
 
 
 @function_registry.add("lte", deterministic_spec(
-    FunctionClass.Scalar,
-    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-    FunctionNullBehavior.Predicate,
-    extension_mapping("lte", LTE_FUNCTION_ANCHOR),
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.Predicate,
+    substrait=extension_mapping("lte", LTE_FUNCTION_ANCHOR),
 ))
 pub def lte(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
     """
