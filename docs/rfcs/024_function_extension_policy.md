@@ -1,6 +1,6 @@
 # InQL RFC 024: Function extension policy
 
-- **Status:** Draft
+- **Status:** Implemented
 - **Created:** 2026-04-27
 - **Author(s):** Danny Meijer (@dannymeijer)
 - **Related:**
@@ -10,9 +10,9 @@
   - InQL RFC 022 (semi-structured and format functions)
   - InQL RFC 023 (approximate and sketch functions)
 - **Issue:** [InQL #41](https://github.com/dannys-code-corner/InQL/issues/41)
-- **RFC PR:** —
+- **RFC PR:** [InQL #44](https://github.com/dannys-code-corner/InQL/pull/44)
 - **Written against:** Incan v0.2
-- **Shipped in:** —
+- **Shipped in:** v0.1
 
 ## Summary
 
@@ -110,10 +110,17 @@ dbt-style adapter-dispatched names should be modeled as portability aliases or a
 - **Execution / interchange** — Prism and Substrait lowering must carry extension identity or reject unsupported extension functions.
 - **Documentation** — docs should list rejected compatibility requests and point to explicit extension alternatives where they exist.
 
-## Unresolved questions
+## Implementation log
 
-- What namespace convention should extension function modules use?
-- Should dialect compatibility modules be ordinary packages or built-in opt-in modules?
-- What minimum metadata must a UDF provide before it can participate in typed InQL planning?
+- [x] Added registry policy categories for portable core, extension-only, compatibility alias, engine-specific, and rejected requests.
+- [x] Added explicit function namespaces and namespace-qualified lookup so extension names cannot shadow portable core names.
+- [x] Added typed metadata helpers for extension-only, engine-specific, compatibility-alias, and rejected-policy cases.
+- [x] Added tests that extension-only functions remain separate from scalar/aggregate function class, core-scoped lookup remains stable, and rejected compatibility requests remain metadata-only.
+- [x] Documented the policy categories and rejection model in the function reference.
 
-<!-- When every question is resolved, rename this section to **Design Decisions**, group answers under ### Resolved, and remove this comment. -->
+## Design Decisions
+
+- **Namespace convention:** portable core functions use `inql.functions`. Extension packages should use explicit namespaces such as `inql_ext.<domain>` or another package-owned namespace that cannot be confused with core.
+- **Dialect compatibility:** dialect compatibility should be modeled as ordinary opt-in package/module surface unless a later RFC proves a built-in dialect module is necessary. Compatibility aliases for portable functions remain metadata-visible and opt-in.
+- **UDF metadata floor:** a UDF or UDTF must provide the same minimum registry facts as any extension function before it participates in typed InQL planning: namespace, function class, lifecycle, determinism, null behavior, error behavior, and interchange/backend support metadata.
+- **Rejected requests:** likely compatibility requests that cannot be represented as portable data logic should be represented as rejection metadata, not fake lowerable functions.

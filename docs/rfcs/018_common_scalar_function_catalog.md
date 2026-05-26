@@ -1,6 +1,6 @@
 # InQL RFC 018: Common scalar function catalog
 
-- **Status:** Draft
+- **Status:** In Progress
 - **Created:** 2026-04-27
 - **Author(s):** Danny Meijer (@dannymeijer)
 - **Related:**
@@ -9,7 +9,7 @@
   - InQL RFC 014 (function registry and catalog governance)
   - InQL RFC 015 (core scalar functions and operators)
 - **Issue:** [InQL #35](https://github.com/dannys-code-corner/InQL/issues/35)
-- **RFC PR:** —
+- **RFC PR:** [InQL #44](https://github.com/dannys-code-corner/InQL/pull/44)
 - **Written against:** Incan v0.2
 - **Shipped in:** —
 
@@ -110,6 +110,43 @@ Existing arithmetic helpers should be treated as the start of this catalog but s
 - **Incan compiler** — query-block operator and keyword forms should lower to registry entries where applicable.
 - **Execution / interchange** — Prism and Substrait lowering must either preserve semantics, use registered extensions, or diagnose unsupported functions.
 - **Documentation** — function reference docs should group scalar functions by family and show aliases.
+
+## Implementation Plan
+
+### Phase 1: Math scalar slice
+
+- Add a small portable math family with honest Substrait and DataFusion behavior.
+- Cover helper expression shape, registry metadata, Substrait lowering, and concrete session execution.
+
+### Phase 2: Remaining math functions
+
+- Add the remaining math functions once type and edge-case behavior is specified clearly enough to be portable.
+
+### Phase 3: String functions
+
+- Add string normalization and composition helpers after string position/indexing decisions are recorded.
+
+### Phase 4: Binary, regex, and date/time functions
+
+- Add binary/encoding helpers, regex helpers, and date/time helpers only after their invalid-input, regex flavor, timezone, and session-time behavior are settled.
+
+## Progress Checklist
+
+### Implemented in PR #44
+
+- [x] Add `abs`, `ceil`, `floor`, and single-argument `round` helpers under `src/functions/math/`.
+- [x] Add registry metadata and Substrait extension mappings for the math slice.
+- [x] Add scalar lowering tests and DataFusion-backed session execution tests with concrete output values.
+- [x] Publish the implemented math slice in the function reference docs.
+
+### Remaining RFC 018 scope
+
+- [ ] Add remaining math helpers such as `sqrt`, `power`, logarithms, trigonometry, `least`, and `greatest`.
+- [ ] Add string helpers such as `upper`, `lower`, `trim`, `substring`, `position`, `concat`, and padding/replacement helpers.
+- [ ] Add binary and encoding helpers with explicit invalid-input behavior.
+- [ ] Add regex helpers after regex flavor and capture semantics are specified.
+- [ ] Add date/time helpers after timezone and session-time behavior are specified.
+- [ ] Add compatibility aliases where they are semantic aliases rather than backend spellings.
 
 ## Unresolved questions
 

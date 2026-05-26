@@ -22,15 +22,15 @@ InQL uses its **own** RFC series (starting at 000), independent of the [Incan la
 | [013][rfc-013] | Planned     | Function catalog program                                                                          |     |
 | [014][rfc-014] | Implemented | Function registry and catalog governance                                                          |     |
 | [015][rfc-015] | Implemented | Core scalar functions and operators                                                               |     |
-| [016][rfc-016] | Draft       | Core aggregate functions                                                                          |     |
+| [016][rfc-016] | Implemented | Core aggregate functions                                                                          |     |
 | [017][rfc-017] | Draft       | Aggregate modifiers                                                                               |     |
-| [018][rfc-018] | Draft       | Common scalar function catalog                                                                    |     |
+| [018][rfc-018] | In Progress | Common scalar function catalog                                                                    |     |
 | [019][rfc-019] | Draft       | Window functions                                                                                  |     |
 | [020][rfc-020] | Draft       | Nested data functions                                                                             |     |
 | [021][rfc-021] | Draft       | Generator and table-valued functions                                                              |     |
 | [022][rfc-022] | Draft       | Semi-structured and format functions                                                              |     |
 | [023][rfc-023] | Draft       | Approximate and sketch functions                                                                  |     |
-| [024][rfc-024] | Draft       | Function extension policy                                                                         |     |
+| [024][rfc-024] | Implemented | Function extension policy                                                                         |     |
 
 <!-- TODO: #7: auto populate this table (like how we do in incan) -->
 
