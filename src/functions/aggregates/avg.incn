@@ -6,6 +6,7 @@ Average aggregate helper.
 
 from aggregate_builders import AggregateKind, AggregateMeasure, avg as avg_builder
 from function_registry import (
+    CORE_AGGREGATE_MODIFIERS,
     FunctionClass,
     FunctionLifecycle,
     FunctionNullBehavior,
@@ -13,16 +14,17 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import function_registry
+from functions.registry import register_function
 from projection_builders import ColumnExpr
 from substrait.function_extensions import AVG_FUNCTION_ANCHOR
 
 
-@function_registry.add("avg", deterministic_spec(
-    FunctionClass.Aggregate,
-    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-    FunctionNullBehavior.NullSkippingAggregate,
-    extension_mapping("avg", AVG_FUNCTION_ANCHOR),
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Aggregate,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.NullSkippingAggregate,
+    aggregate_modifiers=CORE_AGGREGATE_MODIFIERS,
+    substrait=extension_mapping("avg", AVG_FUNCTION_ANCHOR),
 ))
 pub def avg(expr: ColumnExpr) -> AggregateMeasure:
     """

@@ -12,15 +12,15 @@ from function_registry import (
     deterministic_spec,
     v0_1,
 )
-from functions.registry import function_registry, registered_application_with_options
+from functions.registry import register_function, registered_application_with_options
 from projection_builders import ColumnExpr, scalar_function_option
 
 
-@function_registry.add("in_", deterministic_spec(
-    FunctionClass.Scalar,
-    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-    FunctionNullBehavior.Predicate,
-    core_mapping("singular_or_list"),
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.Predicate,
+    substrait=core_mapping("singular_or_list"),
 ))
 pub def in_(expr: ColumnExpr, values: list[ColumnExpr]) -> ColumnExpr:
     """

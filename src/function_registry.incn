@@ -1,19 +1,20 @@
 """
 Package-owned function registry metadata for the current public InQL function surface.
 
-Public helpers register themselves by calling `function_registry.add(...)` as their decorator. The decorator method owns
-non-derivable machine metadata and records one runtime entry while returning the helper unchanged. Public helper names
-and signatures are checked API metadata facts, not second copies in this runtime shape.
+Public helpers register themselves with declaration-side registry decorators. The decorator owns non-derivable machine
+metadata and records one runtime entry while returning the helper unchanged. Function signatures and canonical names
+usually come from checked public helper metadata. Decorator metadata may override the canonical name only when the
+source helper name is constrained by the host language, such as the `modulo(...)` helper for canonical `mod`.
 """
 
 from substrait.function_extensions import function_extension_uri
 
-const CORE_FUNCTION_NAMESPACE: str = "inql.functions"
+pub const CORE_FUNCTION_NAMESPACE: str = "inql.functions"
 
 
 @derive(Clone)
 pub enum FunctionPolicyCategory(str):
-    """RFC 024 portability and extension-policy category for one function-like metadata item."""
+    """InQL RFC 024 portability and extension-policy category for one function-like metadata item."""
 
     PortableCore = "portable_core"
     ExtensionOnly = "extension_only"
@@ -127,6 +128,18 @@ pub model AggregateModifierPolicy:
     pub allows_ordered_input: bool
 
 
+pub const NO_AGGREGATE_MODIFIERS: AggregateModifierPolicy = AggregateModifierPolicy(
+    allows_distinct=false,
+    allows_filter=false,
+    allows_ordered_input=false,
+)
+pub const CORE_AGGREGATE_MODIFIERS: AggregateModifierPolicy = AggregateModifierPolicy(
+    allows_distinct=true,
+    allows_filter=true,
+    allows_ordered_input=false,
+)
+
+
 @derive(Clone)
 pub model SubstraitMapping:
     """Portable interchange mapping metadata for one registered function."""
@@ -143,6 +156,7 @@ pub model SubstraitMapping:
 pub model FunctionSpec:
     """Machine-readable function facts supplied to the registry decorator."""
 
+    pub canonical_name: Option[str]
     pub namespace: str
     pub policy_category: FunctionPolicyCategory
     pub function_class: FunctionClass
@@ -196,11 +210,6 @@ pub class FunctionRegistry:
         """Return an empty function registry."""
         return FunctionRegistry(entries=[])
 
-    def add[F](mut self, canonical_name: str, spec: FunctionSpec) -> (F) -> F:
-        """Register one public helper and return the helper unchanged."""
-        self._add_entry(canonical_name, spec)
-        return (func) => func
-
     def _add_entry(mut self, canonical_name: str, spec: FunctionSpec) -> None:
         """Record one registry entry or fail fast on invalid duplicate metadata."""
         assert _valid_canonical_name(canonical_name), (f"function canonical name must be one non-empty identifier segment, found `{canonical_name}`")
@@ -239,7 +248,7 @@ pub class FunctionRegistry:
 
     def entry_by_name(self, canonical_name: str) -> Option[FunctionRegistryEntry]:
         """Return the core registry entry for one canonical public function name when it is known."""
-        return self.entry_by_namespace_and_name(core_function_namespace(), canonical_name)
+        return self.entry_by_namespace_and_name(CORE_FUNCTION_NAMESPACE, canonical_name)
 
     def entry_by_namespace_and_name(self, namespace: str, canonical_name: str) -> Option[FunctionRegistryEntry]:
         """Return the registry entry for one namespace-qualified canonical function name when it is known."""
@@ -267,12 +276,7 @@ pub class FunctionRegistry:
 
 pub def function_ref_for(canonical_name: str) -> str:
     """Return the durable registry reference for one canonical InQL function name."""
-    return namespaced_function_ref(core_function_namespace(), canonical_name)
-
-
-pub def core_function_namespace() -> str:
-    """Return the namespace used by portable core package functions."""
-    return CORE_FUNCTION_NAMESPACE
+    return namespaced_function_ref(CORE_FUNCTION_NAMESPACE, canonical_name)
 
 
 pub def namespaced_function_ref(namespace: str, canonical_name: str) -> str:
@@ -342,161 +346,21 @@ pub def sort_field_mapping(direction: str) -> SubstraitMapping:
     )
 
 
-pub def aggregate_modifier_policy(
-    allows_distinct: bool,
-    allows_filter: bool,
-    allows_ordered_input: bool,
-) -> AggregateModifierPolicy:
-    """Build one aggregate modifier policy."""
-    return AggregateModifierPolicy(
-        allows_distinct=allows_distinct,
-        allows_filter=allows_filter,
-        allows_ordered_input=allows_ordered_input,
-    )
+"""Build one deterministic core-import function spec."""
 
+pub deterministic_spec = partial FunctionSpec(canonical_name=None, namespace=CORE_FUNCTION_NAMESPACE, policy_category=FunctionPolicyCategory.PortableCore, aliases=[], alias_policy=FunctionAliasPolicy.CoreImport, determinism=FunctionDeterminism.Deterministic, error_behavior=FunctionErrorBehavior.Typechecked, aggregate_modifiers=NO_AGGREGATE_MODIFIERS)
 
-pub def no_aggregate_modifiers() -> AggregateModifierPolicy:
-    """Return the default modifier policy for non-aggregate functions."""
-    return aggregate_modifier_policy(false, false, false)
+"""Build one explicitly namespaced extension-only function spec."""
 
+pub extension_only_spec = partial FunctionSpec(canonical_name=None, policy_category=FunctionPolicyCategory.ExtensionOnly, aliases=[], alias_policy=FunctionAliasPolicy.OptInCompatibility, aggregate_modifiers=NO_AGGREGATE_MODIFIERS)
 
-pub def core_aggregate_modifier_policy() -> AggregateModifierPolicy:
-    """Return the default RFC 017 policy for core order-insensitive aggregates."""
-    return aggregate_modifier_policy(true, true, false)
+"""Build one opt-in compatibility alias spec for semantics that remain typeable by InQL."""
 
+pub compatibility_alias_spec = partial FunctionSpec(canonical_name=None, policy_category=FunctionPolicyCategory.CompatibilityAlias, alias_policy=FunctionAliasPolicy.OptInCompatibility, aggregate_modifiers=NO_AGGREGATE_MODIFIERS)
 
-def _aggregate_modifier_policy_for_class(function_class: FunctionClass) -> AggregateModifierPolicy:
-    """Return the default modifier policy for a semantic function class."""
-    if function_class == FunctionClass.Aggregate:
-        return core_aggregate_modifier_policy()
-    return no_aggregate_modifiers()
+"""Build one explicitly namespaced engine-specific function spec."""
 
-
-pub def function_policy_spec(
-    namespace: str,
-    policy_category: FunctionPolicyCategory,
-    function_class: FunctionClass,
-    aliases: list[str],
-    alias_policy: FunctionAliasPolicy,
-    lifecycle: FunctionLifecycle,
-    determinism: FunctionDeterminism,
-    null_behavior: FunctionNullBehavior,
-    error_behavior: FunctionErrorBehavior,
-    aggregate_modifiers: AggregateModifierPolicy,
-    substrait: SubstraitMapping,
-) -> FunctionSpec:
-    """Build one function spec with explicit RFC 024 namespace and policy metadata."""
-    return FunctionSpec(
-        namespace=namespace,
-        policy_category=policy_category,
-        function_class=function_class,
-        aliases=aliases,
-        alias_policy=alias_policy,
-        lifecycle=lifecycle,
-        determinism=determinism,
-        null_behavior=null_behavior,
-        error_behavior=error_behavior,
-        aggregate_modifiers=aggregate_modifiers,
-        substrait=substrait,
-    )
-
-
-pub def deterministic_spec(
-    function_class: FunctionClass,
-    lifecycle: FunctionLifecycle,
-    null_behavior: FunctionNullBehavior,
-    substrait: SubstraitMapping,
-) -> FunctionSpec:
-    """Build one deterministic core-import function spec."""
-    return FunctionSpec(
-        namespace=core_function_namespace(),
-        policy_category=FunctionPolicyCategory.PortableCore,
-        function_class=function_class,
-        aliases=[],
-        alias_policy=FunctionAliasPolicy.CoreImport,
-        lifecycle=lifecycle,
-        determinism=FunctionDeterminism.Deterministic,
-        null_behavior=null_behavior,
-        error_behavior=FunctionErrorBehavior.Typechecked,
-        aggregate_modifiers=_aggregate_modifier_policy_for_class(function_class),
-        substrait=substrait,
-    )
-
-
-pub def extension_only_spec(
-    namespace: str,
-    function_class: FunctionClass,
-    lifecycle: FunctionLifecycle,
-    determinism: FunctionDeterminism,
-    null_behavior: FunctionNullBehavior,
-    error_behavior: FunctionErrorBehavior,
-    substrait: SubstraitMapping,
-) -> FunctionSpec:
-    """Build one explicitly namespaced extension-only function spec."""
-    return function_policy_spec(
-        namespace,
-        FunctionPolicyCategory.ExtensionOnly,
-        function_class,
-        [],
-        FunctionAliasPolicy.OptInCompatibility,
-        lifecycle,
-        determinism,
-        null_behavior,
-        error_behavior,
-        no_aggregate_modifiers(),
-        substrait,
-    )
-
-
-pub def compatibility_alias_spec(
-    namespace: str,
-    function_class: FunctionClass,
-    aliases: list[str],
-    lifecycle: FunctionLifecycle,
-    determinism: FunctionDeterminism,
-    null_behavior: FunctionNullBehavior,
-    error_behavior: FunctionErrorBehavior,
-    substrait: SubstraitMapping,
-) -> FunctionSpec:
-    """Build one opt-in compatibility alias spec for semantics that remain typeable by InQL."""
-    return function_policy_spec(
-        namespace,
-        FunctionPolicyCategory.CompatibilityAlias,
-        function_class,
-        aliases,
-        FunctionAliasPolicy.OptInCompatibility,
-        lifecycle,
-        determinism,
-        null_behavior,
-        error_behavior,
-        _aggregate_modifier_policy_for_class(function_class),
-        substrait,
-    )
-
-
-pub def engine_specific_spec(
-    namespace: str,
-    function_class: FunctionClass,
-    lifecycle: FunctionLifecycle,
-    determinism: FunctionDeterminism,
-    null_behavior: FunctionNullBehavior,
-    error_behavior: FunctionErrorBehavior,
-    substrait: SubstraitMapping,
-) -> FunctionSpec:
-    """Build one explicitly namespaced engine-specific function spec."""
-    return function_policy_spec(
-        namespace,
-        FunctionPolicyCategory.EngineSpecific,
-        function_class,
-        [],
-        FunctionAliasPolicy.OptInCompatibility,
-        lifecycle,
-        determinism,
-        null_behavior,
-        error_behavior,
-        no_aggregate_modifiers(),
-        substrait,
-    )
+pub engine_specific_spec = partial FunctionSpec(canonical_name=None, policy_category=FunctionPolicyCategory.EngineSpecific, aliases=[], alias_policy=FunctionAliasPolicy.OptInCompatibility, aggregate_modifiers=NO_AGGREGATE_MODIFIERS)
 
 
 pub def rejected_function_policy(requested_name: str, reason: str, alternative: str) -> RejectedFunctionPolicy:

@@ -68,6 +68,7 @@ from functions import (
     try_cast,
 )
 from function_registry import (
+    CORE_FUNCTION_NAMESPACE,
     FunctionAliasPolicy,
     FunctionClass,
     FunctionDeterminism,
@@ -78,7 +79,6 @@ from function_registry import (
     FunctionRegistryEntry,
     FunctionNullBehavior,
     SubstraitMappingKind,
-    core_function_namespace,
     deterministic_spec,
     extension_only_spec,
     extension_mapping,
@@ -338,10 +338,12 @@ def test_function_registry__lookup_exposes_canonical_metadata() -> None:
     _exercise_current_public_helpers()
     col_ref = function_ref_for("col")
     count_name = "count"
+    modulo_source_name = "modulo"
 
     # -- Act --
     col_entry = _entry_or_fail(col_ref)
     count_entry = _entry_by_name_or_fail(count_name)
+    mod_entry = _entry_by_name_or_fail("mod")
 
     # -- Assert --
     assert col_entry.canonical_name == "col", "lookup by function ref should return canonical name"
@@ -349,6 +351,11 @@ def test_function_registry__lookup_exposes_canonical_metadata() -> None:
     assert col_entry.alias_policy == FunctionAliasPolicy.CoreImport, "core helpers should use core import policy"
     assert count_entry.function_ref == function_ref_for("count"), "lookup by name should return the stable function ref"
     assert count_entry.function_class == FunctionClass.Aggregate, "count should be classified as aggregate"
+    assert mod_entry.function_ref == function_ref_for("mod"), "canonical-name overrides should derive refs from semantic names"
+    assert mod_entry.canonical_name == "mod", "modulo helper should register the canonical mod name"
+    match function_registry_entry_by_name(modulo_source_name):
+        Some(_) => return fail_t("modulo source helper should not create a second canonical registry entry")
+        None => pass
 
 
 def test_function_registry__core_helpers_expose_portable_policy_metadata() -> None:
@@ -359,7 +366,7 @@ def test_function_registry__core_helpers_expose_portable_policy_metadata() -> No
 
     # -- Act / Assert --
     for entry in entries:
-        assert entry.namespace == core_function_namespace(), f"{entry.function_ref} should live in the core function namespace"
+        assert entry.namespace == CORE_FUNCTION_NAMESPACE, f"{entry.function_ref} should live in the core function namespace"
         if entry.canonical_name == "count_expr" or entry.canonical_name == "count_distinct" or entry.canonical_name == "count_if":
             assert entry.policy_category == FunctionPolicyCategory.CompatibilityAlias, f"{entry.canonical_name} should be marked as a compatibility helper"
             assert entry.alias_policy == FunctionAliasPolicy.OptInCompatibility, "compatibility helpers should be opt-in by policy"
@@ -397,13 +404,13 @@ def test_function_registry__extension_policy_is_separate_from_scalar_class() -> 
     registry._add_entry(
         "st_srid",
         extension_only_spec(
-            extension_namespace,
-            FunctionClass.Scalar,
-            FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-            FunctionDeterminism.Deterministic,
-            FunctionNullBehavior.DependsOnInputs,
-            FunctionErrorBehavior.Typechecked,
-            extension_mapping("st_srid", 9000),
+            namespace=extension_namespace,
+            function_class=FunctionClass.Scalar,
+            lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+            determinism=FunctionDeterminism.Deterministic,
+            null_behavior=FunctionNullBehavior.DependsOnInputs,
+            error_behavior=FunctionErrorBehavior.Typechecked,
+            substrait=extension_mapping("st_srid", 9000),
         ),
     )
     extension_entry = _local_entry_or_fail(registry, namespaced_function_ref(extension_namespace, "st_srid"))
@@ -426,22 +433,22 @@ def test_function_registry__canonical_name_lookup_stays_core_scoped() -> None:
     registry._add_entry(
         "hash",
         deterministic_spec(
-            FunctionClass.Scalar,
-            FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-            FunctionNullBehavior.DependsOnInputs,
-            rewrite_mapping("portable hash fixture"),
+            function_class=FunctionClass.Scalar,
+            lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+            null_behavior=FunctionNullBehavior.DependsOnInputs,
+            substrait=rewrite_mapping("portable hash fixture"),
         ),
     )
     registry._add_entry(
         "hash",
         extension_only_spec(
-            extension_namespace,
-            FunctionClass.Scalar,
-            FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-            FunctionDeterminism.Deterministic,
-            FunctionNullBehavior.DependsOnInputs,
-            FunctionErrorBehavior.Typechecked,
-            extension_mapping("hash", 9001),
+            namespace=extension_namespace,
+            function_class=FunctionClass.Scalar,
+            lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+            determinism=FunctionDeterminism.Deterministic,
+            null_behavior=FunctionNullBehavior.DependsOnInputs,
+            error_behavior=FunctionErrorBehavior.Typechecked,
+            substrait=extension_mapping("hash", 9001),
         ),
     )
 
@@ -450,7 +457,7 @@ def test_function_registry__canonical_name_lookup_stays_core_scoped() -> None:
 
     # -- Assert --
     assert core_entry.function_ref == function_ref_for("hash"), "canonical name lookup should use the core function reference"
-    assert core_entry.namespace == core_function_namespace(), "canonical name lookup should keep resolving core names"
+    assert core_entry.namespace == CORE_FUNCTION_NAMESPACE, "canonical name lookup should keep resolving core names"
     assert core_entry.policy_category == FunctionPolicyCategory.PortableCore, "core-scoped lookup should return the portable core function"
     assert extension_entry.function_ref == namespaced_function_ref(extension_namespace, "hash"), "namespace-qualified lookup should use the extension function reference"
     assert extension_entry.namespace == extension_namespace, "namespace-qualified lookup should still find the extension entry"

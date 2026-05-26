@@ -17,7 +17,7 @@ from rust::substrait::proto::rel import RelType
 from rust::substrait::proto::rel_common import Direct, EmitKind
 from rust::substrait::proto::set_rel import SetOp
 from rust::substrait::proto::sort_field import SortDirection, SortKind
-from aggregate_builders import AggregateKind, AggregateMeasure
+from aggregate_builders import AggregateMeasure
 from projection_builders import scalar_expr_output_name
 from substrait.expr_lowering import field_index_from_expression, project_output_columns_with_emit
 from substrait.extensions import aggregate_function_name_from_anchor
@@ -106,32 +106,23 @@ def _grouping_output_columns(input_columns: list[str], grouping_expressions: lis
 def _aggregate_measure_output_name(input_columns: list[str], measure: Measure) -> str:
     """Resolve one aggregate output name from the lowered Substrait aggregate measure payload."""
     measure_has_filter = _measure_has_filter(measure.clone())
-    match measure.measure:
-        Some(agg_fn) =>
-            function_name = aggregate_function_name_from_anchor(agg_fn.function_reference)
-            is_distinct = agg_fn.invocation == _aggregation_invocation_value(AggregationInvocation.Distinct)
-            mut suffix = ""
-            if measure_has_filter:
-                suffix = suffix + "_filtered"
-            if len(agg_fn.sorts) > 0:
-                suffix = suffix + "_ordered"
-            if len(agg_fn.arguments) == 0:
-                return function_name + suffix
-            match agg_fn.arguments[0].arg_type:
-                Some(arg_type) =>
-                    match arg_type:
-                        ArgType.Value(expr) =>
-                            field_index = field_index_from_expression(expr)
-                            if field_index >= 0 and field_index < len(input_columns):
-                                if is_distinct:
-                                    return function_name + "_distinct_" + input_columns[field_index] + suffix
-                                return function_name + "_" + input_columns[field_index] + suffix
-                            if is_distinct:
-                                return function_name + "_distinct" + suffix
-                            return function_name + suffix
-                        _ => return function_name + suffix
-                _ => return function_name + suffix
-        None => return ""
+    if let Some(agg_fn) = measure.measure:
+        function_name = aggregate_function_name_from_anchor(agg_fn.function_reference)
+        is_distinct = agg_fn.invocation == _aggregation_invocation_value(AggregationInvocation.Distinct)
+        mut output_name = function_name
+        if len(agg_fn.arguments) > 0:
+            if is_distinct:
+                output_name = output_name + "_distinct"
+            if let Some(ArgType.Value(expr)) = agg_fn.arguments[0].arg_type:
+                field_index = field_index_from_expression(expr)
+                if field_index >= 0 and field_index < len(input_columns):
+                    output_name = output_name + "_" + input_columns[field_index]
+        if measure_has_filter:
+            output_name = output_name + "_filtered"
+        if len(agg_fn.sorts) > 0:
+            output_name = output_name + "_ordered"
+        return output_name
+    return ""
 
 
 def _aggregate_measure_output_columns(input_columns: list[str], measures: list[Measure]) -> list[str]:

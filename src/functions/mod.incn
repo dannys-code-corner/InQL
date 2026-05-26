@@ -5,18 +5,16 @@ Each helper lives in a logical family submodule with declaration-side registry m
 facade keeps the public import surface stable without owning a second machine-readable registry list.
 """
 
-from function_registry import FunctionRegistryEntry
-from functions.registry import (
-    function_registry_canonical_names as raw_function_registry_canonical_names,
-    function_registry_entries as raw_function_registry_entries,
-    function_registry_entry as raw_function_registry_entry,
-    function_registry_entry_by_name as raw_function_registry_entry_by_name,
-    function_registry_entry_by_namespace_and_name as raw_function_registry_entry_by_namespace_and_name,
-    function_registry_entry_count as raw_function_registry_entry_count,
-    function_registry_function_refs as raw_function_registry_function_refs,
-    registered_substrait_mapped_function_refs as raw_registered_substrait_mapped_function_refs,
+pub from functions.registry import (
+    function_registry,
+    function_registry_canonical_names,
+    function_registry_entries,
+    function_registry_entry,
+    function_registry_entry_by_name,
+    function_registry_entry_count,
+    function_registry_function_refs,
+    registered_substrait_mapped_function_refs,
 )
-pub from functions.registry import function_registry
 pub from functions.references.col import col
 pub from functions.literals.always_false import always_false
 pub from functions.literals.always_true import always_true
@@ -73,46 +71,3 @@ pub from functions.ordering.desc import desc
 pub from functions.ordering.desc_nulls_first import desc_nulls_first
 pub from functions.ordering.desc_nulls_last import desc_nulls_last
 pub from functions.formatting.display import display
-
-
-pub def function_registry_entries() -> list[FunctionRegistryEntry]:
-    """Return runtime registry entries for helpers loaded in the current process."""
-    return raw_function_registry_entries()
-
-
-pub def function_registry_entry(function_ref: str) -> Option[FunctionRegistryEntry]:
-    """Return a loaded registry entry for one stable function reference when it is known."""
-    return raw_function_registry_entry(function_ref)
-
-
-pub def function_registry_entry_by_name(canonical_name: str) -> Option[FunctionRegistryEntry]:
-    """Return a loaded core registry entry for one canonical public function name when it is known."""
-    return raw_function_registry_entry_by_name(canonical_name)
-
-
-pub def function_registry_entry_by_namespace_and_name(
-    namespace: str,
-    canonical_name: str,
-) -> Option[FunctionRegistryEntry]:
-    """Return a loaded registry entry for one namespace-qualified function name when it is known."""
-    return raw_function_registry_entry_by_namespace_and_name(namespace, canonical_name)
-
-
-pub def function_registry_function_refs() -> list[str]:
-    """Return loaded function references in runtime registry order."""
-    return raw_function_registry_function_refs()
-
-
-pub def function_registry_canonical_names() -> list[str]:
-    """Return loaded canonical function names in runtime registry order."""
-    return raw_function_registry_canonical_names()
-
-
-pub def function_registry_entry_count() -> int:
-    """Return the number of loaded runtime registry entries."""
-    return raw_function_registry_entry_count()
-
-
-pub def registered_substrait_mapped_function_refs() -> list[str]:
-    """Return loaded function references with a concrete Substrait extension mapping."""
-    return raw_registered_substrait_mapped_function_refs()

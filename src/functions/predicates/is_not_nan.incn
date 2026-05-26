@@ -12,17 +12,17 @@ from function_registry import (
     rewrite_mapping,
     v0_1,
 )
-from functions.registry import function_registry
+from functions.registry import register_function
 from functions.operators.not_ import not_
 from functions.predicates.is_nan import is_nan
 from projection_builders import ColumnExpr
 
 
-@function_registry.add("is_not_nan", deterministic_spec(
-    FunctionClass.Scalar,
-    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-    FunctionNullBehavior.Predicate,
-    rewrite_mapping("not_(is_nan(expr))"),
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.Predicate,
+    substrait=rewrite_mapping("not_(is_nan(expr))"),
 ))
 pub def is_not_nan(expr: ColumnExpr) -> ColumnExpr:
     """

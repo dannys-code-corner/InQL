@@ -12,16 +12,16 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import function_registry, registered_application
+from functions.registry import register_function, registered_application
 from projection_builders import ColumnExpr
 from substrait.function_extensions import NOT_FUNCTION_ANCHOR
 
 
-@function_registry.add("not_", deterministic_spec(
-    FunctionClass.Scalar,
-    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-    FunctionNullBehavior.Predicate,
-    extension_mapping("not", NOT_FUNCTION_ANCHOR),
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.Predicate,
+    substrait=extension_mapping("not", NOT_FUNCTION_ANCHOR),
 ))
 pub def not_(expr: ColumnExpr) -> ColumnExpr:
     """

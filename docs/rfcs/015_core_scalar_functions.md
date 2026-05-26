@@ -130,7 +130,7 @@ Typed literal helpers such as `int_expr`, `float_expr`, `str_expr`, `bool_expr`,
 
 ### Phase 2: Public core scalar helpers and registry metadata
 
-- Add the RFC 015 public helper names in one-helper-per-module `src/functions/<family>/<name>.incn` files using declaration-side `@function_registry.add(...)` decorators.
+- Add the RFC 015 public helper names in one-helper-per-module `src/functions/<family>/<name>.incn` files using declaration-side `@register_function(...)` decorators.
 - Keep non-derivable machine metadata in decorator specs; derive names and signatures from checked helper declarations.
 - Preserve typed literal helper compatibility while routing through the canonical literal representation.
 - Use Substrait mapping metadata only for real IR lowering: extension functions, built-in Rex shapes, deterministic rewrites, or structural relation contexts such as sort fields.

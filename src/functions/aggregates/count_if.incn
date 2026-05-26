@@ -6,30 +6,32 @@ Filtered count compatibility helper.
 
 from aggregate_builders import AggregateKind, AggregateMeasure
 from function_registry import (
+    CORE_AGGREGATE_MODIFIERS,
+    CORE_FUNCTION_NAMESPACE,
     FunctionClass,
     FunctionDeterminism,
     FunctionErrorBehavior,
     FunctionLifecycle,
     FunctionNullBehavior,
     compatibility_alias_spec,
-    core_function_namespace,
     rewrite_mapping,
     v0_1,
 )
 from functions.aggregates.count import count
-from functions.registry import function_registry
+from functions.registry import register_function
 from projection_builders import ColumnExpr, col, column_expr_name
 
 
-@function_registry.add("count_if", compatibility_alias_spec(
-    core_function_namespace(),
-    FunctionClass.Aggregate,
-    ["count"],
-    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-    FunctionDeterminism.Deterministic,
-    FunctionNullBehavior.NullSkippingAggregate,
-    FunctionErrorBehavior.Typechecked,
-    rewrite_mapping("count().filter(predicate)"),
+@register_function(compatibility_alias_spec(
+    namespace=CORE_FUNCTION_NAMESPACE,
+    function_class=FunctionClass.Aggregate,
+    aliases=["count"],
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    determinism=FunctionDeterminism.Deterministic,
+    null_behavior=FunctionNullBehavior.NullSkippingAggregate,
+    error_behavior=FunctionErrorBehavior.Typechecked,
+    aggregate_modifiers=CORE_AGGREGATE_MODIFIERS,
+    substrait=rewrite_mapping("count().filter(predicate)"),
 ))
 pub def count_if(predicate: ColumnExpr) -> AggregateMeasure:
     """

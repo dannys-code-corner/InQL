@@ -1,16 +1,43 @@
 """
 Shared declaration-side registry state for public InQL helpers.
 
-Helper modules attach metadata with `@function_registry.add(...)` next to the helper they expose. This module owns the
+Helper modules attach metadata with `@register_function(...)` next to the helper they expose. This module owns the
 runtime projection for helpers that have actually been loaded in the current process. Checked API metadata remains the
 source for the complete public catalog and helper signatures.
 """
 
 from rust::incan_stdlib::errors import raise_value_error
-from function_registry import FunctionRegistry, FunctionRegistryEntry, SubstraitMapping, SubstraitMappingKind
+from function_registry import (
+    FunctionRegistry,
+    FunctionRegistryEntry,
+    FunctionSpec,
+    SubstraitMapping,
+    SubstraitMappingKind,
+)
 from projection_builders import ColumnExpr, ScalarFunctionOption, scalar_function_application
 
 pub static function_registry: FunctionRegistry = FunctionRegistry.new()
+static _pending_function_specs: list[FunctionSpec] = []
+
+
+pub def register_function[F](spec: FunctionSpec) -> (F) -> F:
+    """Queue one function spec and return the declaration-side registration decorator."""
+    _pending_function_specs.append(spec)
+    return (func) => _register_pending_function[F](func)
+
+
+def _register_pending_function[F](func: F) -> F:
+    """Register one pending declaration-side spec against the decorated helper name."""
+    pending_index = function_registry.entry_count()
+    assert pending_index < len(_pending_function_specs), "function registry decorator had no pending spec"
+    spec = _pending_function_specs[pending_index]
+    mut canonical_name = func.__name__
+    match spec.canonical_name:
+        Some(name) =>
+            canonical_name = name
+        None => pass
+    function_registry._add_entry(canonical_name, spec)
+    return func
 
 
 pub def registered_substrait_mapping(canonical_name: str) -> SubstraitMapping:
@@ -59,14 +86,6 @@ pub def function_registry_entry(function_ref: str) -> Option[FunctionRegistryEnt
 pub def function_registry_entry_by_name(canonical_name: str) -> Option[FunctionRegistryEntry]:
     """Return a loaded core registry entry for one canonical public function name when it is known."""
     return function_registry.entry_by_name(canonical_name)
-
-
-pub def function_registry_entry_by_namespace_and_name(
-    namespace: str,
-    canonical_name: str,
-) -> Option[FunctionRegistryEntry]:
-    """Return a loaded registry entry for one namespace-qualified function name when it is known."""
-    return function_registry.entry_by_namespace_and_name(namespace, canonical_name)
 
 
 pub def function_registry_function_refs() -> list[str]:

@@ -12,15 +12,15 @@ from function_registry import (
     rewrite_mapping,
     v0_1,
 )
-from functions.registry import function_registry
+from functions.registry import register_function
 from projection_builders import ColumnExpr, float_expr as float_expr_builder
 
 
-@function_registry.add("float_expr", deterministic_spec(
-    FunctionClass.Scalar,
-    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-    FunctionNullBehavior.NonNullLiteral,
-    rewrite_mapping("typed floating-point literal expression"),
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.NonNullLiteral,
+    substrait=rewrite_mapping("typed floating-point literal expression"),
 ))
 pub def float_expr(value: float) -> ColumnExpr:
     """

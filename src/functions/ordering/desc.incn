@@ -12,15 +12,15 @@ from function_registry import (
     sort_field_mapping,
     v0_1,
 )
-from functions.registry import function_registry, registered_application
+from functions.registry import register_function, registered_application
 from projection_builders import ColumnExpr
 
 
-@function_registry.add("desc", deterministic_spec(
-    FunctionClass.Ordering,
-    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-    FunctionNullBehavior.DependsOnInputs,
-    sort_field_mapping("desc_nulls_last"),
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Ordering,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=sort_field_mapping("desc_nulls_last"),
 ))
 pub def desc(expr: ColumnExpr) -> ColumnExpr:
     """

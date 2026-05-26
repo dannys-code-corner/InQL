@@ -13,15 +13,15 @@ from function_registry import (
     rewrite_mapping,
     v0_1,
 )
-from functions.registry import function_registry
+from functions.registry import register_function
 from projection_builders import ColumnExpr, col as col_builder
 
 
-@function_registry.add("col", deterministic_spec(
-    FunctionClass.Scalar,
-    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-    FunctionNullBehavior.DependsOnInputs,
-    rewrite_mapping("direct field reference selection"),
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=rewrite_mapping("direct field reference selection"),
 ))
 pub def col(name: str) -> ColumnExpr:
     """
