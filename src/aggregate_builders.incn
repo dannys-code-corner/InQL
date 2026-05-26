@@ -22,6 +22,7 @@ pub enum AggregateKind(str):
     Avg = "avg"
     Min = "min"
     Max = "max"
+    ApproxCountDistinct = "approx_count_distinct"
 
 
 @derive(Clone)
@@ -182,6 +183,21 @@ pub def max(expr: ColumnExpr) -> AggregateMeasure:
         kind=AggregateKind.Max,
         function_ref=function_ref_for("max"),
         canonical_name="max",
+        expr=expr,
+        has_expr=true,
+        is_distinct=false,
+        filter_expr=col_expr(""),
+        has_filter=false,
+        ordering=[],
+    )
+
+
+pub def approx_count_distinct(expr: ColumnExpr) -> AggregateMeasure:
+    """Build one approximate distinct-count aggregate measure over a scalar expression."""
+    return AggregateMeasure(
+        kind=AggregateKind.ApproxCountDistinct,
+        function_ref=function_ref_for("approx_count_distinct"),
+        canonical_name="approx_count_distinct",
         expr=expr,
         has_expr=true,
         is_distinct=false,

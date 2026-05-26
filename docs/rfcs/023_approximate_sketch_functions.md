@@ -1,6 +1,6 @@
 # InQL RFC 023: Approximate and sketch functions
 
-- **Status:** Draft
+- **Status:** In Progress
 - **Created:** 2026-04-27
 - **Author(s):** Danny Meijer (@dannymeijer)
 - **Related:**
@@ -11,7 +11,7 @@
   - InQL RFC 024 (function extension policy)
 - **Issue:** [InQL #40](https://github.com/dannys-code-corner/InQL/issues/40)
 - **RFC PR:** —
-- **Written against:** Incan v0.2
+- **Written against:** Incan v0.3-era InQL
 - **Shipped in:** —
 
 ## Summary
@@ -112,10 +112,54 @@ This RFC is additive. Existing exact aggregates must not change semantics when a
 - **Execution / interchange** — Prism and Substrait lowering must preserve approximate parameters, sketch state types, and merge semantics or reject unsupported functions.
 - **Documentation** — docs must label approximate functions clearly and explain accuracy parameters.
 
-## Unresolved questions
+## Design Decisions
+
+### Resolved
+
+- The first implementation slice is `approx_count_distinct(expr)`. It is an aggregate measure, not a scalar expression,
+  and its helper name makes approximate execution an explicit author choice.
+- `approx_count_distinct` is registered as approximate metadata with HyperLogLog-family semantics, mergeability, and an
+  approximate cardinality-result interpretation.
+- The first slice follows the standard Substrait unary `approx_count_distinct` aggregate mapping. It does not expose a
+  user-tunable relative-error parameter because the validated standard mapping does not carry one.
+- DataFusion's implementation is named `approx_distinct`; InQL keeps the standard Substrait function name in emitted
+  function metadata and rewrites only the DataFusion consumer declaration at the backend adapter boundary.
+- `approx_count_distinct` allows aggregate-local filters and rejects an extra `distinct()` modifier because distinct
+  estimation is already the helper's semantics.
+- `approx_percentile` is not implemented in this slice because the local Substrait aggregate-approx extension has a
+  standard `approx_count_distinct` mapping but no matching standard approximate percentile contract to preserve.
+- Sketch-state construction, merge, estimate, serialization, and deserialization helpers remain future work until InQL
+  has explicit sketch logical types and compatibility rules.
+
+### Remaining
 
 - Should InQL standardize one sketch family per use case or expose multiple named families?
 - What serialization format, if any, should be portable across backends?
 - How should accuracy guarantees be documented without implying backend-independent statistical promises that are not true?
+- Should future approximate aggregates expose user-tunable accuracy parameters through aggregate options, option records,
+  or separate helper names when Substrait has no standard parameter slot?
+- Which approximate percentile family should become the portable core contract, and how should percentile domain,
+  interpolation, and accuracy be specified?
 
-<!-- When every question is resolved, rename this section to **Design Decisions**, group answers under ### Resolved, and remove this comment. -->
+## Implementation Plan
+
+1. Add registry approximation metadata with exact-helper defaults.
+2. Add `approx_count_distinct(expr)` under a logical approximate function family.
+3. Add a stable Substrait anchor and keep emitted function metadata on the standard `approx_count_distinct` name.
+4. Add a DataFusion adapter-local rewrite to `approx_distinct` for the first backend.
+5. Add focused helper, registry, Substrait lowering, Prism, and DataFusion-backed session tests with materialized output.
+6. Add user-facing approximate-function docs, aggregate-builder docs, and release notes.
+7. Leave approximate percentile and sketch-state helpers for later RFC 023 slices once remaining contracts are resolved.
+
+## Progress Checklist
+
+- [x] RFC 023 moved to In Progress with a first implementation slice and recorded design decisions.
+- [x] Registry approximation metadata added for intentionally approximate functions.
+- [x] `approx_count_distinct` helper added under the function catalog.
+- [x] Standard Substrait `approx_count_distinct` extension metadata added.
+- [x] DataFusion adapter-local `approx_count_distinct` to `approx_distinct` mapping added.
+- [x] Focused helper, registry, Substrait lowering, Prism, and DataFusion-backed session tests added.
+- [x] User-facing approximate-function docs, aggregate-builder docs, and release notes added.
+- [ ] Approximate percentile semantics specified and implemented.
+- [ ] Sketch-state logical types specified and implemented.
+- [ ] Sketch merge, estimate, serialize, and deserialize helpers specified and implemented.

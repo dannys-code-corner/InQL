@@ -1,0 +1,80 @@
+"""Test: RFC 023 approximate aggregate helper surface."""
+
+from std.testing import assert_is_err, fail_t
+from functions import approx_count_distinct, asc, col, eq, str_lit
+from aggregate_builders import AggregateKind
+from function_registry import function_ref_for
+from projection_builders import column_expr_name
+from substrait.errors import SubstraitLoweringErrorKind
+from substrait.relations import read_named_table_rel, try_aggregate_rel_of_columns
+from substrait.schema import RowColumnSpec, SubstraitPrimitiveKind
+from substrait.schema_registry import register_named_table_schema
+
+
+def _register_approx_orders_schema() -> None:
+    """Register a small table schema for aggregate lowering tests."""
+    register_named_table_schema(
+        "approx_orders",
+        [RowColumnSpec(name="customer_id", kind=SubstraitPrimitiveKind.String, nullable=false), RowColumnSpec(
+            name="product_id",
+            kind=SubstraitPrimitiveKind.String,
+            nullable=true,
+        )],
+    )
+
+
+def test_approximate_functions__approx_count_distinct_builds_aggregate_measure() -> None:
+    # -- Arrange --
+    product_id = col("product_id")
+
+    # -- Act --
+    measure = approx_count_distinct(product_id)
+
+    # -- Assert --
+    assert measure.kind == AggregateKind.ApproxCountDistinct, "approx_count_distinct should use its own aggregate kind"
+    assert measure.function_ref == function_ref_for("approx_count_distinct"), "measure should preserve registry identity"
+    assert measure.canonical_name == "approx_count_distinct", "measure should preserve canonical helper name"
+    assert measure.has_expr, "approx_count_distinct should require an input expression"
+    assert not measure.is_distinct, "approx_count_distinct should not add a distinct modifier"
+    assert not measure.has_filter, "approx_count_distinct should start without a filter"
+    assert len(measure.ordering) == 0, "approx_count_distinct should start without ordered input"
+    assert column_expr_name(measure.expr) == "product_id", "measure should preserve the input expression"
+
+
+def test_approximate_functions__approx_count_distinct_allows_filter_but_not_distinct_or_ordered_input() -> None:
+    # -- Arrange --
+    _register_approx_orders_schema()
+    base = read_named_table_rel("approx_orders")
+    product_id = col("product_id")
+    paid = eq(col("customer_id"), str_lit("A"))
+
+    # -- Act --
+    filtered_result = try_aggregate_rel_of_columns(
+        base.clone(),
+        ["customer_id", "product_id"],
+        [col("customer_id")],
+        [approx_count_distinct(product_id.clone()).filter(paid)],
+    )
+    distinct_result = try_aggregate_rel_of_columns(
+        base.clone(),
+        ["customer_id", "product_id"],
+        [col("customer_id")],
+        [approx_count_distinct(product_id.clone()).distinct()],
+    )
+    ordered_result = try_aggregate_rel_of_columns(
+        base,
+        ["customer_id", "product_id"],
+        [col("customer_id")],
+        [approx_count_distinct(product_id).order_by([asc(col("product_id"))])],
+    )
+
+    # -- Assert --
+    match filtered_result:
+        Ok(_) => pass
+        Err(err) => return fail_t(err.error_message())
+    distinct_err = assert_is_err(distinct_result, "approx_count_distinct should reject extra DISTINCT")
+    ordered_err = assert_is_err(ordered_result, "approx_count_distinct should reject ordered input")
+    assert distinct_err.kind == SubstraitLoweringErrorKind.InvalidScalarExpression, "distinct rejection should be a lowering diagnostic"
+    assert ordered_err.kind == SubstraitLoweringErrorKind.InvalidScalarExpression, "ordered-input rejection should be a lowering diagnostic"
+    assert distinct_err.message.contains("DISTINCT"), "distinct rejection should identify the modifier"
+    assert ordered_err.message.contains("ordered aggregate input"), "ordered rejection should identify the modifier"

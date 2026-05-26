@@ -73,6 +73,8 @@ from rust::datafusion::dataframe import DataFrameWriteOptions
 from rust::datafusion_substrait::substrait::proto import Plan as ConsumerPlan
 from rust::datafusion_substrait::logical_plan::consumer import from_substrait_plan
 from rust::inql_datafusion_format import register_format_udfs
+from rust::substrait::proto::extensions import SimpleExtensionDeclaration
+from rust::substrait::proto::extensions::simple_extension_declaration import ExtensionFunction, MappingType
 from backends import SourceKind, TableSource
 from dataset.materialization import DataFrameMaterialization
 from session.backend_types import BackendError, BackendErrorKind, BackendRegistration, backend_error
@@ -96,6 +98,9 @@ from substrait.relations import project_rel_with_expressions, read_named_table_r
 from substrait.schema import RowColumnSpec, SubstraitPrimitiveKind
 from substrait.schema_registry import register_named_table_schema
 from substrait.window_metadata import WINDOW_NULL_TREATMENT_OPTION, WINDOW_OUTPUT_NAME_OPTION
+
+const SUBSTRAIT_APPROX_COUNT_DISTINCT_FUNCTION_NAME: str = "approx_count_distinct"
+const DATAFUSION_APPROX_COUNT_DISTINCT_FUNCTION_NAME: str = "approx_distinct"
 
 
 @derive(Clone)
@@ -1642,10 +1647,54 @@ def datafusion_registration_for_source(source: TableSource) -> DataFusionSourceR
 
 def _consumer_plan_from_current_plan(plan: Plan) -> Result[ConsumerPlan, BackendError]:
     """Decode the producer-side plan bytes into DataFusion's consumer Plan type."""
-    encoded = plan.encode_to_vec()
+    encoded = _datafusion_producer_plan(plan).encode_to_vec()
     match ConsumerPlan.decode(encoded.as_slice()):
         Ok(decoded) => return Ok(decoded)
         Err(err) => return Err(backend_error(BackendErrorKind.BackendPlanningError, err.to_string()))
+
+
+def _datafusion_producer_plan(plan: Plan) -> Plan:
+    """Return a producer plan with extension names adapted for the DataFusion consumer only."""
+    # Rebuild the producer-side plan before encoding so InQL's emitted plan keeps standard Substrait names.
+    # The DataFusion consumer re-export currently does not expose extension declarations to Incan metadata.
+    return Plan(
+        version=plan.version,
+        extension_urns=plan.extension_urns,
+        extensions=[_datafusion_extension_declaration(extension) for extension in plan.extensions],
+        relations=plan.relations,
+        advanced_extensions=plan.advanced_extensions,
+        expected_type_urls=plan.expected_type_urls,
+        parameter_bindings=plan.parameter_bindings,
+        type_aliases=plan.type_aliases,
+    )
+
+
+def _datafusion_extension_declaration(extension: SimpleExtensionDeclaration) -> SimpleExtensionDeclaration:
+    """Return one extension declaration adapted to DataFusion implementation names when required."""
+    match extension.mapping_type:
+        Some(MappingType.ExtensionFunction(function)) =>
+            if function.name == SUBSTRAIT_APPROX_COUNT_DISTINCT_FUNCTION_NAME:
+                return _renamed_datafusion_extension_function(function, DATAFUSION_APPROX_COUNT_DISTINCT_FUNCTION_NAME)
+            return SimpleExtensionDeclaration(mapping_type=Some(MappingType.ExtensionFunction(function)))
+        _ => return extension
+
+
+def _renamed_datafusion_extension_function(
+    function: ExtensionFunction,
+    datafusion_name: str,
+) -> SimpleExtensionDeclaration:
+    """Return one extension-function declaration preserving anchor and URN while changing the consumer name."""
+    return SimpleExtensionDeclaration(
+        mapping_type=Some(
+            MappingType.ExtensionFunction(
+                ExtensionFunction(
+                    extension_urn_reference=function.extension_urn_reference,
+                    function_anchor=function.function_anchor,
+                    name=datafusion_name,
+                ),
+            ),
+        ),
+    )
 
 
 def _rust_usize_to_int(value: RustUsize) -> Result[int, BackendError]:

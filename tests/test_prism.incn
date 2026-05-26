@@ -1,6 +1,19 @@
 """Internal Prism engine tests against the shared-store cursor substrate."""
 
-from functions import always_false, always_true, col, count, count_expr, explode, lit, mul, row_number, sum, window
+from functions import (
+    approx_count_distinct,
+    always_false,
+    always_true,
+    col,
+    count,
+    count_expr,
+    explode,
+    lit,
+    mul,
+    row_number,
+    sum,
+    window,
+)
 from prism import (
     PrismCursor,
     prism_cursor_apply_filter,
@@ -340,6 +353,22 @@ def test_prism__rewrite_collapses_adjacent_compatible_windows() -> None:
     assert prism_cursor_rewrite_applied_rule_name_at(windowed, 0) == str("collapse_adjacent_window"), "window rewrite trace should record adjacent window collapse"
     assert prism_cursor_output_columns(windowed) == ["id", "first_row_num", "second_row_num"], "collapsed window projections should preserve output aliases"
     assert relation_kind_name(root_rel(plan)) == str("ConsistentPartitionWindowRel"), "collapsed window rewrite should still lower through WindowRel"
+
+
+def test_prism__aggregate_output_columns_include_approximate_measures() -> None:
+    # -- Arrange --
+    _register_projection_test_schema(str("orders"))
+    aggregated: PrismCursor[Order] = prism_cursor_named_table(str("orders")).group_by([col("id")]).agg(
+        [approx_count_distinct(col("id"))],
+    )
+
+    # -- Act --
+    output_cols = prism_cursor_output_columns(aggregated)
+    plan = aggregated.to_substrait_plan()
+
+    # -- Assert --
+    assert output_cols == ["id", "approx_count_distinct_id"], "approximate aggregate output columns should stay stable through Prism"
+    assert relation_kind_name(root_rel(plan)) == str("AggregateRel"), "approximate aggregate should lower through AggregateRel"
 
 
 def test_prism__with_column_tracks_output_columns_and_collapses_adjacent_projects() -> None:

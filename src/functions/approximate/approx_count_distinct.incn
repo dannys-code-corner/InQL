@@ -1,0 +1,45 @@
+"""
+Approximate distinct-count aggregate helper.
+
+`approx_count_distinct` estimates the number of distinct non-null values produced by one expression.
+"""
+
+from aggregate_builders import AggregateKind, AggregateMeasure, approx_count_distinct as approx_count_distinct_builder
+from function_registry import (
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    approx_count_distinct_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import function_registry
+from projection_builders import ColumnExpr, col, column_expr_name
+from substrait.function_extensions import APPROX_COUNT_DISTINCT_FUNCTION_ANCHOR
+
+
+@function_registry.add("approx_count_distinct", approx_count_distinct_spec(
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionNullBehavior.NullSkippingAggregate,
+    extension_mapping("approx_count_distinct", APPROX_COUNT_DISTINCT_FUNCTION_ANCHOR),
+))
+pub def approx_count_distinct(expr: ColumnExpr) -> AggregateMeasure:
+    """
+    Estimate distinct non-null values produced by one expression.
+
+    Examples:
+        active_users = approx_count_distinct(col("user_id"))
+
+    Parameters:
+        expr: Expression whose distinct non-null values should be estimated.
+    """
+    return approx_count_distinct_builder(expr)
+
+
+module tests:
+    def test_approx_count_distinct_builds_approximate_aggregate_measure() -> None:
+        measure = approx_count_distinct(col("user_id"))
+        assert measure.kind == AggregateKind.ApproxCountDistinct
+        assert measure.has_expr
+        assert not measure.is_distinct
+        assert not measure.has_filter
+        assert column_expr_name(measure.expr) == "user_id"

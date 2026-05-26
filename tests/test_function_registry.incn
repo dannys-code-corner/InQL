@@ -8,6 +8,7 @@ from functions import (
     always_false,
     always_true,
     and_,
+    approx_count_distinct,
     asc,
     asc_nulls_first,
     asc_nulls_last,
@@ -167,6 +168,7 @@ from substrait.function_extensions import (
     ABS_FUNCTION_ANCHOR,
     ADD_FUNCTION_ANCHOR,
     AND_FUNCTION_ANCHOR,
+    APPROX_COUNT_DISTINCT_FUNCTION_ANCHOR,
     ARRAY_DISTINCT_FUNCTION_ANCHOR,
     ARRAY_ELEMENT_FUNCTION_ANCHOR,
     ARRAY_EXCEPT_FUNCTION_ANCHOR,
@@ -320,12 +322,12 @@ def _local_entry_by_namespace_and_name_or_fail(
 
 def _expected_registry_names() -> list[str]:
     """Return the expected registered public helper names."""
-    return ["col", "lit", "sum", "count", "count_expr", "count_distinct", "count_if", "avg", "min", "max", "int_expr", "float_expr", "str_expr", "bool_expr", "add", "mul", "int_lit", "str_lit", "bool_lit", "always_true", "always_false", "eq", "gt", "cast", "try_cast", "ne", "lt", "lte", "gte", "equal_null", "and_", "or_", "not_", "is_null", "is_not_null", "is_nan", "is_not_nan", "sub", "div", "mod", "neg", "coalesce", "nullif", "case_when", "in_", "between", "asc", "desc", "asc_nulls_first", "asc_nulls_last", "desc_nulls_first", "desc_nulls_last", "abs", "ceil", "floor", "round", "array", "array_contains", "array_distinct", "array_except", "array_flatten", "array_intersect", "array_join", "array_position", "range", "array_reverse", "array_slice", "array_sort", "array_union", "arrays_overlap", "cardinality", "element_at", "map_contains_key", "map_entries", "map_extract", "map_from_arrays", "map_keys", "map_values", "named_struct", "explode", "explode_outer", "posexplode", "posexplode_outer", "inline", "inline_outer", "flatten", "stack", "window", "unbounded_preceding", "preceding", "current_row", "following", "unbounded_following", "row_number", "rank", "dense_rank", "percent_rank", "cume_dist", "ntile", "lag", "lead", "first_value", "last_value", "nth_value", "sha224", "sha256", "sha384", "sha512", "sha2", "md5", "sha1", "crc32", "xxhash64", "parse_url", "try_url_decode", "url_decode", "url_encode", "check_json", "from_json", "get_json_object", "json_array_length", "json_extract_path_text", "json_object_keys", "parse_json", "schema_of_json", "to_json", "try_from_json", "from_csv", "schema_of_csv", "to_csv"]
+    return ["col", "lit", "sum", "count", "count_expr", "count_distinct", "count_if", "avg", "min", "max", "approx_count_distinct", "int_expr", "float_expr", "str_expr", "bool_expr", "add", "mul", "int_lit", "str_lit", "bool_lit", "always_true", "always_false", "eq", "gt", "cast", "try_cast", "ne", "lt", "lte", "gte", "equal_null", "and_", "or_", "not_", "is_null", "is_not_null", "is_nan", "is_not_nan", "sub", "div", "mod", "neg", "coalesce", "nullif", "case_when", "in_", "between", "asc", "desc", "asc_nulls_first", "asc_nulls_last", "desc_nulls_first", "desc_nulls_last", "abs", "ceil", "floor", "round", "array", "array_contains", "array_distinct", "array_except", "array_flatten", "array_intersect", "array_join", "array_position", "range", "array_reverse", "array_slice", "array_sort", "array_union", "arrays_overlap", "cardinality", "element_at", "map_contains_key", "map_entries", "map_extract", "map_from_arrays", "map_keys", "map_values", "named_struct", "explode", "explode_outer", "posexplode", "posexplode_outer", "inline", "inline_outer", "flatten", "stack", "window", "unbounded_preceding", "preceding", "current_row", "following", "unbounded_following", "row_number", "rank", "dense_rank", "percent_rank", "cume_dist", "ntile", "lag", "lead", "first_value", "last_value", "nth_value", "sha224", "sha256", "sha384", "sha512", "sha2", "md5", "sha1", "crc32", "xxhash64", "parse_url", "try_url_decode", "url_decode", "url_encode", "check_json", "from_json", "get_json_object", "json_array_length", "json_extract_path_text", "json_object_keys", "parse_json", "schema_of_json", "to_json", "try_from_json", "from_csv", "schema_of_csv", "to_csv"]
 
 
 def _expected_substrait_mapped_names() -> list[str]:
     """Return helpers with concrete Substrait extension-function mappings."""
-    return ["sum", "count", "avg", "min", "max", "add", "mul", "eq", "gt", "ne", "lt", "lte", "gte", "equal_null", "and_", "or_", "not_", "is_null", "is_not_null", "is_nan", "sub", "div", "mod", "neg", "coalesce", "nullif", "between", "abs", "ceil", "floor", "round", "array", "array_contains", "array_distinct", "array_except", "array_flatten", "array_intersect", "array_join", "array_position", "range", "array_reverse", "array_slice", "array_sort", "array_union", "arrays_overlap", "cardinality", "element_at", "map_entries", "map_extract", "map_from_arrays", "map_keys", "map_values", "named_struct", "row_number", "rank", "dense_rank", "percent_rank", "cume_dist", "ntile", "lag", "lead", "first_value", "last_value", "nth_value", "sha224", "sha256", "sha384", "sha512", "md5", "sha1", "crc32", "xxhash64", "parse_url", "try_url_decode", "url_decode", "url_encode", "check_json", "from_json", "get_json_object", "json_array_length", "json_extract_path_text", "json_object_keys", "parse_json", "schema_of_json", "to_json", "try_from_json", "from_csv", "schema_of_csv", "to_csv"]
+    return ["sum", "count", "avg", "min", "max", "approx_count_distinct", "add", "mul", "eq", "gt", "ne", "lt", "lte", "gte", "equal_null", "and_", "or_", "not_", "is_null", "is_not_null", "is_nan", "sub", "div", "mod", "neg", "coalesce", "nullif", "between", "abs", "ceil", "floor", "round", "array", "array_contains", "array_distinct", "array_except", "array_flatten", "array_intersect", "array_join", "array_position", "range", "array_reverse", "array_slice", "array_sort", "array_union", "arrays_overlap", "cardinality", "element_at", "map_entries", "map_extract", "map_from_arrays", "map_keys", "map_values", "named_struct", "row_number", "rank", "dense_rank", "percent_rank", "cume_dist", "ntile", "lag", "lead", "first_value", "last_value", "nth_value", "sha224", "sha256", "sha384", "sha512", "md5", "sha1", "crc32", "xxhash64", "parse_url", "try_url_decode", "url_decode", "url_encode", "check_json", "from_json", "get_json_object", "json_array_length", "json_extract_path_text", "json_object_keys", "parse_json", "schema_of_json", "to_json", "try_from_json", "from_csv", "schema_of_csv", "to_csv"]
 
 
 def _exercise_current_public_helpers() -> None:
@@ -354,6 +356,7 @@ def _exercise_current_public_helpers() -> None:
     avg(amount)
     min(amount)
     max(amount)
+    approx_count_distinct(status)
     add(amount, lit(1))
     mul(amount, int_lit(2))
     eq(status, str_lit("paid"))
@@ -614,6 +617,7 @@ def test_function_registry__aggregate_helpers_expose_modifier_policy() -> None:
     # -- Act --
     count_entry = _entry_by_name_or_fail("count")
     sum_entry = _entry_by_name_or_fail("sum")
+    approx_entry = _entry_by_name_or_fail("approx_count_distinct")
     abs_entry = _entry_by_name_or_fail("abs")
 
     # -- Assert --
@@ -622,8 +626,28 @@ def test_function_registry__aggregate_helpers_expose_modifier_policy() -> None:
     assert not count_entry.aggregate_modifiers.allows_ordered_input, "core aggregates should reject ordered input until an order-sensitive aggregate lands"
     assert sum_entry.aggregate_modifiers.allows_distinct, "numeric aggregates should allow DISTINCT"
     assert sum_entry.aggregate_modifiers.allows_filter, "numeric aggregates should allow aggregate-local filters"
+    assert not approx_entry.aggregate_modifiers.allows_distinct, "approximate distinct-count semantics should reject an extra DISTINCT modifier"
+    assert approx_entry.aggregate_modifiers.allows_filter, "approximate distinct-count should allow aggregate-local filters"
+    assert not approx_entry.aggregate_modifiers.allows_ordered_input, "approximate distinct-count should reject ordered input"
     assert not abs_entry.aggregate_modifiers.allows_distinct, "scalar helpers should not expose aggregate modifier support"
     assert not abs_entry.aggregate_modifiers.allows_filter, "scalar helpers should not expose aggregate modifier support"
+
+
+def test_function_registry__approximate_helpers_expose_approximation_policy() -> None:
+    """Assert approximate helpers are explicit registry metadata, not hidden backend choices."""
+    # -- Arrange --
+    _exercise_current_public_helpers()
+
+    # -- Act --
+    approx_entry = _entry_by_name_or_fail("approx_count_distinct")
+    count_entry = _entry_by_name_or_fail("count")
+
+    # -- Assert --
+    assert approx_entry.approximation.is_approximate, "approx_count_distinct should be explicitly approximate"
+    assert approx_entry.approximation.algorithm == "HyperLogLog", "approx_count_distinct should expose its sketch family"
+    assert approx_entry.approximation.mergeable, "approx_count_distinct should be marked mergeable"
+    assert approx_entry.approximation.result_interpretation.contains("cardinality"), "approx_count_distinct should describe its result"
+    assert not count_entry.approximation.is_approximate, "exact count should not inherit approximation metadata"
 
 
 def test_function_registry__extension_policy_is_separate_from_scalar_class() -> None:
@@ -732,6 +756,7 @@ def test_function_registry__substrait_extension_mappings_are_structured() -> Non
     _assert_extension_mapping("avg", "avg", AVG_FUNCTION_ANCHOR)
     _assert_extension_mapping("min", "min", MIN_FUNCTION_ANCHOR)
     _assert_extension_mapping("max", "max", MAX_FUNCTION_ANCHOR)
+    _assert_extension_mapping("approx_count_distinct", "approx_count_distinct", APPROX_COUNT_DISTINCT_FUNCTION_ANCHOR)
     _assert_extension_mapping("add", "add", ADD_FUNCTION_ANCHOR)
     _assert_extension_mapping("mul", "multiply", MULTIPLY_FUNCTION_ANCHOR)
     _assert_extension_mapping("eq", "equal", EQUAL_FUNCTION_ANCHOR)
@@ -925,6 +950,7 @@ def test_function_registry__public_helpers_preserve_existing_behavior() -> None:
     avg_measure = avg(amount)
     min_measure = min(amount)
     max_measure = max(amount)
+    approx_count_distinct_measure = approx_count_distinct(status)
     add_expr = add(amount, lit(7))
     eq_expr = eq(status, str_lit("paid"))
     gt_expr = gt(amount, int_lit(10))
@@ -969,6 +995,7 @@ def test_function_registry__public_helpers_preserve_existing_behavior() -> None:
     assert avg_measure.kind == AggregateKind.Avg, "avg wrapper should preserve aggregate kind"
     assert min_measure.kind == AggregateKind.Min, "min wrapper should preserve aggregate kind"
     assert max_measure.kind == AggregateKind.Max, "max wrapper should preserve aggregate kind"
+    assert approx_count_distinct_measure.kind == AggregateKind.ApproxCountDistinct, "approx_count_distinct wrapper should preserve aggregate kind"
     assert column_expr_kind(add_expr) == ColumnExprKind.ScalarFunction, "add should use the shared scalar function kind"
     assert column_expr_kind(eq_expr) == ColumnExprKind.ScalarFunction, "eq should use the shared scalar function kind"
     assert column_expr_kind(gt_expr) == ColumnExprKind.ScalarFunction, "gt should use the shared scalar function kind"

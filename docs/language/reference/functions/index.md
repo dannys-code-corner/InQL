@@ -11,10 +11,11 @@ Today the concrete shipped surfaces are documented here:
 - [Nested data functions](nested.md)
 - [Window functions](windows.md)
 - [Format functions](format.md)
+- [Approximate functions](approximate.md)
 
 The canonical scalar literal helper is `lit(...)`. Typed literal helpers construct the same scalar-expression representation.
 
-The current registry-backed helper surface covers references, literals, casts, operators, predicates, conditionals, math, ordering, aggregates, generators, nested data, windows, and format helpers. Each runtime entry exposes a stable function reference such as `inql.functions.col`, namespace, canonical name, typed lifecycle metadata (`since`, versioned changes, and optional deprecation), function policy category, function class, null behavior, alias policy, aggregate modifier policy, and Substrait mapping metadata. Checked public helpers provide the signature and, by default, the canonical name; metadata may override the canonical name only for source spelling constraints such as the reserved-word `mod` case.
+The current registry-backed helper surface covers references, literals, casts, operators, predicates, conditionals, math, ordering, aggregates, generators, nested data, windows, format helpers, and approximate aggregates. Each runtime entry exposes a stable function reference such as `inql.functions.col`, namespace, canonical name, typed lifecycle metadata (`since`, versioned changes, and optional deprecation), function policy category, function class, null behavior, alias policy, aggregate modifier policy, approximation metadata, and Substrait mapping metadata. Checked public helpers provide the signature and, by default, the canonical name; metadata may override the canonical name only for source spelling constraints such as the reserved-word `mod` case.
 
 The registry is the source for non-derivable machine facts. Public helper declarations are the source for argument names, argument types, and return types. Docstrings remain human-facing explanation, examples, and parameter intent. The `registry-metadata` check validates the checked API metadata projections produced from public facade aliases, registry decorators, and decorated callable signatures. Runtime registry entries are lazy and process-local: they support helper execution and lowering for loaded helpers, while the complete public catalog comes from checked metadata. This matters for generated docs, diagnostics, Prism lowering, and backend capability checks as the catalog grows.
 
@@ -41,5 +42,6 @@ The registered helper surface currently includes:
 | `md5(...)`, `sha1(...)`, `sha224(...)`, `sha256(...)`, `sha384(...)`, `sha512(...)`, `sha2(...)`, `crc32(...)`, `xxhash64(...)`, JSON helpers, CSV helpers, URL helpers | scalar | registered RFC 022 format helpers; concrete helpers lower through Substrait extension mappings, while `sha2(...)` rewrites to a supported concrete SHA-2 helper |
 | `asc(...)`, `desc(...)`, `asc_nulls_first(...)`, `asc_nulls_last(...)`, `desc_nulls_first(...)`, `desc_nulls_last(...)` | ordering | structural sort-field helpers consumed by `order_by(...)` and lowered to Substrait `SortRel.sorts` |
 | `sum(...)`, `count(...)`, `count_expr(...)`, `count_distinct(...)`, `count_if(...)`, `avg(...)`, `min(...)`, `max(...)` | aggregate | registered Substrait extension functions for core aggregates plus compatibility rewrites for `count_expr(...)`, `count_distinct(...)`, and `count_if(...)`; core aggregates allow `DISTINCT` and aggregate-local `FILTER` where the aggregate shape is valid |
+| `approx_count_distinct(...)` | aggregate | approximate aggregate that lowers through the standard Substrait `approx_count_distinct` extension and is adapted to DataFusion's `approx_distinct` implementation at the backend boundary |
 
 Future ANSI-style families should grow under this section instead of bloating `dataset_types` or `dataset_methods`.

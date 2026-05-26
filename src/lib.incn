@@ -85,6 +85,7 @@ pub from functions.aggregates.sum import sum
 pub from functions.aggregates.avg import avg
 pub from functions.aggregates.min import min
 pub from functions.aggregates.max import max
+pub from functions.approximate.approx_count_distinct import approx_count_distinct
 pub from functions.math.abs import abs
 pub from functions.math.ceil import ceil
 pub from functions.math.floor import floor
@@ -195,6 +196,8 @@ pub from functions.ordering.desc_nulls_last import desc_nulls_last
 pub from functions.formatting.display import display
 pub from function_registry import (
     AggregateModifierPolicy,
+    APPROX_COUNT_DISTINCT_POLICY,
+    APPROX_DISTINCT_AGGREGATE_MODIFIERS,
     CORE_AGGREGATE_MODIFIERS,
     CORE_FUNCTION_NAMESPACE,
     FunctionAliasPolicy,
@@ -206,14 +209,17 @@ pub from function_registry import (
     FunctionLifecycle,
     FunctionNullBehavior,
     FunctionPolicyCategory,
+    FunctionApproximationPolicy,
     FunctionRegistry,
     FunctionRegistryEntry,
     FunctionSpec,
     FunctionVersion,
     NO_AGGREGATE_MODIFIERS,
+    NO_APPROXIMATION,
     RejectedFunctionPolicy,
     SubstraitMapping,
     SubstraitMappingKind,
+    approx_count_distinct_spec,
     compatibility_alias_spec,
     deterministic_spec,
     engine_specific_spec,

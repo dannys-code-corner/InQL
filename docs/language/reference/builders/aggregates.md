@@ -16,6 +16,7 @@ Current aggregate authoring is explicit and scalar-expression-based.
 | `avg`   | `def avg(expr: ColumnExpr) -> AggregateMeasure`             | Average one numeric scalar expression.                                 |
 | `min`   | `def min(expr: ColumnExpr) -> AggregateMeasure`             | Return the minimum non-null value for one orderable scalar expression.  |
 | `max`   | `def max(expr: ColumnExpr) -> AggregateMeasure`             | Return the maximum non-null value for one orderable scalar expression.  |
+| `approx_count_distinct` | `def approx_count_distinct(expr: ColumnExpr) -> AggregateMeasure` | Estimate distinct non-null expression values. |
 
 ## Modifiers
 
@@ -30,7 +31,7 @@ Aggregate measures support method-style modifiers:
 ## Example
 
 ```incan
-from pub::inql.functions import add, avg, col, count, count_distinct, count_if, eq, lit, max, min, str_lit, sum
+from pub::inql.functions import add, approx_count_distinct, avg, col, count, count_distinct, count_if, eq, lit, max, min, str_lit, sum
 
 grouped = orders.group_by([col("customer_id")]).agg([
     sum(add(col("amount"), lit(5))),
@@ -42,6 +43,7 @@ grouped = orders.group_by([col("customer_id")]).agg([
     avg(col("amount")),
     min(col("created_at")),
     max(col("created_at")),
+    approx_count_distinct(col("user_id")),
 ])
 ```
 
@@ -55,5 +57,7 @@ grouped = orders.group_by([col("customer_id")]).agg([
 - `count_if(predicate)` is compatibility sugar for `count().filter(predicate)`. Rows where the predicate is false or
   null do not contribute to the aggregate.
 - `sum`, `avg`, `min`, and `max` skip null values. They return backend-null results when no non-null input value exists.
+- `approx_count_distinct(expr)` is approximate by contract, skips null values, allows aggregate-local filters, and rejects
+  an extra `distinct()` modifier because distinct estimation is already the helper's semantics.
 - Unsupported aggregate modifiers fail at lowering or backend planning; they are not ignored.
 - Future `.column` sugar and scoped aggregate symbols should lower to this same surface rather than replacing its semantics.
