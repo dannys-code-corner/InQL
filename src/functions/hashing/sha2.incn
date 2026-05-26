@@ -1,0 +1,76 @@
+"""
+SHA-2 compatibility helper.
+
+`sha2(expr, bits)` rewrites to the matching concrete SHA-2 helper for supported digest lengths.
+"""
+
+from rust::incan_stdlib::errors import raise_value_error
+from function_registry import (
+    FunctionClass,
+    FunctionDeterminism,
+    FunctionErrorBehavior,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    compatibility_alias_spec,
+    core_function_namespace,
+    rewrite_mapping,
+    v0_1,
+)
+from functions.hashing.sha224 import sha224
+from functions.hashing.sha256 import sha256
+from functions.hashing.sha384 import sha384
+from functions.hashing.sha512 import sha512
+from functions.registry import function_registry
+from projection_builders import ColumnExpr
+
+
+@function_registry.add("sha2", compatibility_alias_spec(
+    core_function_namespace(),
+    FunctionClass.Scalar,
+    ["sha224", "sha256", "sha384", "sha512"],
+    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    FunctionDeterminism.Deterministic,
+    FunctionNullBehavior.DependsOnInputs,
+    FunctionErrorBehavior.InvalidInputDiagnostic,
+    rewrite_mapping("sha2(expr, bits) -> sha224/sha256/sha384/sha512(expr) for supported literal bit lengths"),
+))
+pub def sha2(expr: ColumnExpr, bit_length: int) -> ColumnExpr:
+    """
+    Build a SHA-2 hexadecimal digest expression for a supported digest length.
+
+    Examples:
+        user_digest = sha2(col("user_id"), 256)
+
+    Parameters:
+        expr: String expression whose UTF-8 bytes should be hashed.
+        bit_length: Supported digest size: 224, 256, 384, or 512.
+    """
+    if bit_length == 224:
+        return sha224(expr)
+    if bit_length == 256:
+        return sha256(expr)
+    if bit_length == 384:
+        return sha384(expr)
+    if bit_length == 512:
+        return sha512(expr)
+    return raise_value_error("sha2 bit_length must be one of 224, 256, 384, or 512")
+
+
+module tests:
+    from std.testing import assert_raises
+    from projection_builders import (
+        ColumnExprKind,
+        col,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+    )
+    def test_sha2_rewrites_to_supported_sha2_helper() -> None:
+        expr = sha2(col("payload"), 256)
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "sha256"
+        assert column_expr_argument_count(expr) == 1
+    def _call_sha2_with_unsupported_length() -> None:
+        sha2(col("payload"), 1)
+    def test_sha2_rejects_unsupported_bit_length() -> None:
+        assert_raises[ValueError](_call_sha2_with_unsupported_length)

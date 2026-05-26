@@ -59,6 +59,7 @@ from functions import (
     map_keys,
     map_values,
     max,
+    md5,
     min,
     modulo,
     mul,
@@ -74,6 +75,11 @@ from functions import (
     rank,
     round,
     row_number,
+    sha2,
+    sha224,
+    sha256,
+    sha384,
+    sha512,
     sub,
     sum,
     try_cast,
@@ -454,6 +460,12 @@ def test_plan__core_scalar_extension_mappings_lower_to_substrait() -> None:
     _assert_scalar_expr_lowers(ceil(div(col("amount"), lit(4.0))))
     _assert_scalar_expr_lowers(floor(div(col("amount"), lit(4.0))))
     _assert_scalar_expr_lowers(round(div(col("amount"), lit(4.0))))
+    _assert_scalar_expr_lowers(md5(col("status")))
+    _assert_scalar_expr_lowers(sha224(col("status")))
+    _assert_scalar_expr_lowers(sha256(col("status")))
+    _assert_scalar_expr_lowers(sha384(col("status")))
+    _assert_scalar_expr_lowers(sha512(col("status")))
+    _assert_scalar_expr_lowers(sha2(col("status"), 256))
 
 
 def test_plan__nested_scalar_extension_mappings_lower_to_substrait() -> None:

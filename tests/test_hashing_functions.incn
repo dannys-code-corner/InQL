@@ -1,0 +1,55 @@
+"""Test: RFC 022 hashing helper surface."""
+
+from std.testing import assert_raises
+from functions import col, md5, sha2, sha224, sha256, sha384, sha512
+from function_registry import function_ref_for
+from projection_builders import (
+    ColumnExpr,
+    ColumnExprKind,
+    column_expr_argument_count,
+    column_expr_function_name,
+    column_expr_function_ref,
+    column_expr_kind,
+)
+
+
+def _assert_hash_application(expr: ColumnExpr, expected_name: str) -> None:
+    """Assert one hashing helper builds a registry-backed scalar application."""
+    assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction, f"{expected_name} should use scalar application nodes"
+    assert column_expr_function_name(expr) == expected_name, f"{expected_name} should preserve its canonical name"
+    assert column_expr_function_ref(expr) == function_ref_for(expected_name), f"{expected_name} should preserve its function ref"
+    assert column_expr_argument_count(expr) == 1, f"{expected_name} should carry one string input expression"
+
+
+def _call_sha2_with_unsupported_length() -> None:
+    """Call sha2 with an unsupported digest length for ValueError assertions."""
+    sha2(col("payload"), 1)
+    return
+
+
+def test_hashing_functions__concrete_helpers_share_scalar_application_node() -> None:
+    # -- Arrange --
+    payload = col("payload")
+
+    # -- Act / Assert --
+    _assert_hash_application(md5(payload), "md5")
+    _assert_hash_application(sha224(payload), "sha224")
+    _assert_hash_application(sha256(payload), "sha256")
+    _assert_hash_application(sha384(payload), "sha384")
+    _assert_hash_application(sha512(payload), "sha512")
+
+
+def test_hashing_functions__sha2_rewrites_to_concrete_sha2_helpers() -> None:
+    # -- Arrange --
+    payload = col("payload")
+
+    # -- Act / Assert --
+    _assert_hash_application(sha2(payload, 224), "sha224")
+    _assert_hash_application(sha2(payload, 256), "sha256")
+    _assert_hash_application(sha2(payload, 384), "sha384")
+    _assert_hash_application(sha2(payload, 512), "sha512")
+
+
+def test_hashing_functions__sha2_rejects_unsupported_digest_lengths() -> None:
+    # -- Arrange / Act / Assert --
+    assert_raises[ValueError](_call_sha2_with_unsupported_length)

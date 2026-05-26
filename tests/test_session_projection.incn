@@ -18,11 +18,16 @@ from functions import (
     floor,
     gt,
     lit,
+    md5,
     modulo,
     mul,
     neg,
     nullif,
     round,
+    sha2,
+    sha224,
+    sha384,
+    sha512,
     sub,
     try_cast,
     cardinality,
@@ -206,6 +211,40 @@ def test_session_projection__collect_executes_common_math_scalar_projection_func
     assert payload.contains("4"), "ceil projection should include ceil(15 / 4.0)"
     assert payload.contains("1"), "floor projection should include floor(7 / 4.0)"
     assert payload.contains("3"), "round projection should include round(10 / 4.0)"
+
+
+def test_session_projection__collect_executes_format_hashing_projection_functions() -> None:
+    """collect should execute the first RFC 022 hashing helpers through DataFusion."""
+    # -- Arrange --
+    mut session = Session.default()
+
+    # -- Act --
+    lazy: LazyFrame[AggregateOrder] = assert_is_ok(
+        session.read_csv("aggregate_orders", AGGREGATE_ORDERS_CSV_FIXTURE),
+        "aggregate orders fixture should load",
+    )
+    projected = lazy.with_column("md5_abc", md5(lit("abc"))).with_column("sha224_abc", sha224(lit("abc"))).with_column(
+        "sha2_256_abc",
+        sha2(lit("abc"), 256),
+    ).with_column("sha384_abc", sha384(lit("abc"))).with_column("sha512_abc", sha512(lit("abc")))
+    df = _collect_or_fail(session, projected)
+    payload = df.preview_text()
+    resolved = df.resolved_columns()
+
+    # -- Assert --
+    assert df.row_count() == 3, "hashing projections should preserve the input rows"
+    assert len(resolved) == 7, "projection should expose all appended hash outputs"
+    assert payload.contains("md5_abc"), "md5 projection should materialize its alias"
+    assert payload.contains("sha2_256_abc"), "sha2 compatibility projection should materialize its alias"
+    assert payload.contains("900150983cd24fb0d6963f7d28e17f72"), "md5 should return the lowercase hex digest for abc"
+    assert payload.contains("23097d223405d8228642a477bda255b32aadbce4bda0b3f7e36c9da7"), "sha224 should return the lowercase hex digest for abc"
+    assert payload.contains("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"), "sha2(..., 256) should rewrite to sha256"
+    assert payload.contains(
+        "cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7",
+    ), "sha384 should return the lowercase hex digest for abc"
+    assert payload.contains(
+        "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f",
+    ), "sha512 should return the lowercase hex digest for abc"
 
 
 def test_session_projection__collect_executes_nested_scalar_projection_functions() -> None:

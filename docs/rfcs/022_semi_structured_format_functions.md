@@ -1,6 +1,6 @@
 # InQL RFC 022: Semi-structured and format functions
 
-- **Status:** Draft
+- **Status:** In Progress
 - **Created:** 2026-04-27
 - **Author(s):** Danny Meijer (@dannymeijer)
 - **Related:**
@@ -12,7 +12,7 @@
   - InQL RFC 020 (nested data functions)
 - **Issue:** [InQL #39](https://github.com/dannys-code-corner/InQL/issues/39)
 - **RFC PR:** —
-- **Written against:** Incan v0.2
+- **Written against:** Incan v0.3-era InQL
 - **Shipped in:** —
 
 ## Summary
@@ -115,12 +115,41 @@ This RFC is additive. It should not change existing CSV ingestion behavior.
 - **Execution / interchange** — Prism and Substrait lowering must preserve parser options, hash encodings, and structured return values or diagnose unsupported functions.
 - **Documentation** — docs should distinguish scalar format functions from session read/write APIs.
 
-## Unresolved questions
+## Design Decisions
+
+### Resolved
+
+- The first implementation slice is deterministic hashing. JSON, CSV, URL, dynamic-value predicates, and structured parser helpers remain future slices because their schema arguments, option records, path validation, and dynamic value model are not settled here.
+- Hash helpers in this slice operate on UTF-8 string bytes and return lowercase hexadecimal strings.
+- Portable concrete hash helpers are `md5`, `sha224`, `sha256`, `sha384`, and `sha512`, each with an honest Substrait extension mapping and DataFusion-backed execution coverage.
+- `sha2(expr, bit_length)` is a compatibility helper, not a separate backend mapping. It rewrites to `sha224`, `sha256`, `sha384`, or `sha512` for supported literal bit lengths and rejects unsupported values.
+- `sha1`, `crc32`, and `xxhash64` are not implemented in the first slice because no honest Substrait/DataFusion mapping was validated for this branch.
+
+### Remaining
 
 - Should `from_json` accept model types directly as schema arguments, or only explicit schema values?
 - Should invalid JSON path expressions be compile-time errors when literal and runtime errors otherwise?
 - What option-record shape should CSV and JSON scalar parsers use?
-- Should hash functions return binary values or lowercase hexadecimal strings by default?
+- Should future binary-oriented hash helpers return binary values, lowercase hexadecimal strings, or an explicit typed encoding wrapper?
 - Which variant-style type predicates are portable enough for InQL core, and which should stay in a Snowflake-compatibility extension?
 
-<!-- When every question is resolved, rename this section to **Design Decisions**, group answers under ### Resolved, and remove this comment. -->
+## Implementation Plan
+
+1. Add registry-backed hashing helpers under a logical function family.
+2. Add stable Substrait extension anchors for concrete hash helpers.
+3. Keep `sha2(...)` as a compatibility rewrite over concrete helpers rather than a second mapping.
+4. Add focused helper, registry, Substrait lowering, and DataFusion session tests with concrete digest values.
+5. Add user-facing format-function docs and release notes.
+6. Leave parser, URL, and dynamic-value helpers for later RFC 022 slices once their remaining design questions are resolved.
+
+## Progress Checklist
+
+- [x] RFC 022 moved to In Progress with a first implementation slice and recorded design decisions.
+- [x] `md5`, `sha224`, `sha256`, `sha384`, `sha512`, and `sha2` helpers added under the function catalog.
+- [x] Concrete hash helpers registered with Substrait extension metadata.
+- [x] `sha2(...)` implemented as a literal-bit-length rewrite with invalid-input diagnostics.
+- [x] Focused helper, registry, Substrait lowering, and DataFusion-backed session tests added.
+- [x] User-facing format-function docs and release notes added.
+- [ ] JSON and CSV scalar parser helpers specified and implemented.
+- [ ] URL helper semantics specified and implemented.
+- [ ] Dynamic-value predicate semantics specified and implemented.

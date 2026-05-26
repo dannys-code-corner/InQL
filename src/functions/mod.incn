@@ -81,6 +81,12 @@ pub from functions.windows.first_value import first_value
 pub from functions.windows.last_value import last_value
 pub from functions.windows.nth_value import nth_value
 pub from functions.windows.bounds import current_row, following, preceding, unbounded_following, unbounded_preceding
+pub from functions.hashing.md5 import md5
+pub from functions.hashing.sha2 import sha2
+pub from functions.hashing.sha224 import sha224
+pub from functions.hashing.sha256 import sha256
+pub from functions.hashing.sha384 import sha384
+pub from functions.hashing.sha512 import sha512
 pub from functions.operators.add import add
 pub from functions.operators.and_ import and_
 pub from functions.operators.div import div
