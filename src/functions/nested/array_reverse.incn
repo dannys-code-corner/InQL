@@ -1,0 +1,32 @@
+"""Array reverse helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import register_function, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import ARRAY_REVERSE_FUNCTION_ANCHOR
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=extension_mapping("array_reverse", ARRAY_REVERSE_FUNCTION_ANCHOR),
+))
+pub def array_reverse(array_expr: ColumnExpr) -> ColumnExpr:
+    """
+    Return an array with elements in reverse order.
+
+    Examples:
+        newest_first = array_reverse(col("events"))
+
+    Parameters:
+        array_expr: Array expression to reverse.
+    """
+    return registered_application("array_reverse", [array_expr])

@@ -1,0 +1,33 @@
+"""Array set-difference helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import register_function, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import ARRAY_EXCEPT_FUNCTION_ANCHOR
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=extension_mapping("array_except", ARRAY_EXCEPT_FUNCTION_ANCHOR),
+))
+pub def array_except(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
+    """
+    Return values from one array that are not present in another array.
+
+    Examples:
+        missing_tags = array_except(col("expected_tags"), col("actual_tags"))
+
+    Parameters:
+        left: Array expression that supplies candidate values.
+        right: Array expression containing values to remove.
+    """
+    return registered_application("array_except", [left, right])

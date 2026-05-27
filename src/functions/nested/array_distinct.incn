@@ -1,0 +1,32 @@
+"""Array distinct helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import register_function, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import ARRAY_DISTINCT_FUNCTION_ANCHOR
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=extension_mapping("array_distinct", ARRAY_DISTINCT_FUNCTION_ANCHOR),
+))
+pub def array_distinct(array_expr: ColumnExpr) -> ColumnExpr:
+    """
+    Return an array with duplicate values removed.
+
+    Examples:
+        unique_tags = array_distinct(col("tags"))
+
+    Parameters:
+        array_expr: Array expression to de-duplicate.
+    """
+    return registered_application("array_distinct", [array_expr])

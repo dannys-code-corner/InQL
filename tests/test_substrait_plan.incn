@@ -6,6 +6,19 @@ from functions import (
     add,
     always_true,
     and_,
+    array,
+    array_contains,
+    array_distinct,
+    array_except,
+    array_flatten,
+    array_intersect,
+    array_join,
+    array_position,
+    array_reverse,
+    array_slice,
+    array_sort,
+    array_union,
+    arrays_overlap,
     asc,
     asc_nulls_last,
     avg,
@@ -33,12 +46,19 @@ from functions import (
     lit,
     lt,
     lte,
+    map_contains_key,
+    map_entries,
+    map_extract,
+    map_from_arrays,
+    map_keys,
+    map_values,
     max,
     min,
     modulo,
     mul,
     ne,
     neg,
+    named_struct,
     not_,
     nullif,
     or_,
@@ -46,6 +66,8 @@ from functions import (
     sub,
     sum,
     try_cast,
+    cardinality,
+    element_at,
 )
 from projection_builders import ColumnExpr, with_column_assignment
 from substrait.errors import SubstraitLoweringErrorKind
@@ -371,6 +393,38 @@ def test_plan__core_scalar_extension_mappings_lower_to_substrait() -> None:
     _assert_scalar_expr_lowers(ceil(div(col("amount"), lit(4.0))))
     _assert_scalar_expr_lowers(floor(div(col("amount"), lit(4.0))))
     _assert_scalar_expr_lowers(round(div(col("amount"), lit(4.0))))
+
+
+def test_plan__nested_scalar_extension_mappings_lower_to_substrait() -> None:
+    """Assert RFC 020 nested scalar helpers emit Substrait scalar functions."""
+    # -- Arrange --
+    tags = array([lit("paid"), lit("open"), col("status")])
+    other_tags = array([lit("paid"), lit("closed")])
+    attr_map = map_from_arrays(array([lit("status")]), array([col("status")]))
+
+    # -- Act / Assert --
+    _assert_scalar_expr_lowers(tags)
+    _assert_scalar_expr_lowers(cardinality(tags))
+    _assert_scalar_expr_lowers(array_contains(tags, lit("paid")))
+    _assert_scalar_expr_lowers(array_position(tags, lit("paid")))
+    _assert_scalar_expr_lowers(element_at(tags, lit(1)))
+    _assert_scalar_expr_lowers(array_sort(tags))
+    _assert_scalar_expr_lowers(array_distinct(tags))
+    _assert_scalar_expr_lowers(array_except(tags, other_tags))
+    _assert_scalar_expr_lowers(array_flatten(array([tags, other_tags])))
+    _assert_scalar_expr_lowers(array_intersect(tags, other_tags))
+    _assert_scalar_expr_lowers(array_union(tags, other_tags))
+    _assert_scalar_expr_lowers(arrays_overlap(tags, other_tags))
+    _assert_scalar_expr_lowers(array_join(tags, lit("|")))
+    _assert_scalar_expr_lowers(array_slice(tags, lit(1), lit(2)))
+    _assert_scalar_expr_lowers(array_reverse(tags))
+    _assert_scalar_expr_lowers(attr_map)
+    _assert_scalar_expr_lowers(map_entries(attr_map))
+    _assert_scalar_expr_lowers(map_extract(attr_map, lit("status")))
+    _assert_scalar_expr_lowers(map_keys(attr_map))
+    _assert_scalar_expr_lowers(map_values(attr_map))
+    _assert_scalar_expr_lowers(map_contains_key(attr_map, lit("status")))
+    _assert_scalar_expr_lowers(named_struct(["status", "amount"], [col("status"), col("amount")]))
 
 
 def test_plan__aggregate_rel_surfaces_group_and_measure_output_columns() -> None:

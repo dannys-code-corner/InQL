@@ -11,6 +11,19 @@ from functions import (
     asc,
     asc_nulls_first,
     asc_nulls_last,
+    array,
+    array_contains,
+    array_distinct,
+    array_except,
+    array_flatten,
+    array_intersect,
+    array_join,
+    array_position,
+    array_reverse,
+    array_slice,
+    array_sort,
+    array_union,
+    arrays_overlap,
     avg,
     between,
     bool_expr,
@@ -20,6 +33,7 @@ from functions import (
     ceil,
     col,
     coalesce,
+    cardinality,
     count,
     count_distinct,
     count_expr,
@@ -30,6 +44,7 @@ from functions import (
     div,
     eq,
     equal_null,
+    element_at,
     floor,
     float_expr,
     function_registry_canonical_names,
@@ -50,12 +65,19 @@ from functions import (
     lit,
     lt,
     lte,
+    map_contains_key,
+    map_entries,
+    map_extract,
+    map_from_arrays,
+    map_keys,
+    map_values,
     max,
     min,
     modulo,
     mul,
     ne,
     neg,
+    named_struct,
     not_,
     nullif,
     or_,
@@ -93,8 +115,22 @@ from substrait.function_extensions import (
     ABS_FUNCTION_ANCHOR,
     ADD_FUNCTION_ANCHOR,
     AND_FUNCTION_ANCHOR,
+    ARRAY_DISTINCT_FUNCTION_ANCHOR,
+    ARRAY_ELEMENT_FUNCTION_ANCHOR,
+    ARRAY_EXCEPT_FUNCTION_ANCHOR,
+    ARRAY_FLATTEN_FUNCTION_ANCHOR,
+    ARRAY_HAS_FUNCTION_ANCHOR,
+    ARRAY_HAS_ANY_FUNCTION_ANCHOR,
+    ARRAY_INTERSECT_FUNCTION_ANCHOR,
+    ARRAY_POSITION_FUNCTION_ANCHOR,
+    ARRAY_REVERSE_FUNCTION_ANCHOR,
+    ARRAY_SLICE_FUNCTION_ANCHOR,
+    ARRAY_SORT_FUNCTION_ANCHOR,
+    ARRAY_TO_STRING_FUNCTION_ANCHOR,
+    ARRAY_UNION_FUNCTION_ANCHOR,
     AVG_FUNCTION_ANCHOR,
     BETWEEN_FUNCTION_ANCHOR,
+    CARDINALITY_FUNCTION_ANCHOR,
     CEIL_FUNCTION_ANCHOR,
     COALESCE_FUNCTION_ANCHOR,
     COUNT_FUNCTION_ANCHOR,
@@ -109,10 +145,17 @@ from substrait.function_extensions import (
     IS_NULL_FUNCTION_ANCHOR,
     LT_FUNCTION_ANCHOR,
     LTE_FUNCTION_ANCHOR,
+    MAKE_ARRAY_FUNCTION_ANCHOR,
+    MAP_ENTRIES_FUNCTION_ANCHOR,
+    MAP_EXTRACT_FUNCTION_ANCHOR,
+    MAP_FUNCTION_ANCHOR,
+    MAP_KEYS_FUNCTION_ANCHOR,
+    MAP_VALUES_FUNCTION_ANCHOR,
     MAX_FUNCTION_ANCHOR,
     MIN_FUNCTION_ANCHOR,
     MODULUS_FUNCTION_ANCHOR,
     MULTIPLY_FUNCTION_ANCHOR,
+    NAMED_STRUCT_FUNCTION_ANCHOR,
     NEGATE_FUNCTION_ANCHOR,
     NOT_EQUAL_FUNCTION_ANCHOR,
     NOT_FUNCTION_ANCHOR,
@@ -180,18 +223,21 @@ def _local_entry_by_namespace_and_name_or_fail(
 
 def _expected_registry_names() -> list[str]:
     """Return the expected registered public helper names."""
-    return ["col", "lit", "sum", "count", "count_expr", "count_distinct", "count_if", "avg", "min", "max", "int_expr", "float_expr", "str_expr", "bool_expr", "add", "mul", "int_lit", "str_lit", "bool_lit", "always_true", "always_false", "eq", "gt", "cast", "try_cast", "ne", "lt", "lte", "gte", "equal_null", "and_", "or_", "not_", "is_null", "is_not_null", "is_nan", "is_not_nan", "sub", "div", "mod", "neg", "coalesce", "nullif", "case_when", "in_", "between", "asc", "desc", "asc_nulls_first", "asc_nulls_last", "desc_nulls_first", "desc_nulls_last", "abs", "ceil", "floor", "round"]
+    return ["col", "lit", "sum", "count", "count_expr", "count_distinct", "count_if", "avg", "min", "max", "int_expr", "float_expr", "str_expr", "bool_expr", "add", "mul", "int_lit", "str_lit", "bool_lit", "always_true", "always_false", "eq", "gt", "cast", "try_cast", "ne", "lt", "lte", "gte", "equal_null", "and_", "or_", "not_", "is_null", "is_not_null", "is_nan", "is_not_nan", "sub", "div", "mod", "neg", "coalesce", "nullif", "case_when", "in_", "between", "asc", "desc", "asc_nulls_first", "asc_nulls_last", "desc_nulls_first", "desc_nulls_last", "abs", "ceil", "floor", "round", "array", "array_contains", "array_distinct", "array_except", "array_flatten", "array_intersect", "array_join", "array_position", "array_reverse", "array_slice", "array_sort", "array_union", "arrays_overlap", "cardinality", "element_at", "map_contains_key", "map_entries", "map_extract", "map_from_arrays", "map_keys", "map_values", "named_struct"]
 
 
 def _expected_substrait_mapped_names() -> list[str]:
     """Return helpers with concrete Substrait extension-function mappings."""
-    return ["sum", "count", "avg", "min", "max", "add", "mul", "eq", "gt", "ne", "lt", "lte", "gte", "equal_null", "and_", "or_", "not_", "is_null", "is_not_null", "is_nan", "sub", "div", "mod", "neg", "coalesce", "nullif", "between", "abs", "ceil", "floor", "round"]
+    return ["sum", "count", "avg", "min", "max", "add", "mul", "eq", "gt", "ne", "lt", "lte", "gte", "equal_null", "and_", "or_", "not_", "is_null", "is_not_null", "is_nan", "sub", "div", "mod", "neg", "coalesce", "nullif", "between", "abs", "ceil", "floor", "round", "array", "array_contains", "array_distinct", "array_except", "array_flatten", "array_intersect", "array_join", "array_position", "array_reverse", "array_slice", "array_sort", "array_union", "arrays_overlap", "cardinality", "element_at", "map_entries", "map_extract", "map_from_arrays", "map_keys", "map_values", "named_struct"]
 
 
 def _exercise_current_public_helpers() -> None:
     """Touch each current registered helper so runtime registry tests observe loaded modules only."""
     amount = col("amount")
     status = col("status")
+    tags = array([str_lit("paid"), status])
+    backup_tags = array([str_lit("open"), str_lit("paid")])
+    attr_map = map_from_arrays(array([str_lit("status")]), array([status]))
     lit(1)
     int_expr(1)
     float_expr(1.5)
@@ -248,6 +294,26 @@ def _exercise_current_public_helpers() -> None:
     ceil(amount)
     floor(amount)
     round(amount)
+    array_contains(tags, str_lit("paid"))
+    array_distinct(tags)
+    array_except(tags, backup_tags)
+    array_flatten(array([tags, backup_tags]))
+    array_intersect(tags, backup_tags)
+    array_join(tags, str_lit("|"))
+    array_position(tags, str_lit("paid"))
+    array_reverse(tags)
+    array_slice(tags, int_lit(1), int_lit(2))
+    array_sort(tags)
+    array_union(tags, backup_tags)
+    arrays_overlap(tags, backup_tags)
+    cardinality(tags)
+    element_at(tags, int_lit(1))
+    map_contains_key(attr_map, str_lit("status"))
+    map_entries(attr_map)
+    map_extract(attr_map, str_lit("status"))
+    map_keys(attr_map)
+    map_values(attr_map)
+    named_struct(["status", "amount"], [status, amount])
     return
 
 
@@ -527,6 +593,27 @@ def test_function_registry__substrait_extension_mappings_are_structured() -> Non
     _assert_extension_mapping("ceil", "ceil", CEIL_FUNCTION_ANCHOR)
     _assert_extension_mapping("floor", "floor", FLOOR_FUNCTION_ANCHOR)
     _assert_extension_mapping("round", "round", ROUND_FUNCTION_ANCHOR)
+    _assert_extension_mapping("array", "make_array", MAKE_ARRAY_FUNCTION_ANCHOR)
+    _assert_extension_mapping("array_contains", "array_has", ARRAY_HAS_FUNCTION_ANCHOR)
+    _assert_extension_mapping("array_distinct", "array_distinct", ARRAY_DISTINCT_FUNCTION_ANCHOR)
+    _assert_extension_mapping("array_except", "array_except", ARRAY_EXCEPT_FUNCTION_ANCHOR)
+    _assert_extension_mapping("array_flatten", "flatten", ARRAY_FLATTEN_FUNCTION_ANCHOR)
+    _assert_extension_mapping("array_intersect", "array_intersect", ARRAY_INTERSECT_FUNCTION_ANCHOR)
+    _assert_extension_mapping("array_join", "array_to_string", ARRAY_TO_STRING_FUNCTION_ANCHOR)
+    _assert_extension_mapping("array_position", "array_position", ARRAY_POSITION_FUNCTION_ANCHOR)
+    _assert_extension_mapping("array_reverse", "array_reverse", ARRAY_REVERSE_FUNCTION_ANCHOR)
+    _assert_extension_mapping("array_slice", "array_slice", ARRAY_SLICE_FUNCTION_ANCHOR)
+    _assert_extension_mapping("array_sort", "array_sort", ARRAY_SORT_FUNCTION_ANCHOR)
+    _assert_extension_mapping("array_union", "array_union", ARRAY_UNION_FUNCTION_ANCHOR)
+    _assert_extension_mapping("arrays_overlap", "array_has_any", ARRAY_HAS_ANY_FUNCTION_ANCHOR)
+    _assert_extension_mapping("cardinality", "cardinality", CARDINALITY_FUNCTION_ANCHOR)
+    _assert_extension_mapping("element_at", "array_element", ARRAY_ELEMENT_FUNCTION_ANCHOR)
+    _assert_extension_mapping("map_entries", "map_entries", MAP_ENTRIES_FUNCTION_ANCHOR)
+    _assert_extension_mapping("map_extract", "map_extract", MAP_EXTRACT_FUNCTION_ANCHOR)
+    _assert_extension_mapping("map_from_arrays", "map", MAP_FUNCTION_ANCHOR)
+    _assert_extension_mapping("map_keys", "map_keys", MAP_KEYS_FUNCTION_ANCHOR)
+    _assert_extension_mapping("map_values", "map_values", MAP_VALUES_FUNCTION_ANCHOR)
+    _assert_extension_mapping("named_struct", "named_struct", NAMED_STRUCT_FUNCTION_ANCHOR)
 
 
 def test_function_registry__ordering_helpers_are_contextual_sort_fields() -> None:
@@ -576,6 +663,7 @@ def test_function_registry__rewrite_mappings_identify_non_extension_helpers() ->
     assert always_true_entry.substrait.kind == SubstraitMappingKind.Rewrite, "always_true should lower as a literal rewrite"
     assert always_false_entry.substrait.kind == SubstraitMappingKind.Rewrite, "always_false should lower as a literal rewrite"
     _assert_rewrite_mapping("is_not_nan", "not_(is_nan(expr))")
+    _assert_rewrite_mapping("map_contains_key", "gt(cardinality(map_extract(map_expr, key)), int_expr(0))")
     assert always_true_entry.null_behavior == FunctionNullBehavior.Predicate, "predicate helpers should expose predicate null behavior"
     assert always_false_entry.null_behavior == FunctionNullBehavior.Predicate, "predicate helpers should expose predicate null behavior"
 

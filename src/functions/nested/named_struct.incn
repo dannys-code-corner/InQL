@@ -1,0 +1,34 @@
+"""Named struct construction helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.nested.common import named_struct_arguments
+from functions.registry import register_function, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import NAMED_STRUCT_FUNCTION_ANCHOR
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=extension_mapping("named_struct", NAMED_STRUCT_FUNCTION_ANCHOR),
+))
+pub def named_struct(field_names: list[str], values: list[ColumnExpr]) -> ColumnExpr:
+    """
+    Build a struct expression with explicit field names.
+
+    Examples:
+        event = named_struct(["status", "amount"], [col("status"), col("amount")])
+
+    Parameters:
+        field_names: Non-empty struct field names.
+        values: Field value expressions in the same order as `field_names`.
+    """
+    return registered_application("named_struct", named_struct_arguments(field_names, values))

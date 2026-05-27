@@ -1,0 +1,27 @@
+"""Shared implementation helpers for nested scalar functions."""
+
+from rust::incan_stdlib::errors import raise_value_error
+from projection_builders import ColumnExpr, str_expr
+
+
+pub def require_non_empty_args(arguments: list[ColumnExpr]) -> None:
+    """Reject empty variadic nested constructors that cannot infer a value type."""
+    if len(arguments) == 0:
+        return raise_value_error("nested constructor requires at least one scalar expression")
+    return
+
+
+pub def named_struct_arguments(field_names: list[str], values: list[ColumnExpr]) -> list[ColumnExpr]:
+    """Build alternating field-name/value arguments for a named struct function call."""
+    if len(field_names) == 0:
+        return raise_value_error("named_struct requires at least one field")
+    if len(field_names) != len(values):
+        return raise_value_error("named_struct requires one value for each field name")
+
+    mut arguments: list[ColumnExpr] = []
+    for idx, field_name in enumerate(field_names):
+        if len(field_name) == 0:
+            return raise_value_error("named_struct field names must be non-empty")
+        arguments.append(str_expr(field_name))
+        arguments.append(values[idx])
+    return arguments

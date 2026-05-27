@@ -1,0 +1,34 @@
+"""Array slice helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import register_function, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import ARRAY_SLICE_FUNCTION_ANCHOR
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=extension_mapping("array_slice", ARRAY_SLICE_FUNCTION_ANCHOR),
+))
+pub def array_slice(array_expr: ColumnExpr, start: ColumnExpr, stop: ColumnExpr) -> ColumnExpr:
+    """
+    Return a one-based array slice.
+
+    Examples:
+        first_two = array_slice(col("tags"), int_lit(1), int_lit(2))
+
+    Parameters:
+        array_expr: Array expression to slice.
+        start: One-based start index.
+        stop: One-based stop index following the backend adapter's `array_slice` contract.
+    """
+    return registered_application("array_slice", [array_expr, start, stop])

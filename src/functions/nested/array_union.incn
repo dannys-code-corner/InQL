@@ -1,0 +1,33 @@
+"""Array set-union helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import register_function, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import ARRAY_UNION_FUNCTION_ANCHOR
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=extension_mapping("array_union", ARRAY_UNION_FUNCTION_ANCHOR),
+))
+pub def array_union(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
+    """
+    Return the distinct union of two arrays.
+
+    Examples:
+        all_tags = array_union(col("left_tags"), col("right_tags"))
+
+    Parameters:
+        left: First array expression.
+        right: Second array expression.
+    """
+    return registered_application("array_union", [left, right])

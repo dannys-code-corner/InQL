@@ -1,0 +1,33 @@
+"""Array-to-string join helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import register_function, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import ARRAY_TO_STRING_FUNCTION_ANCHOR
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=extension_mapping("array_to_string", ARRAY_TO_STRING_FUNCTION_ANCHOR),
+))
+pub def array_join(array_expr: ColumnExpr, delimiter: ColumnExpr) -> ColumnExpr:
+    """
+    Join array elements into one string with a delimiter.
+
+    Examples:
+        tag_text = array_join(col("tags"), str_lit(","))
+
+    Parameters:
+        array_expr: Array expression to render.
+        delimiter: String delimiter expression placed between elements.
+    """
+    return registered_application("array_join", [array_expr, delimiter])

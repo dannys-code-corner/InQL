@@ -1,0 +1,124 @@
+"""Test: RFC 020 nested scalar helper surface."""
+
+from std.testing import assert_raises
+from functions import (
+    array,
+    array_contains,
+    array_distinct,
+    array_except,
+    array_flatten,
+    array_intersect,
+    array_join,
+    array_position,
+    array_reverse,
+    array_slice,
+    array_sort,
+    array_union,
+    arrays_overlap,
+    cardinality,
+    col,
+    element_at,
+    int_lit,
+    map_contains_key,
+    map_entries,
+    map_extract,
+    map_from_arrays,
+    map_keys,
+    map_values,
+    named_struct,
+    str_lit,
+)
+from function_registry import function_ref_for
+from projection_builders import (
+    ColumnExpr,
+    ColumnExprKind,
+    column_expr_argument_count,
+    column_expr_function_name,
+    column_expr_function_ref,
+    column_expr_kind,
+)
+
+
+def _assert_nested_application(expr: ColumnExpr, expected_name: str, expected_args: int) -> None:
+    """Assert one helper uses the shared registry-backed scalar application node."""
+    assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction, f"{expected_name} should use the scalar function kind"
+    assert column_expr_function_name(expr) == expected_name, f"{expected_name} should preserve its canonical name"
+    assert column_expr_function_ref(expr) == function_ref_for(expected_name), "nested helper should preserve its registry function ref"
+    assert column_expr_argument_count(expr) == expected_args, f"{expected_name} should carry its scalar arguments"
+
+
+def _call_empty_array() -> None:
+    """Call array with no values for ValueError assertions."""
+    array([])
+    return
+
+
+def _call_empty_named_struct() -> None:
+    """Call named_struct with no fields for ValueError assertions."""
+    named_struct([], [])
+    return
+
+
+def _call_mismatched_named_struct() -> None:
+    """Call named_struct with mismatched fields and values for ValueError assertions."""
+    named_struct(["status"], [])
+    return
+
+
+def _call_empty_named_struct_field() -> None:
+    """Call named_struct with an empty field name for ValueError assertions."""
+    named_struct([""], [str_lit("paid")])
+    return
+
+
+def test_nested_data_functions__array_helpers_share_scalar_application_node() -> None:
+    """Assert array helpers use the shared registry-backed scalar expression model."""
+    # -- Arrange --
+    tags = array([str_lit("paid"), col("status")])
+    other_tags = array([str_lit("open"), str_lit("paid")])
+
+    # -- Act / Assert --
+    _assert_nested_application(tags, "array", 2)
+    _assert_nested_application(cardinality(tags), "cardinality", 1)
+    _assert_nested_application(array_contains(tags, str_lit("paid")), "array_contains", 2)
+    _assert_nested_application(array_position(tags, str_lit("paid")), "array_position", 2)
+    _assert_nested_application(element_at(tags, int_lit(1)), "element_at", 2)
+    _assert_nested_application(array_sort(tags), "array_sort", 1)
+    _assert_nested_application(array_distinct(tags), "array_distinct", 1)
+    _assert_nested_application(array_except(tags, other_tags), "array_except", 2)
+    _assert_nested_application(array_flatten(array([tags, other_tags])), "array_flatten", 1)
+    _assert_nested_application(array_intersect(tags, other_tags), "array_intersect", 2)
+    _assert_nested_application(array_union(tags, other_tags), "array_union", 2)
+    _assert_nested_application(arrays_overlap(tags, other_tags), "arrays_overlap", 2)
+    _assert_nested_application(array_join(tags, str_lit("|")), "array_join", 2)
+    _assert_nested_application(array_slice(tags, int_lit(1), int_lit(2)), "array_slice", 3)
+    _assert_nested_application(array_reverse(tags), "array_reverse", 1)
+
+
+def test_nested_data_functions__map_and_struct_helpers_share_scalar_application_node() -> None:
+    """Assert map and struct helpers use scalar expressions rather than relation-shaping nodes."""
+    # -- Arrange --
+    keys = array([str_lit("status")])
+    values = array([col("status")])
+    attr_map = map_from_arrays(keys, values)
+    contains_key = map_contains_key(attr_map, str_lit("status"))
+
+    # -- Act / Assert --
+    _assert_nested_application(attr_map, "map_from_arrays", 2)
+    _assert_nested_application(map_entries(attr_map), "map_entries", 1)
+    _assert_nested_application(map_extract(attr_map, str_lit("status")), "map_extract", 2)
+    _assert_nested_application(map_keys(attr_map), "map_keys", 1)
+    _assert_nested_application(map_values(attr_map), "map_values", 1)
+    _assert_nested_application(named_struct(["status", "amount"], [col("status"), col("amount")]), "named_struct", 4)
+    assert column_expr_kind(contains_key) == ColumnExprKind.ScalarFunction, "map_contains_key rewrite should still be scalar"
+    assert column_expr_function_name(contains_key) == "gt", "map_contains_key should lower through its documented predicate rewrite"
+    assert column_expr_function_ref(contains_key) == function_ref_for("gt"), "rewrite should use the registered greater-than helper"
+
+
+def test_nested_data_functions__constructor_shape_errors_raise_value_error() -> None:
+    """Assert nested constructors reject shapes that cannot produce typed scalar values."""
+    # -- Arrange / Act / Assert --
+    assert_raises[ValueError](_call_empty_array)
+    assert_raises[ValueError](_call_empty_named_struct)
+    assert_raises[ValueError](_call_mismatched_named_struct)
+    assert_raises[ValueError](_call_empty_named_struct_field)

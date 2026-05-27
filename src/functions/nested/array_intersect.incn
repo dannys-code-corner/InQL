@@ -1,0 +1,33 @@
+"""Array set-intersection helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import register_function, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import ARRAY_INTERSECT_FUNCTION_ANCHOR
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=extension_mapping("array_intersect", ARRAY_INTERSECT_FUNCTION_ANCHOR),
+))
+pub def array_intersect(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
+    """
+    Return values that are present in both arrays.
+
+    Examples:
+        shared_tags = array_intersect(col("expected_tags"), col("actual_tags"))
+
+    Parameters:
+        left: First array expression.
+        right: Second array expression.
+    """
+    return registered_application("array_intersect", [left, right])

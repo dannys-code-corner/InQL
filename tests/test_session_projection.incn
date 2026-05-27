@@ -3,6 +3,11 @@
 from functions import (
     abs,
     add,
+    array,
+    array_contains,
+    array_distinct,
+    array_join,
+    array_position,
     case_when,
     cast,
     ceil,
@@ -20,6 +25,8 @@ from functions import (
     round,
     sub,
     try_cast,
+    cardinality,
+    element_at,
 )
 from dataset import DataFrame, LazyFrame
 from session import Session, SessionErrorKind
@@ -41,6 +48,22 @@ def _collect_or_fail(mut session: Session, projected: LazyFrame[AggregateOrder])
     match session.collect(projected):
         Ok(df) => return df
         Err(err) => return fail_t(err.error_message())
+
+
+def _preview_line_contains_all(line: str, expected_cells: list[str]) -> bool:
+    """Return whether one rendered preview row contains every expected cell value."""
+    for cell in expected_cells:
+        if not line.contains(cell):
+            return false
+    return true
+
+
+def _assert_preview_row_contains(payload: str, expected_cells: list[str], context: str) -> None:
+    """Assert one rendered preview row carries the expected materialized cells together."""
+    for line in payload.split("\n"):
+        if _preview_line_contains_all(line, expected_cells):
+            return
+    return fail_t(context)
 
 
 def test_session_projection__plan_root_names_match_append_projection() -> None:
@@ -183,6 +206,46 @@ def test_session_projection__collect_executes_common_math_scalar_projection_func
     assert payload.contains("4"), "ceil projection should include ceil(15 / 4.0)"
     assert payload.contains("1"), "floor projection should include floor(7 / 4.0)"
     assert payload.contains("3"), "round projection should include round(10 / 4.0)"
+
+
+def test_session_projection__collect_executes_nested_scalar_projection_functions() -> None:
+    """collect should execute RFC 020 nested scalar helpers through DataFusion."""
+    # -- Arrange --
+    mut session = Session.default()
+
+    # -- Act --
+    lazy: LazyFrame[AggregateOrder] = assert_is_ok(
+        session.read_csv("aggregate_orders", AGGREGATE_ORDERS_CSV_FIXTURE),
+        "aggregate orders fixture should load",
+    )
+    tags = array([lit("paid"), col("customer_id"), lit("paid")])
+    with_count = lazy.with_column("tag_count", cardinality(tags))
+    with_contains = with_count.with_column("has_paid", array_contains(tags, lit("paid")))
+    with_first = with_contains.with_column("first_tag", element_at(tags, lit(1)))
+    with_position = with_first.with_column("paid_position", array_position(tags, lit("paid")))
+    projected = with_position.with_column("joined_tags", array_join(array_distinct(tags), lit("|")))
+    df = _collect_or_fail(session, projected)
+    payload = df.preview_text()
+    resolved = df.resolved_columns()
+
+    # -- Assert --
+    assert df.row_count() == 3, "nested scalar projections should preserve the input rows"
+    assert len(resolved) == 7, "projection should expose all appended nested outputs"
+    assert payload.contains("tag_count"), "cardinality projection should materialize its alias"
+    assert payload.contains("has_paid"), "array_contains projection should materialize its alias"
+    assert payload.contains("first_tag"), "element_at projection should materialize its alias"
+    assert payload.contains("paid_position"), "array_position projection should materialize its alias"
+    assert payload.contains("joined_tags"), "array_join projection should materialize its alias"
+    _assert_preview_row_contains(
+        payload,
+        ["A", "10", "3", "true", "paid", "1", "paid|A"],
+        "nested scalar projections should materialize the expected values for customer A amount 10",
+    )
+    _assert_preview_row_contains(
+        payload,
+        ["B", "7", "3", "true", "paid", "1", "paid|B"],
+        "nested scalar projections should materialize the expected values for customer B amount 7",
+    )
 
 
 def test_session_projection__collect_executes_identity_select() -> None:

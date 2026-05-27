@@ -1,0 +1,32 @@
+"""Nested collection cardinality helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import register_function, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import CARDINALITY_FUNCTION_ANCHOR
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=extension_mapping("cardinality", CARDINALITY_FUNCTION_ANCHOR),
+))
+pub def cardinality(value: ColumnExpr) -> ColumnExpr:
+    """
+    Return the number of entries in an array or map expression.
+
+    Examples:
+        tag_count = cardinality(col("tags"))
+
+    Parameters:
+        value: Array or map expression to size.
+    """
+    return registered_application("cardinality", [value])
