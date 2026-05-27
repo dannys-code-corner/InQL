@@ -1,8 +1,10 @@
 """Binary payload for InQL generator relation-extension nodes."""
 
+from rust::incan_stdlib::errors import raise_value_error
 from rust::prost import Message
 from rust::std::string import String as RustString
 from rust::substrait::proto import Expression
+from std.io import BytesIO, Endian, IoError, _BytesIO
 
 # ASCII "INQLGEN1"; this lets decoders reject unrelated relation-extension payloads before reading length fields.
 const _MAGIC: list[int] = [73, 78, 81, 76, 71, 69, 78, 49]
@@ -25,120 +27,134 @@ pub def encode_generator_extension_payload(
     """Encode generator metadata and lowered scalar arguments into stable bytes."""
     # Layout: magic, row_count, output names, then each lowered Substrait argument as a length-prefixed proto blob.
     # Keeping this adapter-neutral lets Substrait remain the boundary while DataFusion decodes only execution details.
-    mut out: list[u8] = []
-    for idx in range(len(_MAGIC)):
-        _append_byte(out, _MAGIC[idx])
-    _append_u64_le(out, row_count)
-    _append_u64_le(out, len(output_columns))
+    out = BytesIO()
+    _write_magic(out)
+    _write_u64_le(out, row_count)
+    _write_u64_le(out, len(output_columns))
     for output_column in output_columns:
         encoded_name = RustString.from(f"{output_column}").into_bytes()
-        _append_u64_le(out, len(encoded_name))
-        _append_bytes(out, encoded_name)
-    _append_u64_le(out, len(arguments))
+        _write_u64_le(out, len(encoded_name))
+        _write_payload_bytes(out, encoded_name)
+    _write_u64_le(out, len(arguments))
     for argument in arguments:
         encoded = argument.encode_to_vec()
-        _append_u64_le(out, len(encoded))
-        _append_bytes(out, encoded)
-    return out
+        _write_u64_le(out, len(encoded))
+        _write_payload_bytes(out, encoded)
+    return out.getvalue()
 
 
 pub def decode_generator_extension_payload(data: bytes) -> Result[GeneratorExtensionPayload, str]:
     """Decode generator relation-extension payload bytes."""
-    match _validate_magic(data):
-        Ok(_) => pass
-        Err(message) => return Err(message)
+    if len(data) < len(_MAGIC) + 24:
+        return Err("generator extension payload is too short")
+    reader = BytesIO(data)
+    _validate_magic(_read_payload_bytes(reader, len(_MAGIC), "generator extension payload has an invalid prefix")?)?
     # Decode in the same strict order as encode and reject trailing bytes so payload evolution is explicit.
-    mut offset = len(_MAGIC)
-    row_count = _read_u64_le(data, offset)
-    offset += 8
-    output_column_count = _read_u64_le(data, offset)
-    offset += 8
+    row_count = _read_u64_le(reader, "generator extension payload ended before row count")?
+    output_column_count = _read_u64_le(reader, "generator extension payload ended before output column count")?
     mut output_columns: list[str] = []
     for _ in range(output_column_count):
-        if offset + 8 > len(data):
-            return Err("generator extension payload ended before output column length")
-        column_len = _read_u64_le(data, offset)
-        offset += 8
-        if offset + column_len > len(data):
-            return Err("generator extension payload ended inside an output column")
-        column_bytes = _slice_bytes(data, offset, column_len)
-        offset += column_len
+        column_len = _read_u64_le(reader, "generator extension payload ended before output column length")?
+        column_bytes = _read_payload_bytes(
+            reader,
+            column_len,
+            "generator extension payload ended inside an output column",
+        )?
         match RustString.from_utf8(column_bytes):
             Ok(column_name) => output_columns.append(column_name.to_string())
             Err(err) => return Err(err.to_string())
-    argument_count = _read_u64_le(data, offset)
-    offset += 8
+    argument_count = _read_u64_le(reader, "generator extension payload ended before argument count")?
     mut arguments: list[Expression] = []
     for _ in range(argument_count):
-        if offset + 8 > len(data):
-            return Err("generator extension payload ended before argument length")
-        argument_len = _read_u64_le(data, offset)
-        offset += 8
-        if offset + argument_len > len(data):
-            return Err("generator extension payload ended inside an argument")
-        argument_bytes = _slice_bytes(data, offset, argument_len)
-        offset += argument_len
+        argument_len = _read_u64_le(reader, "generator extension payload ended before argument length")?
+        argument_bytes = _read_payload_bytes(
+            reader,
+            argument_len,
+            "generator extension payload ended inside an argument",
+        )?
         match Expression.decode(argument_bytes.as_slice()):
             Ok(argument) => arguments.append(argument.clone())
             Err(err) => return Err(err.to_string())
-    if offset != len(data):
+    if reader.remaining() != 0:
         return Err("generator extension payload contains trailing bytes")
     return Ok(GeneratorExtensionPayload(row_count=row_count, output_columns=output_columns, arguments=arguments))
 
 
-def _validate_magic(data: bytes) -> Result[None, str]:
+def _validate_magic(magic: bytes) -> Result[None, str]:
     """Validate the generator payload prefix."""
-    if len(data) < len(_MAGIC) + 24:
-        return Err("generator extension payload is too short")
-    for idx, expected in enumerate(_MAGIC):
-        if int(data[idx]) != expected:
+    for idx in range(len(_MAGIC)):
+        if int(magic[idx]) != _MAGIC[idx]:
             return Err("generator extension payload has an invalid prefix")
     return Ok(None)
 
 
-def _slice_bytes(data: bytes, offset: int, length: int) -> bytes:
-    """Return a copy of a byte slice from a payload list."""
-    mut out: list[u8] = []
-    for idx in range(length):
-        _append_byte(out, int(data[offset + idx]))
-    return out
+def _read_payload_bytes(reader: _BytesIO, size: int, message: str) -> Result[bytes, str]:
+    """Read an exact payload segment and map stdlib I/O errors to payload errors."""
+    match reader.read_exact(size):
+        Ok(data) => return Ok(data)
+        Err(_) => return Err(message)
 
 
-def _append_bytes(mut out: list[u8], data: bytes) -> None:
-    """Append all bytes from `data` to `out`."""
-    for byte in data:
-        _append_byte(out, int(byte))
+def _read_u64_le(reader: _BytesIO, message: str) -> Result[int, str]:
+    """Read one little-endian u64 length/count field through std.io."""
+    match _read_u64_io(reader):
+        Ok(value) => return Ok(int(value))
+        Err(_) => return Err(message)
+
+
+def _read_u64_io(reader: _BytesIO) -> Result[u64, IoError]:
+    """Read one little-endian u64 with explicit result type context for the overloaded std.io method."""
+    value: u64 = reader.read(Endian.Little)?
+    return Ok(value)
+
+
+def _write_payload_bytes(out: _BytesIO, data: bytes) -> None:
+    """Write payload bytes through std.io."""
+    match out.write_bytes(data):
+        Ok(_) => return
+        Err(err) => return _raise_payload_write_error(err)
+
+
+def _write_magic(out: _BytesIO) -> None:
+    """Write the generator payload magic through std.io."""
+    _write_payload_bytes(out, b"INQLGEN1")
     return
 
 
-def _append_u64_le(mut out: list[u8], value: int) -> None:
-    """Append one non-negative integer as a little-endian u64."""
-    _append_byte(out, value % 256)
-    _append_byte(out, (value // 256) % 256)
-    _append_byte(out, (value // 65536) % 256)
-    _append_byte(out, (value // 16777216) % 256)
-    _append_byte(out, (value // 4294967296) % 256)
-    _append_byte(out, (value // 1099511627776) % 256)
-    _append_byte(out, (value // 281474976710656) % 256)
-    _append_byte(out, (value // 72057594037927936) % 256)
-    return
+def _write_u64_le(out: _BytesIO, value: int) -> None:
+    """Write one non-negative integer as a little-endian u64 through std.io."""
+    match out.write(_payload_u64(value), Endian.Little):
+        Ok(_) => return
+        Err(err) => return _raise_payload_write_error(err)
 
 
-def _read_u64_le(data: bytes, offset: int) -> int:
-    """Read one little-endian u64 from a byte list."""
-    mut value = int(data[offset])
-    value += int(data[offset + 1]) * 256
-    value += int(data[offset + 2]) * 65536
-    value += int(data[offset + 3]) * 16777216
-    value += int(data[offset + 4]) * 4294967296
-    value += int(data[offset + 5]) * 1099511627776
-    value += int(data[offset + 6]) * 281474976710656
-    value += int(data[offset + 7]) * 72057594037927936
-    return value
+def _payload_u64(value: int) -> u64:
+    """Convert one payload length/count to u64 before std.io writes it."""
+    maybe_value: Option[u64] = value.try_resize()
+    match maybe_value:
+        Some(converted) => return converted
+        None => return raise_value_error("generator extension payload length/count does not fit u64")
 
 
-def _append_byte(mut out: list[u8], value: int) -> None:
-    """Append the low byte of one integer."""
-    byte: u8 = value.wrapping_resize()
-    out.append(byte)
-    return
+def _raise_payload_write_error(err: IoError) -> None:
+    """Raise an unexpected in-memory payload write failure."""
+    message = "generator extension payload write failed: " + err.message()
+    return raise_value_error(message)
+
+
+module tests:
+    from std.testing import assert_is_err, assert_is_ok
+    def test_generator_payload_round_trips_empty_payload() -> None:
+        encoded = encode_generator_extension_payload(3, ["left", "right"], [])
+        decoded = assert_is_ok(decode_generator_extension_payload(encoded), "payload should decode")
+        assert decoded.row_count == 3
+        assert decoded.output_columns == ["left", "right"]
+        assert len(decoded.arguments) == 0
+    def test_generator_payload_rejects_invalid_prefix() -> None:
+        writer = BytesIO()
+        _write_payload_bytes(writer, b"BADGEN!!")
+        _write_u64_le(writer, 0)
+        _write_u64_le(writer, 0)
+        _write_u64_le(writer, 0)
+        err = assert_is_err(decode_generator_extension_payload(writer.getvalue()), "invalid prefix should fail")
+        assert err == "generator extension payload has an invalid prefix"
