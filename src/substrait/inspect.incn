@@ -19,6 +19,7 @@ from rust::substrait::proto import (
 )
 from rust::substrait::proto::aggregate_rel import Measure
 from rust::substrait::proto::aggregate_function import AggregationInvocation
+from rust::substrait::proto::extensions::simple_extension_declaration import MappingType
 from rust::substrait::proto::function_argument import ArgType
 from rust::substrait::proto::plan_rel import RelType as PlanRelType
 from rust::substrait::proto::read_rel import NamedTable as ReadNamedTable, ReadType
@@ -26,8 +27,7 @@ from rust::substrait::proto::rel import RelType
 from rust::substrait::proto::rel_common import Direct, EmitKind
 from rust::substrait::proto::set_rel import SetOp
 from rust::substrait::proto::sort_field import SortDirection, SortKind
-from aggregate_builders import AggregateMeasure
-from projection_builders import scalar_expr_output_name
+from aggregate_builders import AggregateMeasure, aggregate_measure_output_name
 from substrait.expr_lowering import field_index_from_expression, project_output_columns_with_emit, rust_u32_to_int
 from substrait.extensions import aggregate_function_name_from_anchor, window_function_name_from_anchor
 from substrait.function_extensions import (
@@ -43,6 +43,7 @@ from substrait.function_extensions import (
 from substrait.generator_payload import decode_generator_extension_payload
 from substrait.schema_registry import named_table_columns, unknown_named_struct
 from substrait.traversal import relation_children
+from substrait.window_metadata import WINDOW_OUTPUT_NAME_OPTION
 
 
 def _malformed_root_rel() -> Rel:
@@ -78,16 +79,7 @@ def _measure_has_filter(measure: Measure) -> bool:
 
 def _measure_output_name(measure: AggregateMeasure) -> str:
     """Return the projected output column name for one aggregate measure."""
-    mut output_name = measure.kind.value()
-    if measure.is_distinct and measure.has_expr:
-        output_name = output_name + "_distinct_" + scalar_expr_output_name(measure.expr, "expr")
-    elif measure.has_expr:
-        output_name = output_name + "_" + scalar_expr_output_name(measure.expr, "expr")
-    if measure.has_filter:
-        output_name = output_name + "_filtered"
-    if len(measure.ordering) > 0:
-        output_name = output_name + "_ordered"
-    return output_name
+    return aggregate_measure_output_name(measure)
 
 
 pub def aggregate_measure_output_names(measures: list[AggregateMeasure]) -> list[str]:
@@ -189,7 +181,7 @@ def _window_output_columns(window_rel: ConsistentPartitionWindowRel) -> list[str
 def _window_function_output_name(options: list[FunctionOption]) -> str:
     """Return the InQL output alias encoded on one lowered window function."""
     for option in options:
-        if option.name == "inql_output_name" and len(option.preference) > 0:
+        if option.name == WINDOW_OUTPUT_NAME_OPTION and len(option.preference) > 0:
             return option.preference[0]
     return ""
 
@@ -563,3 +555,13 @@ pub def plan_extension_urn_anchor_at(plan: Plan, index: int) -> int:
     if index < 0 or index >= len(plan.extension_urns):
         return -1
     return rust_u32_to_int(plan.extension_urns[index].extension_urn_anchor)
+
+
+pub def plan_extension_function_names(plan: Plan) -> list[str]:
+    """Return extension-function declaration names carried by one plan."""
+    mut names: list[str] = []
+    for declaration in plan.extensions:
+        match declaration.mapping_type:
+            Some(MappingType.ExtensionFunction(function)) => names.append(function.name)
+            _ => pass
+    return names

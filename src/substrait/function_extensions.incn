@@ -102,3 +102,17 @@ pub const STACK_EXTENSION_URI: str = "https://inql.io/extensions/v0.1/table_func
 pub def registered_substrait_extension_uris() -> list[str]:
     """Return the registered extension URIs used by current package-level Substrait lowering."""
     return [FUNCTION_EXTENSION_URI, EXPLODE_EXTENSION_URI, EXPLODE_OUTER_EXTENSION_URI, POSEXPLODE_EXTENSION_URI, POSEXPLODE_OUTER_EXTENSION_URI, INLINE_EXTENSION_URI, INLINE_OUTER_EXTENSION_URI, FLATTEN_EXTENSION_URI, STACK_EXTENSION_URI]
+
+
+pub def is_generator_extension_uri(extension_uri: str) -> bool:
+    """Return whether an ExtensionSingle URI belongs to an InQL generator."""
+    return (
+        extension_uri == EXPLODE_EXTENSION_URI
+        or extension_uri == EXPLODE_OUTER_EXTENSION_URI
+        or extension_uri == POSEXPLODE_EXTENSION_URI
+        or extension_uri == POSEXPLODE_OUTER_EXTENSION_URI
+        or extension_uri == INLINE_EXTENSION_URI
+        or extension_uri == INLINE_OUTER_EXTENSION_URI
+        or extension_uri == FLATTEN_EXTENSION_URI
+        or extension_uri == STACK_EXTENSION_URI
+    )

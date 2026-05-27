@@ -248,7 +248,7 @@ It may, however, motivate refactoring of implementation architecture so that pla
 
 ### Prism core
 
-- [x] Define the current authored node set for the first implementation slice (`Read`, `Filter`, `Join`, `Project`, `GroupBy`, `Aggregate`, `OrderBy`, `Limit`, `Explode`) so the existing `LazyFrame[T]` method surface is Prism-native.
+- [x] Define the current authored node set for the first implementation slice (`Read`, `Filter`, `Join`, `Project`, `GroupBy`, `Aggregate`, `Generate`, `Window`, `OrderBy`, `Limit`) so the existing `LazyFrame[T]` method surface is Prism-native.
 - [x] Add persistent Prism-managed plan state plus logical tip tracking for `LazyFrame[T]`.
 - [x] Add derived optimized views with stable optimized-to-authored origin mappings.
 - [x] Introduce a backend-native `PrismCursor[T]` handle as the internal target for `LazyFrame[T]` method delegation.

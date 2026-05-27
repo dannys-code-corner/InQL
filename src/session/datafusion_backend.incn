@@ -24,6 +24,7 @@ from rust::substrait::proto import (
     SortRel,
 )
 from rust::substrait::proto::consistent_partition_window_rel import WindowRelFunction
+from rust::substrait::proto::aggregate_function import AggregationInvocation
 from rust::substrait::proto::expression import RexType
 from rust::substrait::proto::expression::literal import LiteralType
 from rust::substrait::proto::expression::window_function import Bound, BoundsType
@@ -55,15 +56,17 @@ from substrait.function_extensions import (
     POSEXPLODE_EXTENSION_URI,
     POSEXPLODE_OUTER_EXTENSION_URI,
     STACK_EXTENSION_URI,
+    is_generator_extension_uri,
 )
 from substrait.generator_payload import GeneratorExtensionPayload, decode_generator_extension_payload
 from substrait.expr_lowering import field_index_from_expression
-from substrait.extensions import window_function_name_from_anchor
+from substrait.extensions import scalar_function_name_from_anchor, window_function_name_from_anchor
 from substrait.inspect import relation_output_columns, root_names, root_rel
 from substrait.plans import plan_from_root_relation
 from substrait.relations import project_rel_with_expressions, read_named_table_rel
 from substrait.schema import RowColumnSpec, SubstraitPrimitiveKind
 from substrait.schema_registry import register_named_table_schema
+from substrait.window_metadata import WINDOW_NULL_TREATMENT_OPTION, WINDOW_OUTPUT_NAME_OPTION
 
 
 @derive(Clone)
@@ -82,6 +85,16 @@ model MaterializedGeneratorRelation:
     path: str
     rel: Rel
     extension: ExtensionSingleRel
+
+
+@derive(Clone)
+model MaterializedWindowRelation:
+    """One nested window relation that must be bridged through a DataFusion temp view for execution."""
+
+    path: str
+    rel: Rel
+    window_rel: ConsistentPartitionWindowRel
+    output_columns: list[str]
 
 
 model PendingWindowRelation:
@@ -188,16 +201,57 @@ async def _dataframe_from_non_window_plan(ctx: SessionContext, plan: Plan) -> Re
     match _generator_extension(root):
         Some(extension) => return await _dataframe_from_generator_extension(ctx, extension)
         None =>
-            materializations = _collect_materialized_generator_relations(root_rel(plan.clone()), "root")
-            if len(materializations) == 0:
+            mut rewritten_root = root_rel(plan.clone())
+            mut rewritten_plan = plan.clone()
+            materializations = _collect_materialized_generator_relations(rewritten_root.clone(), "root")
+            if len(materializations) > 0:
+                for materialization in materializations:
+                    # The path key must match the later rewrite traversal so each temp read targets the exact generated
+                    # subtree that was collected here.
+                    table_name = _materialized_generator_table_name(materialization.path)
+                    df = await _dataframe_from_generator_extension(ctx.clone(), materialization.extension)?
+                    await _register_materialized_dataframe(ctx.clone(), table_name, df)?
+                rewritten_root = _replace_materialized_generator_relations(rewritten_root, "root")
+                rewritten_plan = plan_from_root_relation(rewritten_root.clone(), root_names(plan.clone()))
+
+            window_materializations = _collect_materialized_window_relations(rewritten_root.clone(), "root")
+            if len(window_materializations) == 0:
+                return await _dataframe_from_standard_plan(ctx, rewritten_plan)
+
+            for materialization in window_materializations:
+                table_name = _materialized_window_table_name(materialization.path)
+                df = await _dataframe_from_window_rel(
+                    ctx.clone(),
+                    materialization.window_rel,
+                    materialization.output_columns,
+                )?
+                await _register_materialized_dataframe(ctx.clone(), table_name, df)?
+            rewritten_root = _replace_materialized_window_relations(rewritten_root, "root")
+            rewritten_plan = plan_from_root_relation(rewritten_root, root_names(plan))
+            return await _dataframe_from_standard_plan(ctx, rewritten_plan)
+
+
+async def _dataframe_from_plan_with_window_materialization(
+    ctx: SessionContext,
+    plan: Plan,
+) -> Result[RustDataFrame, BackendError]:
+    """Build a DataFrame for an adapter-local plan after bridging nested window relations."""
+    root = root_rel(plan.clone())
+    match _window_rel(root.clone()):
+        Some(window_rel) => return await _dataframe_from_window_rel(ctx, window_rel, root_names(plan.clone()))
+        None =>
+            window_materializations = _collect_materialized_window_relations(root.clone(), "root")
+            if len(window_materializations) == 0:
                 return await _dataframe_from_standard_plan(ctx, plan)
-            for materialization in materializations:
-                # The path key must match the later rewrite traversal so each temp read targets the exact generated
-                # subtree that was collected here.
-                table_name = _materialized_generator_table_name(materialization.path)
-                df = await _dataframe_from_generator_extension(ctx.clone(), materialization.extension)?
-                await _register_materialized_generator_dataframe(ctx.clone(), table_name, df)?
-            rewritten_root = _replace_materialized_generator_relations(root_rel(plan.clone()), "root")
+            for materialization in window_materializations:
+                table_name = _materialized_window_table_name(materialization.path)
+                df = await _dataframe_from_window_rel(
+                    ctx.clone(),
+                    materialization.window_rel,
+                    materialization.output_columns,
+                )?
+                await _register_materialized_dataframe(ctx.clone(), table_name, df)?
+            rewritten_root = _replace_materialized_window_relations(root, "root")
             rewritten_plan = plan_from_root_relation(rewritten_root, root_names(plan))
             return await _dataframe_from_standard_plan(ctx, rewritten_plan)
 
@@ -240,7 +294,7 @@ async def _dataframe_from_window_rel(
                 child = _window_input_rel(current_window.clone())?
             None =>
                 base_plan = plan_from_root_relation(child, child_columns)
-                mut current_df = await _dataframe_from_non_window_plan(ctx.clone(), base_plan)?
+                mut current_df = await _dataframe_from_standard_plan(ctx.clone(), base_plan)?
                 mut idx = len(pending_windows)
                 while idx > 0:
                     idx -= 1
@@ -294,7 +348,7 @@ async def _dataframe_from_generator_extension(
     )?
     projected_rel = project_rel_with_expressions(child, payload.arguments)
     projected_plan = plan_from_root_relation(projected_rel, projected_names)
-    projected_df = await _dataframe_from_standard_plan(ctx, projected_plan)?
+    projected_df = await _dataframe_from_plan_with_window_materialization(ctx, projected_plan)?
     return _apply_generator_dataframe_shape(projected_df, extension, payload, temp_columns)
 
 
@@ -650,12 +704,362 @@ def _materialized_generator_table_name(path: str) -> str:
     return f"__inql_generator_materialized_{path}"
 
 
-async def _register_materialized_generator_dataframe(
+def _collect_materialized_window_relations(rel: Rel, path: str) -> list[MaterializedWindowRelation]:
+    """Return window relations nested below a non-window root."""
+    match _window_rel(rel.clone()):
+        Some(window_rel) =>
+            return [MaterializedWindowRelation(
+                path=path,
+                rel=rel.clone(),
+                window_rel=window_rel,
+                output_columns=relation_output_columns(rel),
+            )]
+        None => return _collect_materialized_window_children(rel, path)
+
+
+def _collect_materialized_window_children(rel: Rel, path: str) -> list[MaterializedWindowRelation]:
+    """Return window relations below direct children of one relation."""
+    mut materializations: list[MaterializedWindowRelation] = []
+    match rel.rel_type.clone():
+        Some(RelType.Filter(filter_rel)) =>
+            filter = filter_rel.as_ref().clone()
+            match filter.input:
+                Some(child) => _extend_window_materializations(
+                    materializations,
+                    _collect_materialized_window_relations(child.as_ref().clone(), f"{path}_filter"),
+                )
+                None => pass
+        Some(RelType.Project(project_rel)) =>
+            project = project_rel.as_ref().clone()
+            match project.input:
+                Some(child) => _extend_window_materializations(
+                    materializations,
+                    _collect_materialized_window_relations(child.as_ref().clone(), f"{path}_project"),
+                )
+                None => pass
+        Some(RelType.Join(join_rel)) =>
+            join = join_rel.as_ref().clone()
+            match join.left:
+                Some(child) => _extend_window_materializations(
+                    materializations,
+                    _collect_materialized_window_relations(child.as_ref().clone(), f"{path}_join_left"),
+                )
+                None => pass
+            match join.right:
+                Some(child) => _extend_window_materializations(
+                    materializations,
+                    _collect_materialized_window_relations(child.as_ref().clone(), f"{path}_join_right"),
+                )
+                None => pass
+        Some(RelType.Cross(cross_rel)) =>
+            cross = cross_rel.as_ref().clone()
+            match cross.left:
+                Some(child) => _extend_window_materializations(
+                    materializations,
+                    _collect_materialized_window_relations(child.as_ref().clone(), f"{path}_cross_left"),
+                )
+                None => pass
+            match cross.right:
+                Some(child) => _extend_window_materializations(
+                    materializations,
+                    _collect_materialized_window_relations(child.as_ref().clone(), f"{path}_cross_right"),
+                )
+                None => pass
+        Some(RelType.Aggregate(aggregate_rel)) =>
+            aggregate = aggregate_rel.as_ref().clone()
+            match aggregate.input:
+                Some(child) => _extend_window_materializations(
+                    materializations,
+                    _collect_materialized_window_relations(child.as_ref().clone(), f"{path}_aggregate"),
+                )
+                None => pass
+        Some(RelType.Sort(sort_rel)) =>
+            sort = sort_rel.as_ref().clone()
+            match sort.input:
+                Some(child) => _extend_window_materializations(
+                    materializations,
+                    _collect_materialized_window_relations(child.as_ref().clone(), f"{path}_sort"),
+                )
+                None => pass
+        Some(RelType.Fetch(fetch_rel)) =>
+            fetch = fetch_rel.as_ref().clone()
+            match fetch.input:
+                Some(child) => _extend_window_materializations(
+                    materializations,
+                    _collect_materialized_window_relations(child.as_ref().clone(), f"{path}_fetch"),
+                )
+                None => pass
+        Some(RelType.Set(set_rel)) =>
+            for idx, input in enumerate(set_rel.inputs):
+                _extend_window_materializations(
+                    materializations,
+                    _collect_materialized_window_relations(input, f"{path}_set_{idx}"),
+                )
+        Some(RelType.ExtensionSingle(extension_rel)) =>
+            extension = extension_rel.as_ref().clone()
+            match extension.input:
+                Some(child) => _extend_window_materializations(
+                    materializations,
+                    _collect_materialized_window_relations(child.as_ref().clone(), f"{path}_extension"),
+                )
+                None => pass
+        _ => pass
+    return materializations
+
+
+def _extend_window_materializations(
+    mut target: list[MaterializedWindowRelation],
+    values: list[MaterializedWindowRelation],
+) -> None:
+    """Append collected window materialization records while satisfying list clone requirements."""
+    for value in values:
+        target.append(value.clone())
+    return
+
+
+def _replace_materialized_window_relations(rel: Rel, path: str) -> Rel:
+    """Replace previously materialized window relation nodes with temp-view reads."""
+    match _window_rel(rel.clone()):
+        Some(_) => return read_named_table_rel(_materialized_window_table_name(path))
+        None => return _replace_materialized_window_children(rel, path)
+
+
+def _replace_materialized_window_children(rel: Rel, path: str) -> Rel:
+    """Recursively rewrite window-bearing children while preserving the surrounding relation node."""
+    match rel.rel_type.clone():
+        Some(RelType.Filter(filter_rel)) => return _replace_filter_window_child(rel, filter_rel.as_ref().clone(), path)
+        Some(RelType.Project(project_rel)) =>
+            return _replace_project_window_child(rel, project_rel.as_ref().clone(), path)
+        Some(RelType.Join(join_rel)) => return _replace_join_window_children(join_rel.as_ref().clone(), path)
+        Some(RelType.Cross(cross_rel)) => return _replace_cross_window_children(cross_rel.as_ref().clone(), path)
+        Some(RelType.Aggregate(aggregate_rel)) =>
+            return _replace_aggregate_window_child(rel, aggregate_rel.as_ref().clone(), path)
+        Some(RelType.Sort(sort_rel)) => return _replace_sort_window_child(rel, sort_rel.as_ref().clone(), path)
+        Some(RelType.Fetch(fetch_rel)) => return _replace_fetch_window_child(rel, fetch_rel.as_ref().clone(), path)
+        Some(RelType.Set(set_rel)) => return _replace_set_window_children(set_rel, path)
+        Some(RelType.ExtensionSingle(extension_rel)) =>
+            return _replace_extension_window_child(rel, extension_rel.as_ref().clone(), path)
+        _ => return rel
+
+
+def _rewritten_window_child(child: Box[Rel], path: str) -> Box[Rel]:
+    """Return one boxed child after replacing any materialized window subtree beneath it."""
+    return Box.new(_replace_materialized_window_relations(child.as_ref().clone(), path))
+
+
+def _replace_filter_window_child(original: Rel, filter: FilterRel, path: str) -> Rel:
+    """Rebuild a FilterRel with its input child rewritten when present."""
+    match filter.input:
+        Some(child) =>
+            return Rel(
+                rel_type=Some(
+                    RelType.Filter(
+                        Box.new(
+                            FilterRel(
+                                common=filter.common,
+                                input=Some(_rewritten_window_child(child, f"{path}_filter")),
+                                condition=filter.condition,
+                                advanced_extension=filter.advanced_extension,
+                            ),
+                        ),
+                    ),
+                ),
+            )
+        None => return original
+
+
+def _replace_project_window_child(original: Rel, project: ProjectRel, path: str) -> Rel:
+    """Rebuild a ProjectRel with its input child rewritten when present."""
+    match project.input:
+        Some(child) =>
+            return Rel(
+                rel_type=Some(
+                    RelType.Project(
+                        Box.new(
+                            ProjectRel(
+                                common=project.common,
+                                input=Some(_rewritten_window_child(child, f"{path}_project")),
+                                expressions=project.expressions,
+                                advanced_extension=project.advanced_extension,
+                            ),
+                        ),
+                    ),
+                ),
+            )
+        None => return original
+
+
+def _replace_join_window_children(join: JoinRel, path: str) -> Rel:
+    """Rebuild a JoinRel with rewritten left and right inputs."""
+    mut left = join.left
+    mut right = join.right
+    match left:
+        Some(child) =>
+            left = Some(_rewritten_window_child(child, f"{path}_join_left"))
+        None => pass
+    match right:
+        Some(child) =>
+            right = Some(_rewritten_window_child(child, f"{path}_join_right"))
+        None => pass
+    return Rel(
+        rel_type=Some(
+            RelType.Join(
+                Box.new(
+                    JoinRel(
+                        common=join.common,
+                        left=left,
+                        right=right,
+                        expression=join.expression,
+                        post_join_filter=join.post_join_filter,
+                        type=JoinType.Inner.into(),
+                        advanced_extension=join.advanced_extension,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+
+def _replace_cross_window_children(cross: CrossRel, path: str) -> Rel:
+    """Rebuild a CrossRel with rewritten left and right inputs."""
+    mut left = cross.left
+    mut right = cross.right
+    match left:
+        Some(child) =>
+            left = Some(_rewritten_window_child(child, f"{path}_cross_left"))
+        None => pass
+    match right:
+        Some(child) =>
+            right = Some(_rewritten_window_child(child, f"{path}_cross_right"))
+        None => pass
+    return Rel(
+        rel_type=Some(
+            RelType.Cross(
+                Box.new(
+                    CrossRel(common=cross.common, left=left, right=right, advanced_extension=cross.advanced_extension),
+                ),
+            ),
+        ),
+    )
+
+
+def _replace_aggregate_window_child(original: Rel, aggregate: AggregateRel, path: str) -> Rel:
+    """Rebuild an AggregateRel with its input child rewritten when present."""
+    match aggregate.input:
+        Some(child) =>
+            return Rel(
+                rel_type=Some(
+                    RelType.Aggregate(
+                        Box.new(
+                            AggregateRel(
+                                common=aggregate.common,
+                                input=Some(_rewritten_window_child(child, f"{path}_aggregate")),
+                                groupings=aggregate.groupings,
+                                measures=aggregate.measures,
+                                grouping_expressions=aggregate.grouping_expressions,
+                                advanced_extension=aggregate.advanced_extension,
+                            ),
+                        ),
+                    ),
+                ),
+            )
+        None => return original
+
+
+def _replace_sort_window_child(original: Rel, sort: SortRel, path: str) -> Rel:
+    """Rebuild a SortRel with its input child rewritten when present."""
+    match sort.input:
+        Some(child) =>
+            return Rel(
+                rel_type=Some(
+                    RelType.Sort(
+                        Box.new(
+                            SortRel(
+                                common=sort.common,
+                                input=Some(_rewritten_window_child(child, f"{path}_sort")),
+                                sorts=sort.sorts,
+                                advanced_extension=sort.advanced_extension,
+                            ),
+                        ),
+                    ),
+                ),
+            )
+        None => return original
+
+
+def _replace_fetch_window_child(original: Rel, fetch: FetchRel, path: str) -> Rel:
+    """Rebuild a FetchRel with its input child rewritten when present."""
+    match fetch.input:
+        Some(child) =>
+            return Rel(
+                rel_type=Some(
+                    RelType.Fetch(
+                        Box.new(
+                            FetchRel(
+                                common=fetch.common,
+                                input=Some(_rewritten_window_child(child, f"{path}_fetch")),
+                                advanced_extension=fetch.advanced_extension,
+                                offset_mode=fetch.offset_mode,
+                                count_mode=fetch.count_mode,
+                            ),
+                        ),
+                    ),
+                ),
+            )
+        None => return original
+
+
+def _replace_set_window_children(set_rel: SetRel, path: str) -> Rel:
+    """Rebuild a SetRel with every input child rewritten."""
+    mut inputs: list[Rel] = []
+    for idx, input in enumerate(set_rel.inputs):
+        rewritten = _replace_materialized_window_relations(input, f"{path}_set_{idx}")
+        inputs.append(rewritten.clone())
+    return Rel(
+        rel_type=Some(
+            RelType.Set(
+                SetRel(
+                    common=set_rel.common,
+                    inputs=inputs,
+                    op=set_rel.op,
+                    advanced_extension=set_rel.advanced_extension,
+                ),
+            ),
+        ),
+    )
+
+
+def _replace_extension_window_child(original: Rel, extension: ExtensionSingleRel, path: str) -> Rel:
+    """Rebuild an ExtensionSingleRel with its input child rewritten when present."""
+    match extension.input:
+        Some(child) =>
+            return Rel(
+                rel_type=Some(
+                    RelType.ExtensionSingle(
+                        Box.new(
+                            ExtensionSingleRel(
+                                common=extension.common,
+                                input=Some(_rewritten_window_child(child, f"{path}_extension")),
+                                detail=extension.detail,
+                            ),
+                        ),
+                    ),
+                ),
+            )
+        None => return original
+
+
+def _materialized_window_table_name(path: str) -> str:
+    """Return the internal DataFusion temp-view name for one materialized window relation path."""
+    return f"__inql_window_materialized_{path}"
+
+
+async def _register_materialized_dataframe(
     ctx: SessionContext,
     table_name: str,
     df: RustDataFrame,
 ) -> Result[None, BackendError]:
-    """Collect one generated DataFrame into a MemTable so Substrait reads see concrete table scans."""
+    """Collect one bridged DataFrame into a MemTable so Substrait reads see concrete table scans."""
     match await df.clone().collect():
         Ok(batches) =>
             if len(batches) == 0:
@@ -663,7 +1067,7 @@ async def _register_materialized_generator_dataframe(
                 match ctx.register_table(f"{table_name}", df.into_view()):
                     Ok(_) => return Ok(None)
                     Err(err) => return Err(backend_error(BackendErrorKind.BackendPlanningError, err.to_string()))
-            _register_materialized_generator_schema_from_batch(f"{table_name}", batches[0])
+            _register_materialized_schema_from_batch(f"{table_name}", batches[0])
             schema = batches[0].schema()
             # Non-empty outputs are frozen into a MemTable so the stock consumer reads a concrete table instead of an
             # InQL-specific generator extension relation.
@@ -676,8 +1080,8 @@ async def _register_materialized_generator_dataframe(
         Err(err) => return Err(backend_error(BackendErrorKind.BackendExecutionError, err.to_string()))
 
 
-def _register_materialized_generator_schema_from_batch(table_name: str, batch: RecordBatch) -> None:
-    """Mirror one DataFusion materialized generator schema into the Substrait named-table schema registry."""
+def _register_materialized_schema_from_batch(table_name: str, batch: RecordBatch) -> None:
+    """Mirror one materialized DataFusion schema into the Substrait named-table schema registry."""
     # The rewritten ReadRel uses the same schema inference path as user-registered tables, so mirror DataFusion's batch
     # schema into that registry before the temporary plan is lowered.
     schema = batch.schema()
@@ -732,7 +1136,7 @@ def _generator_extension(rel: Rel) -> Option[ExtensionSingleRel]:
     match rel.rel_type:
         Some(RelType.ExtensionSingle(extension)) =>
             if let Some(detail) = extension.detail.clone():
-                if _is_generator_extension_uri(detail.type_url):
+                if is_generator_extension_uri(detail.type_url):
                     return Some(extension.as_ref().clone())
             return None
         _ => return None
@@ -805,13 +1209,13 @@ def _window_function_sql(
     """Render one `function(...) OVER (...) AS alias` expression."""
     function_name = window_function_name_from_anchor(window_function.function_reference)
     args = _window_function_argument_sql(window_function.clone(), input_columns.clone())?
+    invocation = _window_invocation_sql(window_function.invocation)
     null_treatment = _window_null_treatment_sql(window_function.options)
     over_clause = _window_over_clause(window_function, input_columns, window_rel)?
-    return Ok(
-        function_name + "(" + args + ")" + null_treatment + " OVER (" + over_clause + ") AS " + _quoted_ident(
-            output_name,
-        ),
-    )
+    mut expression = function_name + "(" + invocation + args + ")" + null_treatment + " OVER (" + over_clause + ")"
+    if _window_output_needs_i64_cast(function_name):
+        expression = "CAST(" + expression + " AS BIGINT)"
+    return Ok(expression + " AS " + _quoted_ident(output_name))
 
 
 def _window_function_argument_sql(
@@ -855,7 +1259,7 @@ def _function_argument_sql(argument: FunctionArgument, input_columns: list[str])
 
 
 def _sql_expr(expr: Expression, input_columns: list[str]) -> Result[str, BackendError]:
-    """Render the small Substrait expression subset needed by current window helpers."""
+    """Render Substrait scalar expressions needed by window arguments and boundaries."""
     field_index = field_index_from_expression(expr.clone())
     if field_index >= 0 and field_index < len(input_columns):
         return Ok(_quoted_ident(input_columns[field_index]))
@@ -872,13 +1276,98 @@ def _sql_expr(expr: Expression, input_columns: list[str]) -> Result[str, Backend
                     escaped = f"{value}".replace("'", "''")
                     return Ok(f"'{escaped}'")
                 _ => pass
+        Some(RexType.ScalarFunction(function)) =>
+            return _scalar_function_sql(function.function_reference, function.arguments, input_columns)
         _ => pass
-    return Err(
-        backend_error(
-            BackendErrorKind.BackendPlanningError,
-            "window SQL bridge only supports direct fields and primitive literals",
-        ),
-    )
+    return Err(_unsupported_window_sql_expr("window SQL bridge cannot render this scalar expression"))
+
+
+def _scalar_function_sql(
+    function_reference: u32,
+    arguments: list[FunctionArgument],
+    input_columns: list[str],
+) -> Result[str, BackendError]:
+    """Render one registry-backed scalar function as portable DataFusion SQL."""
+    function_name = scalar_function_name_from_anchor(function_reference)
+    rendered_args = _render_function_arguments(arguments, input_columns)?
+    if function_name == "add":
+        return _binary_sql("+", rendered_args)
+    if function_name == "subtract":
+        return _binary_sql("-", rendered_args)
+    if function_name == "multiply":
+        return _binary_sql("*", rendered_args)
+    if function_name == "divide":
+        return _binary_sql("/", rendered_args)
+    if function_name == "modulus":
+        return _binary_sql("%", rendered_args)
+    if function_name == "equal":
+        return _binary_sql("=", rendered_args)
+    if function_name == "not_equal":
+        return _binary_sql("<>", rendered_args)
+    if function_name == "gt":
+        return _binary_sql(">", rendered_args)
+    if function_name == "gte":
+        return _binary_sql(">=", rendered_args)
+    if function_name == "lt":
+        return _binary_sql("<", rendered_args)
+    if function_name == "lte":
+        return _binary_sql("<=", rendered_args)
+    if function_name == "and":
+        return _binary_sql("AND", rendered_args)
+    if function_name == "or":
+        return _binary_sql("OR", rendered_args)
+    if function_name == "not":
+        return _unary_sql("NOT ", rendered_args)
+    if function_name == "negate":
+        return _unary_sql("-", rendered_args)
+    if function_name == "is_null":
+        return _postfix_unary_sql(" IS NULL", rendered_args)
+    if function_name == "is_not_null":
+        return _postfix_unary_sql(" IS NOT NULL", rendered_args)
+    if function_name == "between":
+        if len(rendered_args) != 3:
+            return Err(_unsupported_window_sql_expr("between requires three arguments"))
+        return Ok("(" + rendered_args[0] + " BETWEEN " + rendered_args[1] + " AND " + rendered_args[2] + ")")
+    return Ok(function_name + "(" + ", ".join(rendered_args) + ")")
+
+
+def _render_function_arguments(
+    arguments: list[FunctionArgument],
+    input_columns: list[str],
+) -> Result[list[str], BackendError]:
+    """Render scalar function value arguments recursively."""
+    mut rendered: list[str] = []
+    for argument in arguments:
+        match argument.arg_type.clone():
+            Some(ArgType.Value(expr)) => rendered.append(_sql_expr(expr, input_columns.clone())?)
+            _ => return Err(_unsupported_window_sql_expr("scalar function argument is not a value expression"))
+    return Ok(rendered)
+
+
+def _binary_sql(operator: str, rendered_args: list[str]) -> Result[str, BackendError]:
+    """Render one binary infix SQL expression."""
+    if len(rendered_args) != 2:
+        return Err(_unsupported_window_sql_expr(f"{operator} requires two arguments"))
+    return Ok("(" + rendered_args[0] + " " + operator + " " + rendered_args[1] + ")")
+
+
+def _unary_sql(operator: str, rendered_args: list[str]) -> Result[str, BackendError]:
+    """Render one unary prefix SQL expression."""
+    if len(rendered_args) != 1:
+        return Err(_unsupported_window_sql_expr(f"{operator}requires one argument"))
+    return Ok("(" + operator + rendered_args[0] + ")")
+
+
+def _postfix_unary_sql(operator: str, rendered_args: list[str]) -> Result[str, BackendError]:
+    """Render one unary postfix SQL expression."""
+    if len(rendered_args) != 1:
+        return Err(_unsupported_window_sql_expr(f"{operator} requires one argument"))
+    return Ok("(" + rendered_args[0] + operator + ")")
+
+
+def _unsupported_window_sql_expr(message: str) -> BackendError:
+    """Build a backend planning diagnostic for unsupported SQL bridge expressions."""
+    return backend_error(BackendErrorKind.BackendPlanningError, message)
 
 
 def _sort_sql(sort: SortField, input_columns: list[str]) -> Result[str, BackendError]:
@@ -949,10 +1438,29 @@ def _window_bound_sql(bound: Option[Bound], is_lower: bool) -> Result[str, Backe
     return Err(backend_error(BackendErrorKind.BackendPlanningError, "window frame bound is missing"))
 
 
+def _window_invocation_sql(invocation: RustI32) -> str:
+    """Render DISTINCT for windowed aggregate invocations."""
+    distinct: RustI32 = AggregationInvocation.Distinct.into()
+    if invocation == distinct:
+        return "DISTINCT "
+    return ""
+
+
+def _window_output_needs_i64_cast(function_name: str) -> bool:
+    """Return whether DataFusion's unsigned analytic result should be cast into InQL's i64 surface type."""
+    return (
+        function_name == "count"
+        or function_name == "row_number"
+        or function_name == "rank"
+        or function_name == "dense_rank"
+        or function_name == "ntile"
+    )
+
+
 def _window_function_output_name(options: list[FunctionOption]) -> str:
     """Return the output alias encoded by Substrait lowering."""
     for option in options:
-        if option.name == "inql_output_name" and len(option.preference) > 0:
+        if option.name == WINDOW_OUTPUT_NAME_OPTION and len(option.preference) > 0:
             return option.preference[0]
     return ""
 
@@ -960,7 +1468,7 @@ def _window_function_output_name(options: list[FunctionOption]) -> str:
 def _window_null_treatment_sql(options: list[FunctionOption]) -> str:
     """Render optional DataFusion SQL null treatment for value and offset windows."""
     for option in options:
-        if option.name == "null_treatment" and len(option.preference) > 0 and option.preference[0] == "ignore_nulls":
+        if option.name == WINDOW_NULL_TREATMENT_OPTION and len(option.preference) > 0 and option.preference[0] == "ignore_nulls":
             return " IGNORE NULLS"
     return ""
 
@@ -1084,20 +1592,6 @@ def _preserve_generator_nulls(extension_uri: str) -> bool:
 def _generator_expands_struct(extension_uri: str) -> bool:
     """Return whether the generator result should expand a struct value into multiple columns."""
     return extension_uri == INLINE_EXTENSION_URI or extension_uri == INLINE_OUTER_EXTENSION_URI or extension_uri == STACK_EXTENSION_URI
-
-
-def _is_generator_extension_uri(extension_uri: str) -> bool:
-    """Return whether an ExtensionSingle URI belongs to an InQL generator."""
-    return (
-        extension_uri == EXPLODE_EXTENSION_URI
-        or extension_uri == EXPLODE_OUTER_EXTENSION_URI
-        or extension_uri == POSEXPLODE_EXTENSION_URI
-        or extension_uri == POSEXPLODE_OUTER_EXTENSION_URI
-        or extension_uri == INLINE_EXTENSION_URI
-        or extension_uri == INLINE_OUTER_EXTENSION_URI
-        or extension_uri == FLATTEN_EXTENSION_URI
-        or extension_uri == STACK_EXTENSION_URI
-    )
 
 
 async def _register_sources(

@@ -93,6 +93,7 @@ pub model WindowSpec:
 
     def rows_between(self, lower_bound: WindowBound, upper_bound: WindowBound) -> Self:
         """Return this window spec with an explicit row frame."""
+        _validate_frame_bounds(lower_bound, upper_bound)
         return WindowSpec(
             partition_columns=self.partition_columns,
             sort_columns=self.sort_columns,
@@ -101,6 +102,7 @@ pub model WindowSpec:
 
     def range_between(self, lower_bound: WindowBound, upper_bound: WindowBound) -> Self:
         """Return this window spec with an explicit range frame."""
+        _validate_frame_bounds(lower_bound, upper_bound)
         return WindowSpec(
             partition_columns=self.partition_columns,
             sort_columns=self.sort_columns,
@@ -160,6 +162,9 @@ pub model WindowFunctionCall:
 
     def _with_null_treatment(self, null_treatment: WindowNullTreatment) -> Self:
         """Return this call with a different null treatment."""
+        if not _window_function_supports_null_treatment(self.kind):
+            message = f"{self.canonical_name} does not support null treatment"
+            return raise_value_error(message)
         return WindowFunctionCall(
             kind=self.kind,
             function_ref=self.function_ref,
@@ -352,6 +357,25 @@ def _window_call(
     )
 
 
+def _validate_frame_bounds(lower_bound: WindowBound, upper_bound: WindowBound) -> None:
+    """Reject frame bounds that are invalid for their lower/upper positions."""
+    if lower_bound.kind == WindowBoundKind.UnboundedFollowing:
+        return raise_value_error("window frame lower bound cannot be unbounded following")
+    if upper_bound.kind == WindowBoundKind.UnboundedPreceding:
+        return raise_value_error("window frame upper bound cannot be unbounded preceding")
+
+
+def _window_function_supports_null_treatment(kind: WindowFunctionKind) -> bool:
+    """Return whether `IGNORE/RESPECT NULLS` is meaningful for this window function family."""
+    return (
+        kind == WindowFunctionKind.Lag
+        or kind == WindowFunctionKind.Lead
+        or kind == WindowFunctionKind.FirstValue
+        or kind == WindowFunctionKind.LastValue
+        or kind == WindowFunctionKind.NthValue
+    )
+
+
 def _offset_call(
     canonical_name: str,
     kind: WindowFunctionKind,
@@ -384,6 +408,13 @@ def _index_of_text(values: list[str], expected: str) -> int:
 
 module tests:
     from projection_builders import col, column_expr_name
+    from std.testing import assert_raises
+    def _call_invalid_lower_frame_bound() -> None:
+        window().rows_between(unbounded_following(), current_row())
+    def _call_invalid_upper_frame_bound() -> None:
+        window().range_between(current_row(), unbounded_preceding())
+    def _call_ranking_null_treatment() -> None:
+        row_number().ignore_nulls()
     def test_window_spec_builders_preserve_partition_order_and_frame() -> None:
         spec = (window().partition_by([col("customer_id")]).order_by([col("amount")]).rows_between(
             unbounded_preceding(),
@@ -408,3 +439,8 @@ module tests:
         nth = nth_value(col("amount"), 3)
         assert nth.kind == WindowFunctionKind.NthValue
         assert len(nth.arguments) == 2
+    def test_frame_builders_reject_invalid_unbounded_positions() -> None:
+        assert_raises[ValueError](_call_invalid_lower_frame_bound)
+        assert_raises[ValueError](_call_invalid_upper_frame_bound)
+    def test_null_treatment_is_limited_to_offset_and_value_functions() -> None:
+        assert_raises[ValueError](_call_ranking_null_treatment)

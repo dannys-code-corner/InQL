@@ -61,6 +61,7 @@ pub from substrait.inspect import (
     aggregate_measure_invocation_names,
     aggregate_measure_output_names,
     aggregate_measure_sort_counts,
+    plan_extension_function_names,
     plan_extension_urn_anchor_at,
     plan_extension_urn_count,
     plan_contains_relation_kind,

@@ -1,0 +1,34 @@
+"""Logical named-table schema registry shared by Prism planning and Substrait lowering."""
+
+from substrait.schema import RowColumnSpec
+
+
+model NamedTableSchemaEntry:
+    table_name: str
+    columns: list[RowColumnSpec]
+
+
+static _named_table_schema_registry: list[NamedTableSchemaEntry] = []
+
+
+pub def registered_named_table_columns(table_name: str) -> list[RowColumnSpec]:
+    """Return registered column specs for one named table, or empty when unknown."""
+    for entry in _named_table_schema_registry:
+        if entry.table_name == table_name:
+            return entry.columns
+    return []
+
+
+pub def register_named_table_schema(table_name: str, columns: list[RowColumnSpec]) -> None:
+    """Register one logical named-table schema used by planning and lowering."""
+    for idx, entry in enumerate(_named_table_schema_registry):
+        if entry.table_name == table_name:
+            _named_table_schema_registry[idx] = NamedTableSchemaEntry(table_name=table_name, columns=columns)
+            return
+    _named_table_schema_registry.append(NamedTableSchemaEntry(table_name=table_name, columns=columns))
+    return
+
+
+pub def named_table_columns(table_name: str) -> list[str]:
+    """Return registered column names for one named table, or empty when unknown."""
+    return [column.name for column in registered_named_table_columns(table_name)]

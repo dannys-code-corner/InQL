@@ -30,13 +30,13 @@ The current extension encoding for unnest adds extension URI maintenance burden 
 
 ## Non-Goals
 
-- Changing the InQL surface syntax for unnest — `EXPLODE` in `query {}` (InQL RFC 003) and `explode` on `DataSet[T]` (InQL RFC 001) remain unchanged.
+- Changing the InQL surface syntax for unnest — `EXPLODE` in `query {}` (InQL RFC 003) and `generate(explode(...))` remain unchanged.
 - Defining the semantics of the new core `Rel` — that is an upstream Substrait concern; InQL aligns to whatever the pinned revision specifies.
 - Keeping the extension encoding as an alternate path — once the core `Rel` is adopted, the extension path is retired.
 
 ## Guide-level explanation
 
-From an author's perspective, nothing changes. `EXPLODE` in `query {}` and `.explode()` on a `DataSet[T]` work exactly as before. The only observable difference is in the serialized Substrait plan: before promotion, the emitted plan contains an `ExtensionSingleRel` or `ExtensionLeafRel` with an InQL-registered URI; after promotion, it contains the standard logical unnest `Rel` from the pinned Substrait revision. Consumers that previously required the InQL extension URI to execute unnest plans no longer do.
+From an author's perspective, nothing changes. `EXPLODE` in `query {}` and `generate(explode(...))` work exactly as before. The only observable difference is in the serialized Substrait plan: before promotion, the emitted plan contains an `ExtensionSingleRel` or `ExtensionLeafRel` with an InQL-registered URI; after promotion, it contains the standard logical unnest `Rel` from the pinned Substrait revision. Consumers that previously required the InQL extension URI to execute unnest plans no longer do.
 
 ## Reference-level explanation
 
@@ -57,7 +57,7 @@ Per the [revision and extension policy reference][ref-revision-policy]:
 
 ### Lowering update (Incan compiler)
 
-- Incan compiler lowering for `EXPLODE` and `.explode()` **must** emit the standard logical unnest `Rel` instead of the extension relation.
+- Incan compiler lowering for `EXPLODE` and `generate(explode(...))` **must** emit the standard logical unnest `Rel` instead of the extension relation.
 - The emitted plan **must** not include the deprecated extension URI for unnest after the toolchain version that adopts the core `Rel`.
 
 ### Plan compatibility
@@ -68,12 +68,12 @@ Serialized Substrait plans containing the extension encoding for unnest will nee
 
 ### Interaction with other InQL surfaces
 
-No surface changes. The `EXPLODE` clause in `query {}` and the `explode` method on `DataSet[T]` retain their existing semantics; only the Substrait emission changes.
+No surface changes. The `EXPLODE` clause in `query {}` and the `generate(explode(...))` dataset form retain their existing semantics; only the Substrait emission changes.
 
 ### Compatibility / migration
 
 - Breaking for serialized plans: existing plans with the extension encoding for unnest must be re-emitted. No author source code changes are required.
-- Non-breaking for InQL source: `EXPLODE` and `.explode()` continue to compile and type-check identically.
+- Non-breaking for InQL source: `EXPLODE` and `generate(explode(...))` continue to compile and type-check identically.
 
 ## Alternatives considered
 

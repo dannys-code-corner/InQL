@@ -1,6 +1,6 @@
 """End-to-end Session aggregate execution tests over the DataFusion backend."""
 
-from functions import avg, col, count, count_distinct, count_if, eq, max, min, str_lit, sum
+from functions import avg, col, count, count_distinct, count_if, eq, max, min, nullif, str_lit, sum
 from dataset import DataFrame, LazyFrame
 from session import Session
 from std.testing import assert_is_ok, fail_t
@@ -38,6 +38,22 @@ def _collect_modifier_or_fail(
     match session.collect(grouped):
         Ok(df) => return df
         Err(err) => return fail_t(err.error_message())
+
+
+def _preview_line_contains_all(line: str, expected_cells: list[str]) -> bool:
+    """Return whether one rendered preview row contains every expected cell value."""
+    for cell in expected_cells:
+        if not line.contains(cell):
+            return false
+    return true
+
+
+def _assert_preview_row_contains(payload: str, expected_cells: list[str], context: str) -> None:
+    """Assert one rendered preview row carries the expected materialized cells together."""
+    for line in payload.split("\n"):
+        if _preview_line_contains_all(line, expected_cells):
+            return
+    return fail_t(context)
 
 
 def test_session_aggregates__grouped_collect_executes_sum_and_count() -> None:
@@ -123,6 +139,28 @@ def test_session_aggregates__grouped_collect_executes_distinct_and_filter_modifi
     assert not payload.contains("28"), "customer A filtered sum should exclude cancelled rows"
     assert not payload.contains("27"), "customer B filtered sum should exclude cancelled rows"
     assert not payload.contains("3"), "distinct counts should not count duplicated product ids"
+
+
+def test_session_aggregates__count_expression_preserves_scalar_argument() -> None:
+    # -- Arrange --
+    mut session = Session.default()
+
+    # -- Act --
+    lazy: LazyFrame[AggregateModifierOrder] = assert_is_ok(
+        session.read_csv("aggregate_modifiers_count_expr", AGGREGATE_MODIFIERS_CSV_FIXTURE),
+        "aggregate modifiers fixture should load",
+    )
+    non_paid_status = nullif(col("status"), str_lit("paid"))
+    grouped = lazy.group_by([col("customer_id")]).agg([count(), count(non_paid_status)])
+    df = _collect_modifier_or_fail(session, grouped)
+    payload = df.preview_text()
+    resolved = df.resolved_columns()
+
+    # -- Assert --
+    assert df.row_count() == 2, "count expression should still preserve grouping"
+    assert resolved == ["customer_id", "count", "count_expr"], "count expression output should reflect the scalar input"
+    _assert_preview_row_contains(payload, ["A", "3", "1"], "customer A should count one non-paid scalar result")
+    _assert_preview_row_contains(payload, ["B", "3", "1"], "customer B should count one non-paid scalar result")
 
 
 def test_session_aggregates__global_collect_executes_count() -> None:

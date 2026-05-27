@@ -14,7 +14,9 @@ from functions import (
     named_struct,
     posexplode,
     posexplode_outer,
+    row_number,
     stack,
+    window,
 )
 from session import Session
 from std.testing import assert_is_ok, fail_t
@@ -249,3 +251,23 @@ def test_session_generators__generated_columns_can_feed_filter() -> None:
     # -- Assert --
     assert df.row_count() == 3, "filter after generate should evaluate against generated columns"
     _assert_preview_row_contains(payload, ["A", "10", "paid"], "filter should retain generated rows with the paid tag")
+
+
+def test_session_generators__generate_after_window_materializes_nested_window() -> None:
+    # -- Arrange --
+    mut session = Session.default()
+    lazy = _aggregate_orders(session)
+    spec = window().partition_by([col("customer_id")]).order_by([col("amount")])
+
+    # -- Act --
+    df = _collect_or_fail(
+        session,
+        lazy.with_window_column("row_num", row_number().over(spec)).generate(explode(_tags(), "tag")),
+    )
+    payload = df.preview_text()
+    resolved = df.resolved_columns()
+
+    # -- Assert --
+    assert df.row_count() == 6, "generate above a window should execute the nested window first"
+    assert resolved == ["customer_id", "amount", "row_num", "tag"], "generated window output columns should stay stable"
+    _assert_preview_row_contains(payload, ["A", "10", "1", "paid"], "generated rows should retain window values")

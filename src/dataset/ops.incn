@@ -11,11 +11,9 @@ from aggregate_builders import AggregateMeasure
 from generator_builders import GeneratorApplication
 from projection_builders import ColumnExpr, ProjectionAssignment, with_column_assignment
 from window_builders import WindowFunctionApplication, window_projection
-from substrait.function_extensions import EXPLODE_EXTENSION_URI
 from substrait.inspect import relation_output_columns
 from substrait.relations import (
     aggregate_rel_of_columns,
-    extension_single_rel,
     fetch_rel,
     filter_rel_of_columns,
     join_rel,
@@ -177,16 +175,3 @@ pub def limit_ds(rel: Rel, n: int) -> Rel:
         A relation shaped as a fetch with zero offset over the input relation.
     """
     return fetch_rel(rel, 0, n)
-
-
-pub def explode_ds(rel: Rel) -> Rel:
-    """
-    Apply dataset-level explode intent to one relation via the registered extension path.
-
-    Args:
-        rel: Input relation to explode.
-
-    Returns:
-        A relation shaped as the registered explode extension over the input relation.
-    """
-    return extension_single_rel(rel, EXPLODE_EXTENSION_URI)

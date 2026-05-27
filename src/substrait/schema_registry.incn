@@ -7,6 +7,11 @@ reads. It does not build plans or relations beyond the schema envelopes themselv
 
 from rust::substrait::proto import NamedStruct
 from substrait.schema import RowColumnSpec, RowShapeSpec, SubstraitPrimitiveKind, row_shape_to_named_struct
+from schema_registry import (
+    named_table_columns as logical_named_table_columns,
+    register_named_table_schema as register_logical_named_table_schema,
+    registered_named_table_columns as registered_logical_named_table_columns,
+)
 
 
 def _logical_shape(name: str) -> RowShapeSpec:
@@ -27,45 +32,30 @@ pub def unknown_named_struct() -> NamedStruct:
     return row_shape_to_named_struct(RowShapeSpec(model_name="__unknown__", columns=[]))
 
 
-model NamedTableSchemaEntry:
-    table_name: str
-    columns: list[RowColumnSpec]
-
-
-static _named_table_schema_registry: list[NamedTableSchemaEntry] = []
-
-
 def _named_table_shape(table_name: str, columns: list[RowColumnSpec]) -> RowShapeSpec:
     """Build one row-shape envelope for a named table schema registry entry."""
     return RowShapeSpec(model_name=table_name, columns=columns)
 
 
-pub def registered_named_table_columns(table_name: str) -> list[RowColumnSpec]:
-    """Return registered column specs for one named table, or empty when unknown."""
-    for entry in _named_table_schema_registry:
-        if entry.table_name == table_name:
-            return entry.columns
-    return []
-
-
 pub def named_table_base_schema(table_name: str) -> NamedStruct:
     """Resolve registered named-table schema into Substrait `base_schema` metadata."""
-    matched = registered_named_table_columns(table_name)
+    matched = registered_logical_named_table_columns(table_name)
     if len(matched) == 0:
         return unknown_named_struct()
     return row_shape_to_named_struct(_named_table_shape(table_name, matched))
 
 
+pub def registered_named_table_columns(table_name: str) -> list[RowColumnSpec]:
+    """Return registered logical column specs for one named table."""
+    return registered_logical_named_table_columns(table_name)
+
+
 pub def register_named_table_schema(table_name: str, columns: list[RowColumnSpec]) -> None:
     """Register one logical named-table schema used to bind `ReadRel` base_schema."""
-    for idx, entry in enumerate(_named_table_schema_registry):
-        if entry.table_name == table_name:
-            _named_table_schema_registry[idx] = NamedTableSchemaEntry(table_name=table_name, columns=columns)
-            return
-    _named_table_schema_registry.append(NamedTableSchemaEntry(table_name=table_name, columns=columns))
+    register_logical_named_table_schema(table_name, columns)
     return
 
 
 pub def named_table_columns(table_name: str) -> list[str]:
-    """Return registered columns for one named table, or empty when unknown."""
-    return [column.name for column in registered_named_table_columns(table_name)]
+    """Return registered logical column names for one named table."""
+    return logical_named_table_columns(table_name)

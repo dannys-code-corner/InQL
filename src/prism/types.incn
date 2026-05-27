@@ -23,7 +23,6 @@ pub enum PrismNodeKind(str):
     Window = "Window"
     OrderBy = "OrderBy"
     Limit = "Limit"
-    Explode = "Explode"
 
 
 @derive(Clone)

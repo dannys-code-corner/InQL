@@ -6,9 +6,9 @@ Consumers depend on this package via `[dependencies]` and import with `from pub:
 """
 
 pub from dataset import BoundedDataSet, DataFrame, DataSet, DataStream, LazyFrame, UnboundedDataSet
+pub from schema_registry import named_table_columns, register_named_table_schema, registered_named_table_columns
 pub from dataset.ops import (
     agg_ds,
-    explode_ds,
     filter_ds,
     generate_ds,
     group_by_ds,

@@ -2,7 +2,7 @@
 
 from std.testing import fail_t, parametrize
 from metadata import inql_version
-from aggregate_builders import AggregateKind
+from aggregate_builders import COUNT_NO_ARGUMENT_SENTINEL, AggregateKind
 from dataset import DataSet, BoundedDataSet, UnboundedDataSet, DataFrame, LazyFrame, DataStream, lazy_frame_named_table
 from dataset.materialization import DataFrameMaterialization
 from dataset.ops import filter_ds, join_ds
@@ -183,7 +183,7 @@ def test_smoke__dataset_types_are_published() -> None:
 
     # -- Assert --
     assert column_expr_name(sum_result.expr) == "amount", "sum should preserve the selected input column expression"
-    assert column_expr_name(count_result.expr) == "", "count should preserve row-count measures when called without an expression"
+    assert column_expr_name(count_result.expr) == COUNT_NO_ARGUMENT_SENTINEL, "count should preserve row-count measures when called without an expression"
     assert expression_count_result.has_expr, "count(expr) should mark expression-count measures explicitly"
     assert column_expr_name(expression_count_result.expr) == "amount", "count(expr) should preserve the selected input column expression"
     assert distinct_count_result.is_distinct, "count_distinct should build a distinct aggregate measure"
@@ -392,22 +392,14 @@ def test_dataset_ops__with_column_updates_lazy_planned_columns_with_add_or_repla
 
 def test_dataset_ops__api_lowered_boundary_facts_stay_stable() -> None:
     # -- Arrange --
-    left = DataFrame(
-        _type_witness=_order_witness(),
-        _materialization=DataFrameMaterialization.empty(),
-        _substrait_rel=read_named_table_rel("orders"),
-    )
-    joined_plan = plan_from_root_relation(
-        join_ds(read_named_table_rel("orders"), read_named_table_rel("orders_archive"), true),
-        ["id"],
-    )
+    left = read_named_table_rel("orders")
+    right = read_named_table_rel("orders_archive")
 
     # -- Act --
-    exploded_plan = left.explode().to_substrait_plan()
+    joined_plan = plan_from_root_relation(join_ds(left, right, true), ["id"])
 
     # -- Assert --
     assert relation_kind_name(root_rel(joined_plan)) == "JoinRel", "canonical join function should still lower to a JoinRel root"
-    assert plan_has_extension_urn(exploded_plan, EXPLODE_EXTENSION_URI), "explode method should emit the registered extension URI"
 
 
 def test_lazy_frame__immutable_branching_and_origin_mapping_hold() -> None:
@@ -449,14 +441,14 @@ def test_lazy_frame__native_prism_ops_preserve_current_boundary_shapes() -> None
             nullable=true,
         )],
     )
+
+    # -- Act --
     projected: LazyFrame[Order] = lazy_frame_named_table("orders").select()
     grouped: LazyFrame[Order] = lazy_frame_named_table("orders").group_by([col("id")])
 
-    # -- Act --
     aggregated = grouped.agg([count()])
     ordered: LazyFrame[Order] = lazy_frame_named_table("orders").order_by([col("id")])
     limited: LazyFrame[Order] = lazy_frame_named_table("orders").limit(10)
-    exploded: LazyFrame[Order] = lazy_frame_named_table("orders").explode()
     generated: LazyFrame[Order] = lazy_frame_named_table("orders_generator_dataset").generate(
         explode(col("line_items"), "line_item"),
     )
@@ -492,7 +484,6 @@ def test_lazy_frame__native_prism_ops_preserve_current_boundary_shapes() -> None
     assert relation_kind_name(root_rel(aggregated.to_substrait_plan())) == "AggregateRel", "agg should lower to AggregateRel"
     assert relation_kind_name(root_rel(ordered.to_substrait_plan())) == "SortRel", "order_by should lower to SortRel"
     assert relation_kind_name(root_rel(limited.to_substrait_plan())) == "FetchRel", "limit should lower to FetchRel"
-    assert plan_has_extension_urn(exploded.to_substrait_plan(), EXPLODE_EXTENSION_URI), "explode should keep emitting the registered extension boundary"
     assert relation_kind_name(root_rel(generated.to_substrait_plan())) == "ExtensionSingleRel", "generate should lower through the relation extension boundary"
     assert generated.planned_columns() == ["id", "line_items", "line_item"], "generate should append declared output aliases"
     assert plan_has_extension_urn(generated_outer.to_substrait_plan(), EXPLODE_OUTER_EXTENSION_URI), "outer explode should use its relation extension URI"
@@ -541,14 +532,3 @@ def test_lazy_frame__canonical_rewrite_removes_filter_true_and_preserves_boundar
     assert plan_encoded_len(plan) > 0, "canonicalized plans should still encode to a non-empty Substrait payload"
     assert relation_kind_name(root_rel(plan)) == "ReadRel", "filter(true) should canonicalize away before RFC 002 lowering"
     assert plan_contains_relation_kind(plan, "ReadRel"), "canonicalized plans should still preserve the read root"
-
-
-def test_lazy_frame__canonical_rewrite_keeps_extension_boundary_for_explode() -> None:
-    # -- Arrange --
-    exploded: LazyFrame[Order] = lazy_frame_named_table("orders").filter(always_true()).explode()
-
-    # -- Act --
-    plan = exploded.to_substrait_plan()
-
-    # -- Assert --
-    assert plan_has_extension_urn(plan, EXPLODE_EXTENSION_URI), "canonical rewrites must keep explode extension URI emission intact"

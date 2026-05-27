@@ -7,6 +7,7 @@ plan assembly or plan inspection.
 """
 
 from rust::prost_types import Any
+from rust::prost import Message
 from rust::incan_stdlib::errors import raise_value_error
 from rust::std::boxed import Box
 from rust::std::primitive import i32 as RustI32
@@ -81,6 +82,7 @@ from substrait.expr_lowering import (
 )
 from substrait.errors import SubstraitLoweringError, invalid_scalar_expression
 from substrait.generator_payload import encode_generator_extension_payload
+from substrait.window_metadata import WINDOW_NULL_TREATMENT_OPTION, WINDOW_OUTPUT_NAME_OPTION
 from substrait.inspect import relation_output_columns
 from substrait.schema_registry import named_table_base_schema, unknown_named_struct
 
@@ -429,8 +431,8 @@ def _resolved_window_projection(
 
 def _window_function_options(output_name: str, application: WindowFunctionApplication) -> list[FunctionOption]:
     """Encode InQL-only window metadata that Substrait consumers must preserve."""
-    return [FunctionOption(name="inql_output_name", preference=[output_name]), FunctionOption(
-        name="null_treatment",
+    return [FunctionOption(name=WINDOW_OUTPUT_NAME_OPTION, preference=[output_name]), FunctionOption(
+        name=WINDOW_NULL_TREATMENT_OPTION,
         preference=[application.null_treatment.value()],
     )]
 
@@ -511,11 +513,11 @@ def _window_boundary_matches(left: ResolvedWindowProjection, right: ResolvedWind
 
 
 def _window_expression_lists_match(left: list[Expression], right: list[Expression]) -> bool:
-    """Compare direct field-reference expression lists for window grouping compatibility."""
+    """Compare expression lists for window grouping compatibility."""
     if len(left) != len(right):
         return false
     for idx, left_expr in enumerate(left):
-        if field_index_from_expression(left_expr) != field_index_from_expression(right[idx]):
+        if not _expressions_match(left_expr, right[idx]):
             return false
     return true
 
@@ -532,13 +534,18 @@ def _window_sort_lists_match(left: list[SortField], right: list[SortField]) -> b
             Some(left_expr) =>
                 match right_sort.expr:
                     Some(right_expr) =>
-                        if field_index_from_expression(left_expr) != field_index_from_expression(right_expr):
+                        if not _expressions_match(left_expr, right_expr):
                             return false
                     None => return false
             None =>
                 if right_sort.expr != None:
                     return false
     return true
+
+
+def _expressions_match(left: Expression, right: Expression) -> bool:
+    """Return whether two already-lowered Substrait expressions are structurally equal."""
+    return left.encode_to_vec() == right.encode_to_vec()
 
 
 def _window_bounds_match(left: Bound, right: Bound) -> bool:

@@ -228,7 +228,6 @@ def test_prism__cursor_native_nodes_cover_current_method_surface() -> None:
     aggregated: PrismCursor[Order] = grouped.agg([count()])
     ordered: PrismCursor[Order] = prism_cursor_named_table(str("orders")).order_by([col("id")])
     limited: PrismCursor[Order] = prism_cursor_named_table(str("orders")).limit(10)
-    exploded: PrismCursor[Order] = prism_cursor_named_table(str("orders")).explode()
     generated: PrismCursor[Order] = prism_cursor_named_table(str("orders_generator_prism")).generate(
         explode(col("line_items"), "line_item"),
     )
@@ -243,7 +242,6 @@ def test_prism__cursor_native_nodes_cover_current_method_surface() -> None:
     assert prism_cursor_tip_kind_name(aggregated) == str("Aggregate"), "agg should append a native aggregate node"
     assert prism_cursor_tip_kind_name(ordered) == str("OrderBy"), "order_by should append a native sort node"
     assert prism_cursor_tip_kind_name(limited) == str("Limit"), "limit should append a native limit node"
-    assert prism_cursor_tip_kind_name(exploded) == str("Explode"), "explode should append a native explode node"
     assert prism_cursor_tip_kind_name(generated) == str("Generate"), "generate should append a native generator node"
     assert prism_cursor_tip_kind_name(windowed) == str("Window"), "with_window_column should append a native window node"
     assert prism_cursor_output_columns(generated) == ["id", "line_items", "line_item"], "generate should append declared output aliases"
@@ -314,13 +312,34 @@ def test_prism__rewrite_collapses_adjacent_aggregates_by_merging_measures() -> N
 
     # -- Assert --
     assert prism_cursor_authored_node_count(aggregated) == 4, "authored history should keep read, group_by, and both aggregate nodes"
-    assert prism_cursor_rewritten_node_count(aggregated) == 3, "rewritten view should collapse adjacent aggregate nodes"
-    assert prism_cursor_rewrite_applied_rule_name_at(aggregated, 0) == str("collapse_adjacent_aggregate"), "aggregate rewrite trace should record adjacent aggregate collapse"
+    assert prism_cursor_rewritten_node_count(aggregated) == 2, "rewritten view should fuse grouping and collapse adjacent aggregate nodes"
+    assert prism_cursor_rewrite_applied_rule_name_at(aggregated, 0) == str("fuse_group_by_aggregate"), "aggregate rewrite trace should record group_by fusion"
+    assert prism_cursor_rewrite_applied_rule_name_at(aggregated, 1) == str("collapse_adjacent_aggregate"), "aggregate rewrite trace should record adjacent aggregate collapse"
     assert len(output_cols) == 3, "merged aggregate output columns should preserve group key plus both measures"
     assert output_cols[0] == "id", "group key should stay first after aggregate rewrite collapse"
     assert output_cols[1] == "sum_id", "existing aggregate measures should survive adjacent aggregate collapse"
     assert output_cols[2] == "count", "later aggregate measures should append after existing measures"
     assert relation_kind_name(root_rel(plan)) == str("AggregateRel"), "collapsed aggregate rewrite should still lower through AggregateRel"
+
+
+def test_prism__rewrite_collapses_adjacent_compatible_windows() -> None:
+    # -- Arrange --
+    _register_projection_test_schema(str("orders"))
+    spec = window().order_by([col("id")])
+
+    # -- Act --
+    windowed: PrismCursor[Order] = prism_cursor_named_table(str("orders")).with_window_column(
+        "first_row_num",
+        row_number().over(spec),
+    ).with_window_column("second_row_num", row_number().over(spec))
+    plan = windowed.to_substrait_plan()
+
+    # -- Assert --
+    assert prism_cursor_authored_node_count(windowed) == 3, "authored history should keep both window nodes"
+    assert prism_cursor_rewritten_node_count(windowed) == 2, "rewritten view should collapse compatible window nodes"
+    assert prism_cursor_rewrite_applied_rule_name_at(windowed, 0) == str("collapse_adjacent_window"), "window rewrite trace should record adjacent window collapse"
+    assert prism_cursor_output_columns(windowed) == ["id", "first_row_num", "second_row_num"], "collapsed window projections should preserve output aliases"
+    assert relation_kind_name(root_rel(plan)) == str("ConsistentPartitionWindowRel"), "collapsed window rewrite should still lower through WindowRel"
 
 
 def test_prism__with_column_tracks_output_columns_and_collapses_adjacent_projects() -> None:

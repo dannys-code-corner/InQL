@@ -79,6 +79,7 @@ from functions import (
     try_cast,
     cardinality,
     element_at,
+    explode,
     window,
 )
 from projection_builders import ColumnExpr, with_column_assignment
@@ -103,6 +104,7 @@ from substrait.inspect import (
     aggregate_measure_sort_counts,
     plan_extension_urn_anchor_at,
     plan_extension_urn_count,
+    plan_extension_function_names,
     plan_contains_relation_kind,
     plan_has_extension_urn,
     read_kind_name,
@@ -147,6 +149,7 @@ from substrait.relations import (
     reference_rel,
     set_rel,
     set_rel_of_kind,
+    generator_rel_of_columns,
     sort_rel_of_columns,
     try_aggregate_rel_of_columns,
     try_window_rel_of_columns,
@@ -652,6 +655,24 @@ def test_plan__window_rel_lowers_multiple_projections_with_shared_boundary() -> 
     assert plan_has_extension_urn(plan, FUNCTION_EXTENSION_URI), "multi-window plans should register the shared function extension URN"
 
 
+def test_plan__window_rel_declares_scalar_extensions_from_window_expressions() -> None:
+    # -- Arrange --
+    _register_window_orders_schema()
+    base = read_named_table_rel("orders_window")
+    spec = window().partition_by([coalesce([col("customer_id"), lit("unknown")])]).order_by([col("amount")])
+    projection = window_projection("adjusted_sum", sum(add(col("amount"), lit(1))).over(spec))
+
+    # -- Act --
+    windowed = window_rel_of_columns(base, ["customer_id", "amount"], [projection])
+    plan = plan_from_root_relation(windowed, ["customer_id", "amount", "adjusted_sum"])
+    extension_functions = plan_extension_function_names(plan)
+
+    # -- Assert --
+    assert extension_functions.contains("sum"), "windowed aggregate function should be declared"
+    assert extension_functions.contains("add"), "scalar function inside window arguments should be declared"
+    assert extension_functions.contains("coalesce"), "scalar function inside window partition expressions should be declared"
+
+
 def test_plan__window_rel_rejects_multiple_projection_boundary_mismatch() -> None:
     # -- Arrange --
     _register_window_orders_schema()
@@ -664,6 +685,22 @@ def test_plan__window_rel_rejects_multiple_projection_boundary_mismatch() -> Non
 
     # -- Assert --
     assert_is_err(result, "different window boundaries should require a separate relation")
+
+
+def test_plan__window_rel_rejects_scalar_expression_boundary_mismatch() -> None:
+    # -- Arrange --
+    _register_window_orders_schema()
+    base = read_named_table_rel("orders_window")
+    first_spec = window().partition_by([add(col("amount"), lit(1))]).order_by([col("amount")])
+    second_spec = window().partition_by([sub(col("amount"), lit(1))]).order_by([col("amount")])
+    first = window_projection("row_num", row_number().over(first_spec))
+    second = window_projection("amount_rank", rank().over(second_spec))
+
+    # -- Act --
+    result = try_window_rel_of_columns(base, ["customer_id", "amount"], [first, second])
+
+    # -- Assert --
+    assert_is_err(result, "different scalar partition expressions should require a separate relation")
 
 
 def test_plan__offset_value_distribution_and_aggregate_windows_lower_to_substrait() -> None:
@@ -765,6 +802,21 @@ def test_plan__extension_urns_are_surfaced() -> None:
     assert plan_has_extension_urn(nested_plan, POSEXPLODE_EXTENSION_URI), "nested extension plans should include root extension URNs"
     assert plan_extension_urn_count(nested_plan) == 2, "different relation extension URIs should be declared once each"
     assert plan_extension_urn_anchor_at(nested_plan, 0) != plan_extension_urn_anchor_at(nested_plan, 1), "relation extension URNs should use distinct anchors"
+
+
+def test_plan__generator_payload_declares_scalar_extension_dependencies() -> None:
+    # -- Arrange --
+    _register_orders_schema()
+    base = read_named_table_rel("orders")
+    generated = generator_rel_of_columns(base, ["id"], explode(array([add(col("id"), lit(1))]), "generated_id"))
+
+    # -- Act --
+    plan = plan_from_root_relation(generated, ["id", "generated_id"])
+    extension_functions = plan_extension_function_names(plan)
+
+    # -- Assert --
+    assert extension_functions.contains("make_array"), "generator payload array constructor should be declared"
+    assert extension_functions.contains("add"), "generator payload scalar argument should be declared"
 
 
 def test_plan__revision_pin_and_extension_registry_are_exported() -> None:

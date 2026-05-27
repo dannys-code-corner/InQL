@@ -1,0 +1,4 @@
+"""Shared metadata keys for InQL window-function annotations in Substrait."""
+
+pub const WINDOW_OUTPUT_NAME_OPTION: str = "inql_output_name"
+pub const WINDOW_NULL_TREATMENT_OPTION: str = "null_treatment"

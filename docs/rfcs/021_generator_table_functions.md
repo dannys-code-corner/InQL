@@ -79,7 +79,7 @@ Every generator must define output column names, output types, nullability, inte
 
 ### Syntax
 
-Generators may appear as dataframe relation methods, query-block clauses, or table-valued function forms. Regardless of syntax, they must lower to relation-shaping operations. The builder API uses `generate(generator)` so generator identity, input expressions, and output schema are explicit. The zero-argument `DataSet.explode()` method remains a lower-level extension-boundary operation rather than the RFC 021 generator surface.
+Generators may appear as dataframe relation methods, query-block clauses, or table-valued function forms. Regardless of syntax, they must lower to relation-shaping operations. The builder API uses `generate(generator)` so generator identity, input expressions, and output schema are explicit.
 
 ### Semantics
 

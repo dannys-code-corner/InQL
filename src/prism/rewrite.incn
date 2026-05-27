@@ -2,8 +2,9 @@
 
 from filter_builders import always_true
 from prism.types import PrismNode, PrismNodeKind, PrismOptimizedView, PrismRewriteExplain, PrismStoreId
-from prism.store import node_at, reachable_node_ids, remap_input_ids, store_nodes
+from prism.store import node_at, reachable_node_ids, remap_input_ids, store_nodes, window_specs_structurally_equal
 from projection_builders import is_bool_literal_expr
+from window_builders import WindowProjection
 
 
 model PrismRewriteResult:
@@ -111,6 +112,15 @@ def _derive_rewrite_result(store_id: PrismStoreId, tip_id: int) -> PrismRewriteR
             authored_to_rewritten_id[authored_node_id] = collapsed_id
             applied_rule_names.append(str("collapse_adjacent_aggregate"))
             continue
+        if _can_fuse_group_by_aggregate(authored_node, remapped_inputs, rewritten_nodes):
+            fused_id = len(rewritten_nodes)
+            rewritten_nodes.append(
+                _build_fused_group_by_aggregate_node(authored_node, remapped_inputs, rewritten_nodes, fused_id),
+            )
+            rewritten_origin_ids.append(authored_node_id)
+            authored_to_rewritten_id[authored_node_id] = fused_id
+            applied_rule_names.append(str("fuse_group_by_aggregate"))
+            continue
         if _can_collapse_adjacent_order_by(authored_node, remapped_inputs, rewritten_nodes):
             collapsed_id = len(rewritten_nodes)
             rewritten_nodes.append(
@@ -119,6 +129,15 @@ def _derive_rewrite_result(store_id: PrismStoreId, tip_id: int) -> PrismRewriteR
             rewritten_origin_ids.append(authored_node_id)
             authored_to_rewritten_id[authored_node_id] = collapsed_id
             applied_rule_names.append(str("collapse_adjacent_order_by"))
+            continue
+        if _can_collapse_adjacent_window(authored_node, remapped_inputs, rewritten_nodes):
+            collapsed_id = len(rewritten_nodes)
+            rewritten_nodes.append(
+                _build_collapsed_window_node(authored_node, remapped_inputs, rewritten_nodes, collapsed_id),
+            )
+            rewritten_origin_ids.append(authored_node_id)
+            authored_to_rewritten_id[authored_node_id] = collapsed_id
+            applied_rule_names.append(str("collapse_adjacent_window"))
             continue
 
         # Default path: carry node forward unchanged except for rewritten input ids.
@@ -223,6 +242,13 @@ def _can_collapse_adjacent_aggregate(
     return rewritten_nodes[remapped_inputs[0]].kind == PrismNodeKind.Aggregate
 
 
+def _can_fuse_group_by_aggregate(node: PrismNode, remapped_inputs: list[int], rewritten_nodes: list[PrismNode]) -> bool:
+    """Return whether a grouped aggregate can become one explicit aggregate node."""
+    if node.kind != PrismNodeKind.Aggregate:
+        return false
+    return rewritten_nodes[remapped_inputs[0]].kind == PrismNodeKind.GroupBy
+
+
 def _build_collapsed_aggregate_node(
     node: PrismNode,
     remapped_inputs: list[int],
@@ -241,9 +267,34 @@ def _build_collapsed_aggregate_node(
         join_predicate=false,
         filter_predicate=always_true(),
         limit_count=0,
-        group_columns=[],
+        group_columns=aggregate_input.group_columns,
         sort_columns=[],
         aggregate_measures=merged_measures,
+        generator_applications=[],
+        window_projections=[],
+        projection_assignments=[],
+    )
+
+
+def _build_fused_group_by_aggregate_node(
+    node: PrismNode,
+    remapped_inputs: list[int],
+    rewritten_nodes: list[PrismNode],
+    rewritten_id: int,
+) -> PrismNode:
+    """Build one aggregate node that explicitly carries grouping expressions and measures."""
+    group_input = rewritten_nodes[remapped_inputs[0]]
+    return PrismNode(
+        node_id=rewritten_id,
+        kind=PrismNodeKind.Aggregate,
+        input_ids=[group_input.input_ids[0]],
+        named_table=str(""),
+        join_predicate=false,
+        filter_predicate=always_true(),
+        limit_count=0,
+        group_columns=group_input.group_columns,
+        sort_columns=[],
+        aggregate_measures=node.aggregate_measures,
         generator_applications=[],
         window_projections=[],
         projection_assignments=[],
@@ -284,6 +335,61 @@ def _build_collapsed_order_by_node(
         window_projections=[],
         projection_assignments=[],
     )
+
+
+def _can_collapse_adjacent_window(
+    node: PrismNode,
+    remapped_inputs: list[int],
+    rewritten_nodes: list[PrismNode],
+) -> bool:
+    """Return whether adjacent window nodes share one boundary and can collapse into one projection group."""
+    if node.kind != PrismNodeKind.Window:
+        return false
+    parent = rewritten_nodes[remapped_inputs[0]]
+    if parent.kind != PrismNodeKind.Window:
+        return false
+    return _window_projection_groups_share_boundary(parent.window_projections, node.window_projections)
+
+
+def _build_collapsed_window_node(
+    node: PrismNode,
+    remapped_inputs: list[int],
+    rewritten_nodes: list[PrismNode],
+    rewritten_id: int,
+) -> PrismNode:
+    """Build one window node by appending compatible window projections to the parent group."""
+    window_input = rewritten_nodes[remapped_inputs[0]]
+    mut merged_projections = [projection for projection in window_input.window_projections]
+    merged_projections.extend(node.window_projections)
+    return PrismNode(
+        node_id=rewritten_id,
+        kind=PrismNodeKind.Window,
+        input_ids=[window_input.input_ids[0]],
+        named_table=str(""),
+        join_predicate=false,
+        filter_predicate=always_true(),
+        limit_count=0,
+        group_columns=[],
+        sort_columns=[],
+        aggregate_measures=[],
+        generator_applications=[],
+        window_projections=merged_projections,
+        projection_assignments=[],
+    )
+
+
+def _window_projection_groups_share_boundary(left: list[WindowProjection], right: list[WindowProjection]) -> bool:
+    """Return whether two window projection groups share one partition/order/frame boundary."""
+    if len(left) == 0 or len(right) == 0:
+        return false
+    expected = left[0].application.spec
+    for projection in left:
+        if not window_specs_structurally_equal(expected, projection.application.spec):
+            return false
+    for projection in right:
+        if not window_specs_structurally_equal(expected, projection.application.spec):
+            return false
+    return true
 
 
 def _build_rewritten_node(node: PrismNode, remapped_inputs: list[int], rewritten_id: int) -> PrismNode:

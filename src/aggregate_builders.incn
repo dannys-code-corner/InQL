@@ -7,8 +7,10 @@ typechecker changes in the Incan compiler.
 """
 
 from function_registry import function_ref_for
-from projection_builders import ColumnExpr, col as col_expr, column_expr_name
+from projection_builders import ColumnExpr, col as col_expr, column_expr_name, scalar_expr_output_name
 from window_builders import WindowFunctionApplication, WindowSpec, aggregate_window_call
+
+pub const COUNT_NO_ARGUMENT_SENTINEL: str = "__inql_count_no_argument__"
 
 
 @derive(Clone)
@@ -112,9 +114,9 @@ pub def sum(expr: ColumnExpr) -> AggregateMeasure:
     )
 
 
-pub def count(expr: ColumnExpr = col_expr("")) -> AggregateMeasure:
+pub def count(expr: ColumnExpr = col_expr(COUNT_NO_ARGUMENT_SENTINEL)) -> AggregateMeasure:
     """Build one `count` aggregate measure, counting rows without an expression and non-null values with one."""
-    if column_expr_name(expr) == "":
+    if column_expr_name(expr) == COUNT_NO_ARGUMENT_SENTINEL:
         return AggregateMeasure(
             kind=AggregateKind.Count,
             function_ref=function_ref_for("count"),
@@ -187,3 +189,32 @@ pub def max(expr: ColumnExpr) -> AggregateMeasure:
         has_filter=false,
         ordering=[],
     )
+
+
+pub def aggregate_measure_output_name(measure: AggregateMeasure) -> str:
+    """Return the logical output column name for one aggregate measure."""
+    mut output_name = measure.kind.value()
+    if measure.is_distinct and measure.has_expr:
+        output_name = output_name + "_distinct_" + scalar_expr_output_name(measure.expr, "expr")
+    elif measure.has_expr:
+        output_name = output_name + "_" + scalar_expr_output_name(measure.expr, "expr")
+    if measure.has_filter:
+        output_name = output_name + "_filtered"
+    if len(measure.ordering) > 0:
+        output_name = output_name + "_ordered"
+    return output_name
+
+
+pub def aggregate_measure_output_names(measures: list[AggregateMeasure]) -> list[str]:
+    """Return logical output column names for aggregate measures in declaration order."""
+    return [aggregate_measure_output_name(measure) for measure in measures]
+
+
+module tests:
+    from projection_builders import int_expr
+    def test_count_default_is_distinct_from_literal_expressions() -> None:
+        rows = count()
+        literal = count(int_expr(1))
+
+        assert not rows.has_expr
+        assert literal.has_expr

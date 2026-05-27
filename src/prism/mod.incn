@@ -228,25 +228,6 @@ pub class PrismCursor[T with Clone]:
         )
         return PrismCursor(store_id=self.store_id, tip_id=next_tip_id, _type_marker=[])
 
-    def explode(self) -> Self:
-        """Append one explode node and return the derived tip."""
-        next_tip_id = append_node(
-            store_id=self.store_id,
-            kind=PrismNodeKind.Explode,
-            input_ids=[self.tip_id],
-            named_table="",
-            join_predicate=false,
-            filter_predicate=always_true(),
-            limit_count=0,
-            group_columns=[],
-            sort_columns=[],
-            aggregate_measures=[],
-            generator_applications=[],
-            window_projections=[],
-            projection_assignments=[],
-        )
-        return PrismCursor(store_id=self.store_id, tip_id=next_tip_id, _type_marker=[])
-
     def generate(self, generator: GeneratorApplication) -> Self:
         """Append one explicit generator node and return the derived tip."""
         next_tip_id = append_node(
@@ -380,11 +361,6 @@ pub def prism_cursor_apply_order_by[T with Clone](cursor: PrismCursor[T], column
 pub def prism_cursor_apply_limit[T with Clone](cursor: PrismCursor[T], n: int) -> PrismCursor[T]:
     """Apply dataset-level row-limit intent through Prism."""
     return cursor.limit(n)
-
-
-pub def prism_cursor_apply_explode[T with Clone](cursor: PrismCursor[T]) -> PrismCursor[T]:
-    """Apply dataset-level explode intent through Prism."""
-    return cursor.explode()
 
 
 pub def prism_cursor_apply_generate[T with Clone](

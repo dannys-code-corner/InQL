@@ -7,7 +7,7 @@ The Substrait helper surface behind these methods is split by semantic role:
 - `src/substrait/relations.incn` builds concrete `Rel` nodes
 - `src/substrait/plans.incn` assembles `Plan` envelopes
 - `src/substrait/inspect.incn` owns relation/plan inspection and output-column inference
-- `src/substrait/schema_registry.incn` owns named-table schema binding
+- `src/schema_registry.incn` owns logical named-table schema binding
 
 ## Shared method surface
 
@@ -23,7 +23,6 @@ The Substrait helper surface behind these methods is split by semantic role:
 | `with_window_column` | `def with_window_column(self, name: str, application: WindowFunctionApplication) -> Self` | Add or replace one projected column using a placed window function. |
 | `order_by`    | `def order_by(self, columns: list[ColumnExpr]) -> Self`      | Sort rows by scalar expressions or ordering helpers such as `asc(...)` and `desc(...)`.        |
 | `limit`       | `def limit(self, n: int) -> Self`                            | Cap row count.                                                                                 |
-| `explode`     | `def explode(self) -> Self`                                  | Emit the lower-level `EXPLODE` extension boundary without expression/schema metadata.          |
 
 ## `with_column`
 
