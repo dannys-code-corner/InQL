@@ -5,7 +5,7 @@ from std.json import JsonValue
 from std.testing import fail_t
 
 const METADATA_PATH: str = "target/function_registry_api_metadata.json"
-const REGISTRY_DECORATOR: str = "function_registry.add"
+const REGISTRY_DECORATOR: str = "register_function"
 
 
 def metadata_fail[T](message: str) -> T:
@@ -207,21 +207,51 @@ def decorator_source_matches(decorator: JsonValue) -> bool:
         None => return false
 
 
-def decorator_canonical_name(decorator: JsonValue, context: str) -> str:
-    """Return the canonical name from a registry decorator."""
+def registry_spec_args(decorator: JsonValue, context: str) -> list[JsonValue]:
+    """Return the named metadata arguments passed to one registry spec call."""
     args = require_array(require_field(decorator, "args", context), f"{context}.decorator.args")
-    if len(args) != 2:
-        return metadata_fail[str](f"{context}: registry decorator must have canonical name and typed metadata args")
+    if len(args) != 1:
+        return metadata_fail[list[JsonValue]](f"{context}: registry decorator must have one typed metadata arg")
     if require_string_field(args[0], "kind", context) != "positional":
-        return metadata_fail[str](f"{context}: registry decorator canonical name must be positional")
+        return metadata_fail[list[JsonValue]](f"{context}: registry decorator metadata must be positional")
 
     value = require_field(args[0], "value", context)
+    if require_string_field(value, "kind", context) != "call":
+        return metadata_fail[list[JsonValue]](f"{context}: registry decorator metadata must be a spec call")
+    return require_array(require_field(value, "args", context), f"{context}.decorator.spec.args")
+
+
+def named_arg_value(args: list[JsonValue], name: str, context: str) -> Option[JsonValue]:
+    """Return one named call argument value when present."""
+    for arg in args:
+        if require_string_field(arg, "kind", context) == "named" and require_string_field(arg, "name", context) == name:
+            return Some(require_field(arg, "value", context))
+    return None
+
+
+def canonical_name_override(args: list[JsonValue], context: str) -> Option[str]:
+    """Return the explicit canonical-name override from decorator metadata."""
+    value = match named_arg_value(args, "canonical_name", context):
+        Some(item) => item
+        None => return None
+
     if require_string_field(value, "kind", context) != "literal":
-        return metadata_fail[str](f"{context}: registry decorator canonical name must be a literal string")
+        return metadata_fail[Option[str]](f"{context}.canonical_name: expected string or None literal")
+
     literal = require_field(value, "value", context)
-    if require_string_field(literal, "kind", context) != "string":
-        return metadata_fail[str](f"{context}: registry decorator canonical name must be a string")
-    return require_string_field(literal, "value", context)
+    literal_kind = require_string_field(literal, "kind", context)
+    if literal_kind == "string":
+        return Some(require_string_field(literal, "value", context))
+    if literal_kind == "none":
+        return None
+    return metadata_fail[Option[str]](f"{context}.canonical_name: expected string or None literal")
+
+
+def decorator_canonical_name(decorator: JsonValue, source_function: JsonValue, context: str) -> str:
+    """Return the canonical registry name for one declaration-side decorator."""
+    match canonical_name_override(registry_spec_args(decorator, context), context):
+        Some(name) => return name
+        None => return require_string_field(source_function, "name", context)
 
 
 def projected_function(alias: JsonValue, alias_name: str) -> JsonValue:
@@ -296,7 +326,7 @@ def check_registered_helper(alias_name: str, alias: JsonValue, source_function: 
             f"{alias_name}: expected exactly one registry decorator, found {len(decorators)}",
         )
 
-    canonical_name = decorator_canonical_name(decorators[0], alias_name)
+    canonical_name = decorator_canonical_name(decorators[0], source_function, alias_name)
     assert_decorated_callable_matches_source(decorators[0], source_function, canonical_name)
 
     match optional_string_field(source_function, "docstring"):
@@ -318,7 +348,7 @@ def check_unmatched_decorators(package_value: JsonValue, seen_names: dict[str, b
             function = functions[function_name]
             decorators = registry_decorators(function)
             for decorator in decorators:
-                canonical_name = decorator_canonical_name(decorator, function_name)
+                canonical_name = decorator_canonical_name(decorator, function, function_name)
                 if not has_key(seen_names, canonical_name):
                     return metadata_fail[None](
                         f"{canonical_name}: registry decorator is not exposed through the public functions facade",

@@ -9,16 +9,16 @@ from function_registry import (
     v0_1,
 )
 from functions.nested.common import nested_application
-from functions.registry import function_registry
+from functions.registry import register_function
 from projection_builders import ColumnExpr
 from substrait.function_extensions import ARRAY_ELEMENT_FUNCTION_ANCHOR
 
 
-@function_registry.add("element_at", deterministic_spec(
-    FunctionClass.Scalar,
-    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-    FunctionNullBehavior.DependsOnInputs,
-    extension_mapping("array_element", ARRAY_ELEMENT_FUNCTION_ANCHOR),
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=extension_mapping("array_element", ARRAY_ELEMENT_FUNCTION_ANCHOR),
 ))
 pub def element_at(array_expr: ColumnExpr, index: ColumnExpr) -> ColumnExpr:
     """

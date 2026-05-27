@@ -9,16 +9,16 @@ from function_registry import (
     v0_1,
 )
 from functions.nested.common import named_struct_arguments, nested_application
-from functions.registry import function_registry
+from functions.registry import register_function
 from projection_builders import ColumnExpr
 from substrait.function_extensions import NAMED_STRUCT_FUNCTION_ANCHOR
 
 
-@function_registry.add("named_struct", deterministic_spec(
-    FunctionClass.Scalar,
-    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-    FunctionNullBehavior.DependsOnInputs,
-    extension_mapping("named_struct", NAMED_STRUCT_FUNCTION_ANCHOR),
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=extension_mapping("named_struct", NAMED_STRUCT_FUNCTION_ANCHOR),
 ))
 pub def named_struct(field_names: list[str], values: list[ColumnExpr]) -> ColumnExpr:
     """
