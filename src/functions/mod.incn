@@ -27,6 +27,8 @@ pub from functions.literals.lit import lit
 pub from functions.literals.str_expr import str_expr
 pub from functions.literals.str_lit import str_lit
 pub from functions.aggregates.count import count, count_expr
+pub from functions.aggregates.count_distinct import count_distinct
+pub from functions.aggregates.count_if import count_if
 pub from functions.aggregates.sum import sum
 pub from functions.aggregates.avg import avg
 pub from functions.aggregates.min import min

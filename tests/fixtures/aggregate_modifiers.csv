@@ -1,0 +1,7 @@
+customer_id,amount,status,product_id
+A,10,paid,p1
+A,15,paid,p1
+A,3,cancelled,p2
+B,7,paid,p3
+B,9,cancelled,p3
+B,11,paid,p4

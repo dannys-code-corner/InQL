@@ -1,0 +1,57 @@
+"""
+Distinct count compatibility helper.
+
+`count_distinct(expr)` is sugar over the canonical aggregate modifier model: `count(expr).distinct()`.
+"""
+
+from aggregate_builders import AggregateKind, AggregateMeasure
+from function_registry import (
+    CORE_AGGREGATE_MODIFIERS,
+    CORE_FUNCTION_NAMESPACE,
+    FunctionClass,
+    FunctionDeterminism,
+    FunctionErrorBehavior,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    compatibility_alias_spec,
+    rewrite_mapping,
+    v0_1,
+)
+from functions.aggregates.count import count
+from functions.registry import register_function
+from projection_builders import ColumnExpr, col, column_expr_name
+
+
+@register_function(compatibility_alias_spec(
+    namespace=CORE_FUNCTION_NAMESPACE,
+    function_class=FunctionClass.Aggregate,
+    aliases=["count"],
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    determinism=FunctionDeterminism.Deterministic,
+    null_behavior=FunctionNullBehavior.NullSkippingAggregate,
+    error_behavior=FunctionErrorBehavior.Typechecked,
+    aggregate_modifiers=CORE_AGGREGATE_MODIFIERS,
+    substrait=rewrite_mapping("count(expr).distinct()"),
+))
+pub def count_distinct(expr: ColumnExpr) -> AggregateMeasure:
+    """
+    Count distinct non-null values produced by one expression.
+
+    Examples:
+        products = count_distinct(col("product_id"))
+
+    Parameters:
+        expr: Expression whose distinct non-null values should be counted.
+    """
+    return count(expr).distinct()
+
+
+module tests:
+    def test_count_distinct_builds_distinct_count_measure() -> None:
+        """count_distinct should build a distinct expression-count measure."""
+        measure = count_distinct(col("product_id"))
+        assert measure.kind == AggregateKind.Count
+        assert measure.has_expr
+        assert measure.is_distinct
+        assert not measure.has_filter
+        assert column_expr_name(measure.expr) == "product_id"

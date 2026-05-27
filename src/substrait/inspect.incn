@@ -9,6 +9,7 @@ from rust::std::boxed import Box
 from rust::std::primitive import i32 as RustI32
 from rust::substrait::proto import AggregateRel, Expression, Plan, ReadRel, Rel, RelCommon
 from rust::substrait::proto::aggregate_rel import Measure
+from rust::substrait::proto::aggregate_function import AggregationInvocation
 from rust::substrait::proto::function_argument import ArgType
 from rust::substrait::proto::plan_rel import RelType as PlanRelType
 from rust::substrait::proto::read_rel import NamedTable as ReadNamedTable, ReadType
@@ -16,7 +17,7 @@ from rust::substrait::proto::rel import RelType
 from rust::substrait::proto::rel_common import Direct, EmitKind
 from rust::substrait::proto::set_rel import SetOp
 from rust::substrait::proto::sort_field import SortDirection, SortKind
-from aggregate_builders import AggregateKind, AggregateMeasure
+from aggregate_builders import AggregateMeasure
 from projection_builders import scalar_expr_output_name
 from substrait.expr_lowering import field_index_from_expression, project_output_columns_with_emit
 from substrait.extensions import aggregate_function_name_from_anchor
@@ -43,11 +44,30 @@ def _set_op_value(value: SetOp) -> RustI32:
     return value.into()
 
 
+def _aggregation_invocation_value(value: AggregationInvocation) -> RustI32:
+    """Convert one Substrait aggregation invocation into its stored Rust `i32` discriminant."""
+    return value.into()
+
+
+def _measure_has_filter(measure: Measure) -> bool:
+    """Return whether one aggregate measure carries an aggregate-local filter."""
+    match measure.filter:
+        Some(_) => return true
+        None => return false
+
+
 def _measure_output_name(measure: AggregateMeasure) -> str:
     """Return the projected output column name for one aggregate measure."""
-    if measure.kind == AggregateKind.Count and not measure.has_expr:
-        return measure.kind.value()
-    return measure.kind.value() + "_" + scalar_expr_output_name(measure.expr, "expr")
+    mut output_name = measure.kind.value()
+    if measure.is_distinct and measure.has_expr:
+        output_name = output_name + "_distinct_" + scalar_expr_output_name(measure.expr, "expr")
+    elif measure.has_expr:
+        output_name = output_name + "_" + scalar_expr_output_name(measure.expr, "expr")
+    if measure.has_filter:
+        output_name = output_name + "_filtered"
+    if len(measure.ordering) > 0:
+        output_name = output_name + "_ordered"
+    return output_name
 
 
 pub def aggregate_measure_output_names(measures: list[AggregateMeasure]) -> list[str]:
@@ -85,15 +105,23 @@ def _grouping_output_columns(input_columns: list[str], grouping_expressions: lis
 
 def _aggregate_measure_output_name(input_columns: list[str], measure: Measure) -> str:
     """Resolve one aggregate output name from the lowered Substrait aggregate measure payload."""
+    measure_has_filter = _measure_has_filter(measure.clone())
     if let Some(agg_fn) = measure.measure:
         function_name = aggregate_function_name_from_anchor(agg_fn.function_reference)
-        if len(agg_fn.arguments) == 0:
-            return function_name
-        if let Some(ArgType.Value(expr)) = agg_fn.arguments[0].arg_type:
-            field_index = field_index_from_expression(expr)
-            if field_index >= 0 and field_index < len(input_columns):
-                return function_name + "_" + input_columns[field_index]
-        return function_name
+        is_distinct = agg_fn.invocation == _aggregation_invocation_value(AggregationInvocation.Distinct)
+        mut output_name = function_name
+        if len(agg_fn.arguments) > 0:
+            if is_distinct:
+                output_name = output_name + "_distinct"
+            if let Some(ArgType.Value(expr)) = agg_fn.arguments[0].arg_type:
+                field_index = field_index_from_expression(expr)
+                if field_index >= 0 and field_index < len(input_columns):
+                    output_name = output_name + "_" + input_columns[field_index]
+        if measure_has_filter:
+            output_name = output_name + "_filtered"
+        if len(agg_fn.sorts) > 0:
+            output_name = output_name + "_ordered"
+        return output_name
     return ""
 
 
@@ -190,6 +218,47 @@ pub def aggregate_measure_function_names(rel: Rel) -> list[str]:
                 if let Some(agg_fn) = measure.measure:
                     names.append(aggregate_function_name_from_anchor(agg_fn.function_reference))
             return names
+        _ => return []
+
+
+def _aggregation_invocation_name(value: RustI32) -> str:
+    """Return the stable aggregate invocation name for one Substrait enum value."""
+    if value == _aggregation_invocation_value(AggregationInvocation.Distinct):
+        return "Distinct"
+    if value == _aggregation_invocation_value(AggregationInvocation.All):
+        return "All"
+    return "Unspecified"
+
+
+pub def aggregate_measure_invocation_names(rel: Rel) -> list[str]:
+    """Return aggregate invocation names used by a top-level AggregateRel, otherwise empty."""
+    match rel.rel_type:
+        Some(RelType.Aggregate(aggregate_rel)) =>
+            mut names: list[str] = []
+            for measure in aggregate_rel.measures:
+                if let Some(agg_fn) = measure.measure:
+                    names.append(_aggregation_invocation_name(agg_fn.invocation))
+            return names
+        _ => return []
+
+
+pub def aggregate_measure_filter_flags(rel: Rel) -> list[bool]:
+    """Return whether each top-level aggregate measure carries an aggregate-local filter."""
+    match rel.rel_type:
+        Some(RelType.Aggregate(aggregate_rel)) =>
+            return [_measure_has_filter(measure) for measure in aggregate_rel.measures]
+        _ => return []
+
+
+pub def aggregate_measure_sort_counts(rel: Rel) -> list[int]:
+    """Return sort-field counts for each top-level aggregate measure."""
+    match rel.rel_type:
+        Some(RelType.Aggregate(aggregate_rel)) =>
+            mut counts: list[int] = []
+            for measure in aggregate_rel.measures:
+                if let Some(agg_fn) = measure.measure:
+                    counts.append(len(agg_fn.sorts))
+            return counts
         _ => return []
 
 

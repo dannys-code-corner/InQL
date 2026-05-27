@@ -120,6 +120,27 @@ pub model FunctionLifecycle:
 
 
 @derive(Clone)
+pub model AggregateModifierPolicy:
+    """Aggregate-specific modifier support recorded with registry metadata."""
+
+    pub allows_distinct: bool
+    pub allows_filter: bool
+    pub allows_ordered_input: bool
+
+
+pub const NO_AGGREGATE_MODIFIERS: AggregateModifierPolicy = AggregateModifierPolicy(
+    allows_distinct=false,
+    allows_filter=false,
+    allows_ordered_input=false,
+)
+pub const CORE_AGGREGATE_MODIFIERS: AggregateModifierPolicy = AggregateModifierPolicy(
+    allows_distinct=true,
+    allows_filter=true,
+    allows_ordered_input=false,
+)
+
+
+@derive(Clone)
 pub model SubstraitMapping:
     """Portable interchange mapping metadata for one registered function."""
 
@@ -145,6 +166,7 @@ pub model FunctionSpec:
     pub determinism: FunctionDeterminism
     pub null_behavior: FunctionNullBehavior
     pub error_behavior: FunctionErrorBehavior
+    pub aggregate_modifiers: AggregateModifierPolicy
     pub substrait: SubstraitMapping
 
 
@@ -163,6 +185,7 @@ pub model FunctionRegistryEntry:
     pub determinism: FunctionDeterminism
     pub null_behavior: FunctionNullBehavior
     pub error_behavior: FunctionErrorBehavior
+    pub aggregate_modifiers: AggregateModifierPolicy
     pub substrait: SubstraitMapping
 
 
@@ -210,6 +233,7 @@ pub class FunctionRegistry:
                 determinism=spec.determinism,
                 null_behavior=spec.null_behavior,
                 error_behavior=spec.error_behavior,
+                aggregate_modifiers=spec.aggregate_modifiers,
                 substrait=spec.substrait,
             ),
         )
@@ -324,19 +348,19 @@ pub def sort_field_mapping(direction: str) -> SubstraitMapping:
 
 """Build one deterministic core-import function spec."""
 
-pub deterministic_spec = partial FunctionSpec(canonical_name=None, namespace=CORE_FUNCTION_NAMESPACE, policy_category=FunctionPolicyCategory.PortableCore, aliases=[], alias_policy=FunctionAliasPolicy.CoreImport, determinism=FunctionDeterminism.Deterministic, error_behavior=FunctionErrorBehavior.Typechecked)
+pub deterministic_spec = partial FunctionSpec(canonical_name=None, namespace=CORE_FUNCTION_NAMESPACE, policy_category=FunctionPolicyCategory.PortableCore, aliases=[], alias_policy=FunctionAliasPolicy.CoreImport, determinism=FunctionDeterminism.Deterministic, error_behavior=FunctionErrorBehavior.Typechecked, aggregate_modifiers=NO_AGGREGATE_MODIFIERS)
 
 """Build one explicitly namespaced extension-only function spec."""
 
-pub extension_only_spec = partial FunctionSpec(canonical_name=None, policy_category=FunctionPolicyCategory.ExtensionOnly, aliases=[], alias_policy=FunctionAliasPolicy.OptInCompatibility)
+pub extension_only_spec = partial FunctionSpec(canonical_name=None, policy_category=FunctionPolicyCategory.ExtensionOnly, aliases=[], alias_policy=FunctionAliasPolicy.OptInCompatibility, aggregate_modifiers=NO_AGGREGATE_MODIFIERS)
 
 """Build one opt-in compatibility alias spec for semantics that remain typeable by InQL."""
 
-pub compatibility_alias_spec = partial FunctionSpec(canonical_name=None, policy_category=FunctionPolicyCategory.CompatibilityAlias, alias_policy=FunctionAliasPolicy.OptInCompatibility)
+pub compatibility_alias_spec = partial FunctionSpec(canonical_name=None, policy_category=FunctionPolicyCategory.CompatibilityAlias, alias_policy=FunctionAliasPolicy.OptInCompatibility, aggregate_modifiers=NO_AGGREGATE_MODIFIERS)
 
 """Build one explicitly namespaced engine-specific function spec."""
 
-pub engine_specific_spec = partial FunctionSpec(canonical_name=None, policy_category=FunctionPolicyCategory.EngineSpecific, aliases=[], alias_policy=FunctionAliasPolicy.OptInCompatibility)
+pub engine_specific_spec = partial FunctionSpec(canonical_name=None, policy_category=FunctionPolicyCategory.EngineSpecific, aliases=[], alias_policy=FunctionAliasPolicy.OptInCompatibility, aggregate_modifiers=NO_AGGREGATE_MODIFIERS)
 
 
 pub def rejected_function_policy(requested_name: str, reason: str, alternative: str) -> RejectedFunctionPolicy:

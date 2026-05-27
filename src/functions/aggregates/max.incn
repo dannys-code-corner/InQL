@@ -6,6 +6,7 @@ Maximum aggregate helper.
 
 from aggregate_builders import AggregateKind, AggregateMeasure, max as max_builder
 from function_registry import (
+    CORE_AGGREGATE_MODIFIERS,
     FunctionClass,
     FunctionLifecycle,
     FunctionNullBehavior,
@@ -22,6 +23,7 @@ from substrait.function_extensions import MAX_FUNCTION_ANCHOR
     function_class=FunctionClass.Aggregate,
     lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
     null_behavior=FunctionNullBehavior.NullSkippingAggregate,
+    aggregate_modifiers=CORE_AGGREGATE_MODIFIERS,
     substrait=extension_mapping("max", MAX_FUNCTION_ANCHOR),
 ))
 pub def max(expr: ColumnExpr) -> AggregateMeasure:

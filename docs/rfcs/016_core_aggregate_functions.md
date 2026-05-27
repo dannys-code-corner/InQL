@@ -45,14 +45,14 @@ Without explicit rules, aggregate behavior can drift across authoring surfaces a
 Authors can summarize grouped or whole-relation data with the core aggregate set:
 
 ```incan
-from pub::inql.functions import avg, col, count, count_expr, max, min, sum
+from pub::inql.functions import avg, col, count, max, min, sum
 
 summary = (
     orders
         .group_by([col("customer_id")])
         .agg([
             count(),
-            count_expr(col("discount_code")),
+            count(col("discount_code")),
             sum(col("amount")),
             avg(col("amount")),
             min(col("created_at")),
@@ -61,13 +61,13 @@ summary = (
 )
 ```
 
-`count()` counts rows. `count_expr(col("discount_code"))` counts non-null values in that expression. Numeric aggregates ignore null input values unless every value is null or the group is empty, in which case result behavior follows the rules below.
+`count()` counts rows. `count(col("discount_code"))` counts non-null values in that expression. Numeric aggregates ignore null input values unless every value is null or the group is empty, in which case result behavior follows the rules below.
 
 ## Reference-level explanation (precise rules)
 
 InQL must define canonical aggregate entries for `count`, `sum`, `avg`, `min`, and `max`.
 
-`count()` must count input rows in the current relation or group. The v0.1 helper surface exposes expression-count semantics as `count_expr(expr)` because Incan does not yet support the exact same public helper spelling for both `count()` and `count(expr)`. `count_expr(expr)` must count rows where `expr` evaluates to a non-null value and lower through the same canonical aggregate mapping as `count(expr)`. `count` must return a non-null integer count. For an empty input relation or empty group, `count()` and expression-count semantics must return zero.
+`count()` must count input rows in the current relation or group. `count(expr)` must count rows where `expr` evaluates to a non-null value. `count_expr(expr)` remains available as a compatibility spelling for `count(expr)`, but must lower through the same canonical aggregate mapping. `count` must return a non-null integer count. For an empty input relation or empty group, `count()` and expression-count semantics must return zero.
 
 `sum(expr)` must accept numeric input expressions. It must ignore null input values. If no non-null value exists in the group or relation, `sum` must return null unless a later RFC defines an explicit defaulting aggregate. The result type must be derived from the input numeric type according to the numeric type policy.
 
@@ -87,7 +87,7 @@ This RFC requires importable aggregate functions. Query syntax may support SQL s
 
 ### Semantics
 
-Core aggregates skip null values except for `count()`, which counts rows regardless of null values. Expression-count semantics count non-null expression results and are exposed by `count_expr(expr)` in the v0.1 helper surface.
+Core aggregates skip null values except for `count()`, which counts rows regardless of null values. Expression-count semantics count non-null expression results and are exposed by `count(expr)`.
 
 Aggregate argument expressions must be scalar expressions under InQL RFC 012. Aggregate arguments must not themselves contain aggregate outputs unless a later RFC defines nested aggregate semantics.
 
@@ -97,7 +97,7 @@ Aggregate argument expressions must be scalar expressions under InQL RFC 012. Ag
 
 ### Compatibility / migration
 
-Existing `sum` and `count` helpers should be treated as compatibility-compatible forms of the canonical registry entries. `count()` behavior remains compatible with the current row-count intent. `count_expr(expr)` is the v0.1 compatibility spelling for expression-count semantics until Incan can expose the exact overloaded `count(expr)` helper shape.
+Existing `sum` and `count` helpers should be treated as compatibility-compatible forms of the canonical registry entries. `count()` behavior remains compatible with the current row-count intent. `count_expr(expr)` remains as a compatibility spelling for expression-count semantics.
 
 ## Alternatives considered
 
@@ -109,7 +109,8 @@ Existing `sum` and `count` helpers should be treated as compatibility-compatible
 
 - Null and empty-input behavior can surprise authors coming from APIs that default missing sums to zero.
 - Result type policy for numeric aggregates is a cross-cutting dependency on scalar numeric types.
-- Supporting both `count()` and `count(expr)` increases overload complexity.
+- Supporting both `count()` and `count(expr)` makes one helper carry row-count and expression-count semantics, so
+  tests must keep both call shapes covered.
 
 ## Layers affected
 
@@ -129,6 +130,6 @@ Existing `sum` and `count` helpers should be treated as compatibility-compatible
 
 ## Design Decisions
 
-- **Expression-count spelling:** v0.1 exposes `count_expr(expr)` as the public helper spelling for expression-count semantics. This preserves the canonical aggregate distinction while avoiding a same-name overload shape that current Incan cannot express for decorated public helpers.
+- **Expression-count spelling:** v0.1 exposes canonical `count(expr)` for expression-count semantics. `count_expr(expr)` remains a compatibility spelling that returns the same canonical aggregate measure.
 - **Count result type:** the v0.1 package records count as a non-null aggregate count measure and validates concrete execution through DataFusion-backed session tests. A more precise static numeric return type belongs with the broader InQL numeric type policy.
 - **Average result type:** the v0.1 package records `avg` as a numeric aggregate and relies on the backend/interchange path for concrete materialized numeric representation. Static decimal/floating promotion rules remain tied to the broader numeric type policy rather than this aggregate helper slice.

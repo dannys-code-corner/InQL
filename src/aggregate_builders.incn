@@ -7,7 +7,7 @@ typechecker changes in the Incan compiler.
 """
 
 from function_registry import function_ref_for
-from projection_builders import ColumnExpr, col as col_expr
+from projection_builders import ColumnExpr, col as col_expr, column_expr_name
 
 
 @derive(Clone)
@@ -30,6 +30,52 @@ pub model AggregateMeasure:
     pub canonical_name: str
     pub expr: ColumnExpr
     pub has_expr: bool
+    pub is_distinct: bool
+    pub filter_expr: ColumnExpr
+    pub has_filter: bool
+    pub ordering: list[ColumnExpr]
+
+    def distinct(self) -> Self:
+        """Return this aggregate measure with `DISTINCT` input semantics."""
+        return AggregateMeasure(
+            kind=self.kind,
+            function_ref=self.function_ref,
+            canonical_name=self.canonical_name,
+            expr=self.expr,
+            has_expr=self.has_expr,
+            is_distinct=true,
+            filter_expr=self.filter_expr,
+            has_filter=self.has_filter,
+            ordering=self.ordering,
+        )
+
+    def filter(self, predicate: ColumnExpr) -> Self:
+        """Return this aggregate measure with an aggregate-local row filter."""
+        return AggregateMeasure(
+            kind=self.kind,
+            function_ref=self.function_ref,
+            canonical_name=self.canonical_name,
+            expr=self.expr,
+            has_expr=self.has_expr,
+            is_distinct=self.is_distinct,
+            filter_expr=predicate,
+            has_filter=true,
+            ordering=self.ordering,
+        )
+
+    def order_by(self, ordering: list[ColumnExpr]) -> Self:
+        """Return this aggregate measure with ordered aggregate input."""
+        return AggregateMeasure(
+            kind=self.kind,
+            function_ref=self.function_ref,
+            canonical_name=self.canonical_name,
+            expr=self.expr,
+            has_expr=self.has_expr,
+            is_distinct=self.is_distinct,
+            filter_expr=self.filter_expr,
+            has_filter=self.has_filter,
+            ordering=ordering,
+        )
 
 
 pub def col(name: str) -> ColumnExpr:
@@ -45,29 +91,43 @@ pub def sum(expr: ColumnExpr) -> AggregateMeasure:
         canonical_name="sum",
         expr=expr,
         has_expr=true,
+        is_distinct=false,
+        filter_expr=col_expr(""),
+        has_filter=false,
+        ordering=[],
     )
 
 
-pub def count() -> AggregateMeasure:
-    """Build one zero-argument `count` aggregate measure."""
+pub def count(expr: ColumnExpr = col_expr("")) -> AggregateMeasure:
+    """Build one `count` aggregate measure, counting rows without an expression and non-null values with one."""
+    if column_expr_name(expr) == "":
+        return AggregateMeasure(
+            kind=AggregateKind.Count,
+            function_ref=function_ref_for("count"),
+            canonical_name="count",
+            expr=expr,
+            has_expr=false,
+            is_distinct=false,
+            filter_expr=col_expr(""),
+            has_filter=false,
+            ordering=[],
+        )
     return AggregateMeasure(
         kind=AggregateKind.Count,
         function_ref=function_ref_for("count"),
         canonical_name="count",
-        expr=col_expr(""),
-        has_expr=false,
+        expr=expr,
+        has_expr=true,
+        is_distinct=false,
+        filter_expr=col_expr(""),
+        has_filter=false,
+        ordering=[],
     )
 
 
 pub def count_expr(expr: ColumnExpr) -> AggregateMeasure:
-    """Build one expression-count aggregate measure."""
-    return AggregateMeasure(
-        kind=AggregateKind.Count,
-        function_ref=function_ref_for("count_expr"),
-        canonical_name="count_expr",
-        expr=expr,
-        has_expr=true,
-    )
+    """Compatibility spelling for `count(expr)`."""
+    return count(expr)
 
 
 pub def avg(expr: ColumnExpr) -> AggregateMeasure:
@@ -78,6 +138,10 @@ pub def avg(expr: ColumnExpr) -> AggregateMeasure:
         canonical_name="avg",
         expr=expr,
         has_expr=true,
+        is_distinct=false,
+        filter_expr=col_expr(""),
+        has_filter=false,
+        ordering=[],
     )
 
 
@@ -89,6 +153,10 @@ pub def min(expr: ColumnExpr) -> AggregateMeasure:
         canonical_name="min",
         expr=expr,
         has_expr=true,
+        is_distinct=false,
+        filter_expr=col_expr(""),
+        has_filter=false,
+        ordering=[],
     )
 
 
@@ -100,4 +168,8 @@ pub def max(expr: ColumnExpr) -> AggregateMeasure:
         canonical_name="max",
         expr=expr,
         has_expr=true,
+        is_distinct=false,
+        filter_expr=col_expr(""),
+        has_filter=false,
+        ordering=[],
     )

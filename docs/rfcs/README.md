@@ -23,7 +23,7 @@ InQL uses its **own** RFC series (starting at 000), independent of the [Incan la
 | [014][rfc-014] | Implemented | Function registry and catalog governance                                                          |     |
 | [015][rfc-015] | Implemented | Core scalar functions and operators                                                               |     |
 | [016][rfc-016] | Implemented | Core aggregate functions                                                                          |     |
-| [017][rfc-017] | Draft       | Aggregate modifiers                                                                               |     |
+| [017][rfc-017] | Implemented | Aggregate modifiers                                                                               |     |
 | [018][rfc-018] | In Progress | Common scalar function catalog                                                                    |     |
 | [019][rfc-019] | Draft       | Window functions                                                                                  |     |
 | [020][rfc-020] | Draft       | Nested data functions                                                                             |     |
