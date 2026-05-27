@@ -229,6 +229,8 @@ def _extension_single_output_columns(input_columns: list[str], extension_uri: st
     """Return best-effort output columns for known extension-single relation encodings."""
     mut columns: list[str] = []
     columns.extend(input_columns)
+    # Prefer the RFC 021 payload when present. Some low-level extension-boundary tests still create URI-only nodes, so
+    # retain the URI fallback below for those structurally valid but less informative relations.
     match decode_generator_extension_payload(payload):
         Ok(decoded) =>
             columns.extend(decoded.output_columns)

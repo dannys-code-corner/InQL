@@ -153,6 +153,8 @@ pub async def datafusion_write_parquet_async(
 async def _dataframe_from_plan(ctx: SessionContext, plan: Plan) -> Result[RustDataFrame, BackendError]:
     """Build a DataFusion DataFrame, including InQL-owned generator extension roots."""
     root = root_rel(plan.clone())
+    # DataFusion's stock Substrait consumer cannot plan InQL generator ExtensionSingleRel nodes. Root generators can
+    # execute directly; nested generators are first materialized and then replaced by execution-only temp reads.
     match _generator_extension(root):
         Some(extension) => return await _dataframe_from_generator_extension(ctx, extension)
         None =>
@@ -160,6 +162,8 @@ async def _dataframe_from_plan(ctx: SessionContext, plan: Plan) -> Result[RustDa
             if len(materializations) == 0:
                 return await _dataframe_from_standard_plan(ctx, plan)
             for materialization in materializations:
+                # The path key must match the later rewrite traversal so each temp read targets the exact generated
+                # subtree that was collected here.
                 table_name = _materialized_generator_table_name(materialization.path)
                 df = await _dataframe_from_generator_extension(ctx.clone(), materialization.extension)?
                 await _register_materialized_generator_dataframe(ctx.clone(), table_name, df)?
@@ -188,6 +192,8 @@ async def _dataframe_from_generator_extension(
     payload = _decode_generator_payload(extension.clone())?
     child = _generator_input_rel(extension.clone())?
     child_columns = relation_output_columns(child.clone())
+    # Generator arguments are ordinary InQL scalar expressions. Project them into stable temp columns first so the
+    # DataFusion unnest API can operate on columns rather than on arbitrary Substrait expressions.
     temp_columns = _generator_temp_columns(len(payload.arguments))
     projected_names = _generator_projected_root_names(
         child_columns,
@@ -210,6 +216,8 @@ def _collect_materialized_generator_relations(rel: Rel, path: str) -> list[Mater
 
 def _collect_materialized_generator_children(rel: Rel, path: str) -> list[MaterializedGeneratorRelation]:
     """Return generator relations below direct children of one relation."""
+    # This traversal must stay in lock-step with _replace_materialized_generator_children; the path segments are the
+    # shared key between the discovery pass and the execution-plan rewrite pass.
     mut materializations: list[MaterializedGeneratorRelation] = []
     match rel.rel_type.clone():
         Some(RelType.Filter(filter_rel)) =>
@@ -310,6 +318,8 @@ def _extend_materializations(
 
 def _replace_materialized_generator_relations(rel: Rel, path: str) -> Rel:
     """Replace previously materialized generator relation nodes with temp-view reads."""
+    # This is an adapter-only rewrite. The InQL semantic plan remains a generator extension relation; only DataFusion's
+    # execution plan sees the temporary table scan.
     match _generator_extension(rel.clone()):
         Some(_) => return read_named_table_rel(_materialized_generator_table_name(path))
         None => return _replace_materialized_generator_children(rel, path)
@@ -317,6 +327,8 @@ def _replace_materialized_generator_relations(rel: Rel, path: str) -> Rel:
 
 def _replace_materialized_generator_children(rel: Rel, path: str) -> Rel:
     """Recursively rewrite generator-bearing children while preserving the surrounding relation node."""
+    # Rebuild only nodes whose child pointers may change. Node-local predicates, projections, orderings, and aggregate
+    # payloads stay untouched so the rewritten plan remains semantically equivalent.
     match rel.rel_type.clone():
         Some(RelType.Filter(filter_rel)) =>
             filter = filter_rel.as_ref().clone()
@@ -386,7 +398,8 @@ def _replace_materialized_generator_children(rel: Rel, path: str) -> Rel:
                         Box.new(_replace_materialized_generator_relations(child.as_ref().clone(), f"{path}_join_right")),
                     )
                 None => pass
-            return (Rel(
+            # Public InQL joins currently lower only inner joins; preserve that contract while rewriting child inputs.
+            return Rel(
                 rel_type=Some(
                     RelType.Join(
                         Box.new(
@@ -402,7 +415,7 @@ def _replace_materialized_generator_children(rel: Rel, path: str) -> Rel:
                         ),
                     ),
                 ),
-            ))
+            )
         Some(RelType.Cross(cross_rel)) =>
             cross = cross_rel.as_ref().clone()
             mut left = cross.left
@@ -419,7 +432,7 @@ def _replace_materialized_generator_children(rel: Rel, path: str) -> Rel:
                         Box.new(_replace_materialized_generator_relations(child.as_ref().clone(), f"{path}_cross_right")),
                     )
                 None => pass
-            return (Rel(
+            return Rel(
                 rel_type=Some(
                     RelType.Cross(
                         Box.new(
@@ -432,7 +445,7 @@ def _replace_materialized_generator_children(rel: Rel, path: str) -> Rel:
                         ),
                     ),
                 ),
-            ))
+            )
         Some(RelType.Aggregate(aggregate_rel)) =>
             aggregate = aggregate_rel.as_ref().clone()
             match aggregate.input:
@@ -519,7 +532,7 @@ def _replace_materialized_generator_children(rel: Rel, path: str) -> Rel:
             for idx, input in enumerate(set_rel.inputs):
                 rewritten = _replace_materialized_generator_relations(input, f"{path}_set_{idx}")
                 inputs.append(rewritten.clone())
-            return (Rel(
+            return Rel(
                 rel_type=Some(
                     RelType.Set(
                         SetRel(
@@ -530,7 +543,7 @@ def _replace_materialized_generator_children(rel: Rel, path: str) -> Rel:
                         ),
                     ),
                 ),
-            ))
+            )
         Some(RelType.ExtensionSingle(extension_rel)) =>
             extension = extension_rel.as_ref().clone()
             match extension.input:
@@ -573,11 +586,14 @@ async def _register_materialized_generator_dataframe(
     match await df.clone().collect():
         Ok(batches) =>
             if len(batches) == 0:
+                # Empty generator output still needs a registered relation for the rewritten temp ReadRel to resolve.
                 match ctx.register_table(f"{table_name}", df.into_view()):
                     Ok(_) => return Ok(None)
                     Err(err) => return Err(backend_error(BackendErrorKind.BackendPlanningError, err.to_string()))
             _register_materialized_generator_schema_from_batch(f"{table_name}", batches[0])
             schema = batches[0].schema()
+            # Non-empty outputs are frozen into a MemTable so the stock consumer reads a concrete table instead of an
+            # InQL-specific generator extension relation.
             match MemTable.try_new(schema, [batches]):
                 Ok(table) =>
                     match ctx.register_table(f"{table_name}", Arc.new(table)):
@@ -589,6 +605,8 @@ async def _register_materialized_generator_dataframe(
 
 def _register_materialized_generator_schema_from_batch(table_name: str, batch: RecordBatch) -> None:
     """Mirror one DataFusion materialized generator schema into the Substrait named-table schema registry."""
+    # The rewritten ReadRel uses the same schema inference path as user-registered tables, so mirror DataFusion's batch
+    # schema into that registry before the temporary plan is lowered.
     schema = batch.schema()
     mut columns: list[RowColumnSpec] = []
     for field in schema.fields():
@@ -627,6 +645,8 @@ def _generator_projected_root_names(
     match extension.detail:
         Some(detail) =>
             if _generator_expands_struct(detail.type_url):
+                # Struct-expanding generators need field aliases present before DataFusion unnests the temporary struct
+                # column; otherwise the consumer cannot name the generated fields deterministically.
                 for output_column in payload.output_columns:
                     projected_names.append(f"{output_column}")
             return Ok(projected_names)
@@ -672,6 +692,8 @@ def _apply_generator_dataframe_shape(
     """Apply DataFusion unnest and aliasing for one lowered generator payload."""
     match extension.detail:
         Some(detail) =>
+            # The first unnest converts arrays into rows. Inline/stack then need a second unnest to split the generated
+            # struct values into separate output columns.
             mut current = _unnest_columns(df, temp_columns.clone(), _preserve_generator_nulls(detail.type_url))?
             if _generator_expands_struct(detail.type_url):
                 current = _unnest_columns(current, [temp_columns[0]], _preserve_generator_nulls(detail.type_url))?
@@ -688,6 +710,8 @@ def _unnest_columns(df: RustDataFrame, columns: list[str], preserve_nulls: bool)
     for column in columns:
         datafusion_column = Column.from_name(f"{column}")
         datafusion_columns.append(datafusion_column.clone())
+    # DataFusion exposes unnest through LogicalPlanBuilder rather than as a direct DataFrame method, so split the
+    # DataFrame and rebuild it around the transformed logical plan.
     parts = df.into_parts()
     state = parts.0
     logical_plan = parts.1
@@ -723,6 +747,8 @@ def _rename_struct_generator_outputs(
 ) -> Result[RustDataFrame, BackendError]:
     """Rename generated struct fields from temporary qualified names to InQL aliases."""
     mut current = df
+    # DataFusion names unnested struct fields as `temp.field`; the public InQL result should expose only the declared
+    # generator output aliases.
     for output_column in output_columns:
         field_name = f"{temp_column}.{output_column}"
         match current.with_column_renamed(field_name, output_column):

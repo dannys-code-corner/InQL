@@ -590,6 +590,7 @@ pub def try_project_rel_of_columns(
 
 pub def project_rel_with_expressions(input: Rel, expressions: list[Expression]) -> Rel:
     """Append already-lowered Substrait expressions to a relation."""
+    # The DataFusion adapter uses this to evaluate generator arguments into temporary columns before unnesting.
     return _rel_project(
         ProjectRel(
             common=Some(_direct_common()),
@@ -710,6 +711,8 @@ pub def try_generator_rel_of_columns(
 ) -> Result[Rel, SubstraitLoweringError]:
     """Fallibly wrap a child relation in a generator relation-extension node using explicit input-column names."""
     resolved = _resolved_generator(generator, input_columns)?
+    # Keep generator semantics in Substrait IR. Non-standard generator details travel in the extension payload instead
+    # of being copied into backend-only side channels.
     payload = encode_generator_extension_payload(
         resolved.generator.row_count,
         resolved.generator.output_columns,

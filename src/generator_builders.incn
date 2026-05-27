@@ -113,6 +113,7 @@ pub def flatten(expr: ColumnExpr, as_: str) -> GeneratorApplication:
 pub def stack(row_count: int, values: list[ColumnExpr], output_columns: list[str]) -> GeneratorApplication:
     """Build a generator that turns row-major scalar values into `row_count` generated rows."""
     _validate_stack_shape(row_count, values, output_columns)
+    # Encode stack as an array of named structs so it can share the same unnest-and-expand execution path as inline.
     stacked_rows = _stack_row_exprs(row_count, values, output_columns)
     stacked_array = array(stacked_rows)
     return _generator_application(
@@ -210,6 +211,7 @@ def _stack_row_exprs(row_count: int, values: list[ColumnExpr], output_columns: l
     column_count = len(output_columns)
     mut rows: list[ColumnExpr] = []
     for row_idx in range(row_count):
+        # Values are row-major: for two output columns, [a, b, c, d] becomes rows (a, b) and (c, d).
         start_idx = row_idx * column_count
         row_values = [values[start_idx + col_idx] for col_idx in range(column_count)]
         rows.append(named_struct(output_columns, row_values))
@@ -218,6 +220,7 @@ def _stack_row_exprs(row_count: int, values: list[ColumnExpr], output_columns: l
 
 def _position_range_expr(expr: ColumnExpr) -> ColumnExpr:
     """Build the zero-based position array paired with positional generators."""
+    # Positional generators lower as two equally sized arrays: generated positions and original values.
     return array_range(int_expr(0), cardinality(expr))
 
 

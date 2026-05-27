@@ -4,6 +4,7 @@ from rust::prost import Message
 from rust::std::string import String as RustString
 from rust::substrait::proto import Expression
 
+# ASCII "INQLGEN1"; this lets decoders reject unrelated relation-extension payloads before reading length fields.
 const _MAGIC: list[int] = [73, 78, 81, 76, 71, 69, 78, 49]
 
 
@@ -22,6 +23,8 @@ pub def encode_generator_extension_payload(
     arguments: list[Expression],
 ) -> bytes:
     """Encode generator metadata and lowered scalar arguments into stable bytes."""
+    # Layout: magic, row_count, output names, then each lowered Substrait argument as a length-prefixed proto blob.
+    # Keeping this adapter-neutral lets Substrait remain the boundary while DataFusion decodes only execution details.
     mut out: list[u8] = []
     for idx in range(len(_MAGIC)):
         _append_byte(out, _MAGIC[idx])
@@ -44,6 +47,7 @@ pub def decode_generator_extension_payload(data: bytes) -> Result[GeneratorExten
     match _validate_magic(data):
         Ok(_) => pass
         Err(message) => return Err(message)
+    # Decode in the same strict order as encode and reject trailing bytes so payload evolution is explicit.
     mut offset = len(_MAGIC)
     row_count = _read_u64_le(data, offset)
     offset += 8
