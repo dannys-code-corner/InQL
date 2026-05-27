@@ -3,7 +3,7 @@
 import std.async
 from rust::prost import Message
 from rust::std::boxed import Box
-from rust::std::primitive import i32 as RustI32, i64 as RustI64, usize as RustUsize
+from rust::std::primitive import i32 as RustI32, i64 as RustI64, u64 as RustU64, usize as RustUsize
 from rust::std::sync import Arc
 from rust::substrait::proto import (
     AggregateRel,
@@ -33,14 +33,41 @@ from rust::substrait::proto::function_argument import ArgType
 from rust::substrait::proto::rel import RelType
 from rust::substrait::proto::join_rel import JoinType
 from rust::substrait::proto::sort_field import SortDirection, SortKind
-from rust::datafusion::common import Column, UnnestOptions
+from rust::datafusion::common import Column, ScalarValue, UnnestOptions
+from rust::datafusion::arrow::datatypes import DataType as ArrowDataType
 from rust::datafusion::arrow::record_batch import RecordBatch
 from rust::datafusion::datasource import MemTable
 from rust::datafusion::dataframe import DataFrame as RustDataFrame
+from rust::datafusion::execution import FunctionRegistry as DataFusionFunctionRegistry
 from rust::datafusion::execution::context import SessionContext
 from rust::datafusion::execution::options import ArrowReadOptions
-from rust::datafusion::logical_expr import LogicalPlanBuilder
-from rust::datafusion::prelude import CsvReadOptions, ParquetReadOptions
+from rust::datafusion::logical_expr import (
+    Cast as DataFusionCast,
+    Expr as DataFusionExpr,
+    LogicalPlanBuilder,
+    Operator as DataFusionOperator,
+    WindowFrame as DataFusionWindowFrame,
+    WindowFrameBound as DataFusionWindowFrameBound,
+    WindowFrameUnits as DataFusionWindowFrameUnits,
+    WindowFunctionDefinition as DataFusionWindowFunctionDefinition,
+)
+from rust::datafusion::logical_expr::expr import (
+    Alias as DataFusionAlias,
+    Between as DataFusionBetween,
+    BinaryExpr as DataFusionBinaryExpr,
+    NullTreatment as DataFusionNullTreatment,
+    Sort as DataFusionSort,
+    WindowFunction as DataFusionWindowFunction,
+    WindowFunctionParams as DataFusionWindowFunctionParams,
+)
+from rust::datafusion::prelude import (
+    CsvReadOptions,
+    ParquetReadOptions,
+    abs as datafusion_abs,
+    ceil as datafusion_ceil,
+    floor as datafusion_floor,
+    round as datafusion_round,
+)
 from rust::datafusion::dataframe import DataFrameWriteOptions
 from rust::datafusion_substrait::substrait::proto import Plan as ConsumerPlan
 from rust::datafusion_substrait::logical_plan::consumer import from_substrait_plan
@@ -273,7 +300,7 @@ async def _dataframe_from_window_rel(
     window_rel: ConsistentPartitionWindowRel,
     output_columns: list[str],
 ) -> Result[RustDataFrame, BackendError]:
-    """Build a DataFusion DataFrame for one or more nested Substrait window relations via SQL."""
+    """Build a DataFusion DataFrame for one or more nested Substrait window relations."""
     mut pending_windows: list[PendingWindowRelation] = []
     mut current_window = window_rel
     mut current_output_columns = output_columns
@@ -299,11 +326,9 @@ async def _dataframe_from_window_rel(
                 while idx > 0:
                     idx -= 1
                     pending = pending_windows[idx]
-                    table_name = f"__inql_window_input_{idx}"
-                    current_df = await _dataframe_from_window_sql(
+                    current_df = _dataframe_from_window_api(
                         ctx.clone(),
                         current_df,
-                        table_name,
                         pending.input_columns,
                         pending.window_rel,
                         pending.output_columns,
@@ -311,21 +336,17 @@ async def _dataframe_from_window_rel(
                 return Ok(current_df)
 
 
-async def _dataframe_from_window_sql(
+def _dataframe_from_window_api(
     ctx: SessionContext,
     child_df: RustDataFrame,
-    table_name: str,
     child_columns: list[str],
     window_rel: ConsistentPartitionWindowRel,
     output_columns: list[str],
 ) -> Result[RustDataFrame, BackendError]:
-    """Register one window input and render a DataFusion SQL projection over it."""
-    match ctx.register_table(f"{table_name}", child_df.into_view()):
-        Ok(_) =>
-            sql = _window_sql(table_name, child_columns, window_rel, output_columns)?
-            match await ctx.sql(sql):
-                Ok(df) => return Ok(df)
-                Err(err) => return Err(backend_error(BackendErrorKind.BackendExecutionError, err.to_string()))
+    """Apply one InQL window relation through DataFusion's typed expression API."""
+    select_exprs = _window_select_exprs(ctx, child_columns, window_rel, output_columns)?
+    match child_df.select(select_exprs):
+        Ok(df) => return Ok(df)
         Err(err) => return Err(backend_error(BackendErrorKind.BackendPlanningError, err.to_string()))
 
 
@@ -1156,23 +1177,32 @@ def _window_input_rel(window_rel: ConsistentPartitionWindowRel) -> Result[Rel, B
         None => return Err(backend_error(BackendErrorKind.BackendPlanningError, "window relation is missing input"))
 
 
-def _window_sql(
-    table_name: str,
+def _window_select_exprs(
+    ctx: SessionContext,
     input_columns: list[str],
     window_rel: ConsistentPartitionWindowRel,
     output_columns: list[str],
-) -> Result[str, BackendError]:
-    """Render a DataFusion SQL query equivalent to one lowered window relation."""
+) -> Result[list[DataFusionExpr], BackendError]:
+    """Build the typed DataFusion projection for one lowered InQL window relation."""
     final_columns = _window_final_columns(input_columns.clone(), window_rel.clone(), output_columns)
-    mut select_parts: list[str] = []
-    for output_column in final_columns:
-        match _window_function_for_output(window_rel.clone(), output_column):
-            Some(window_function) =>
-                select_parts.append(
-                    _window_function_sql(window_function, input_columns.clone(), window_rel.clone(), output_column)?,
-                )
-            None => select_parts.append(_quoted_ident(output_column))
-    return Ok("SELECT " + ", ".join(select_parts) + " FROM " + _quoted_ident(table_name))
+    return Ok(
+        [_window_select_expr(ctx.clone(), input_columns.clone(), window_rel.clone(), output_column)? for output_column in final_columns],
+    )
+
+
+def _window_select_expr(
+    ctx: SessionContext,
+    input_columns: list[str],
+    window_rel: ConsistentPartitionWindowRel,
+    output_column: str,
+) -> Result[DataFusionExpr, BackendError]:
+    """Build one typed DataFusion select expression for a final window output column."""
+    match _window_function_for_output(window_rel.clone(), output_column):
+        Some(window_function) =>
+            function_name = window_function_name_from_anchor(window_function.function_reference)
+            expr = _datafusion_window_expr(ctx, window_function, input_columns, window_rel)?
+            return Ok(_datafusion_alias(_window_output_expr(function_name, expr), output_column))
+        None => return Ok(_datafusion_column(output_column))
 
 
 def _window_final_columns(
@@ -1200,250 +1230,371 @@ def _window_function_for_output(
     return None
 
 
-def _window_function_sql(
+def _datafusion_window_expr(
+    ctx: SessionContext,
     window_function: WindowRelFunction,
     input_columns: list[str],
     window_rel: ConsistentPartitionWindowRel,
-    output_name: str,
-) -> Result[str, BackendError]:
-    """Render one `function(...) OVER (...) AS alias` expression."""
+) -> Result[DataFusionExpr, BackendError]:
+    """Translate one Substrait window function into DataFusion's typed expression model."""
     function_name = window_function_name_from_anchor(window_function.function_reference)
-    args = _window_function_argument_sql(window_function.clone(), input_columns.clone())?
-    invocation = _window_invocation_sql(window_function.invocation)
-    null_treatment = _window_null_treatment_sql(window_function.options)
-    over_clause = _window_over_clause(window_function, input_columns, window_rel)?
-    mut expression = function_name + "(" + invocation + args + ")" + null_treatment + " OVER (" + over_clause + ")"
-    if _window_output_needs_i64_cast(function_name):
-        expression = "CAST(" + expression + " AS BIGINT)"
-    return Ok(expression + " AS " + _quoted_ident(output_name))
+    return Ok(
+        DataFusionExpr.WindowFunction(
+            Box.new(
+                DataFusionWindowFunction(
+                    fun=_datafusion_window_function_definition(ctx.clone(), function_name)?,
+                    params=DataFusionWindowFunctionParams(
+                        args=_datafusion_window_arguments(ctx.clone(), window_function.clone(), input_columns.clone())?,
+                        partition_by=[_datafusion_expr(ctx.clone(), expr, input_columns.clone())? for expr in window_rel.partition_expressions],
+                        order_by=[_datafusion_sort(ctx.clone(), sort, input_columns.clone())? for sort in window_rel.sorts],
+                        window_frame=_datafusion_window_frame(window_function, len(window_rel.sorts) > 0)?,
+                        filter=None,
+                        null_treatment=_datafusion_null_treatment(window_function.options),
+                        distinct=_datafusion_window_distinct(window_function.invocation),
+                    ),
+                ),
+            ),
+        ),
+    )
 
 
-def _window_function_argument_sql(
+def _datafusion_window_arguments(
+    ctx: SessionContext,
     window_function: WindowRelFunction,
     input_columns: list[str],
-) -> Result[str, BackendError]:
-    """Render window function arguments in Substrait order."""
-    mut args: list[str] = []
-    for argument in window_function.arguments:
-        args.append(_function_argument_sql(argument, input_columns.clone())?)
-    return Ok(", ".join(args))
+) -> Result[list[DataFusionExpr], BackendError]:
+    """Translate Substrait window arguments into DataFusion expressions."""
+    function_name = window_function_name_from_anchor(window_function.function_reference)
+    if function_name == "count" and len(window_function.arguments) == 0:
+        return Ok([DataFusionExpr.Literal(ScalarValue.Int64(Some(1)), None)])
+    return Ok(
+        [_datafusion_function_argument(ctx.clone(), argument, input_columns.clone())? for argument in window_function.arguments],
+    )
 
 
-def _window_over_clause(
-    window_function: WindowRelFunction,
+def _datafusion_function_argument(
+    ctx: SessionContext,
+    argument: FunctionArgument,
     input_columns: list[str],
-    window_rel: ConsistentPartitionWindowRel,
-) -> Result[str, BackendError]:
-    """Render the SQL OVER clause for one consistent-partition window relation."""
-    mut clauses: list[str] = []
-    if len(window_rel.partition_expressions) > 0:
-        partitions = [_sql_expr(expr, input_columns.clone())? for expr in window_rel.partition_expressions]
-        clauses.append("PARTITION BY " + ", ".join(partitions))
-    if len(window_rel.sorts) > 0:
-        sorts = [_sort_sql(sort, input_columns.clone())? for sort in window_rel.sorts]
-        clauses.append("ORDER BY " + ", ".join(sorts))
-    frame_sql = _window_frame_sql(window_function)?
-    if len(frame_sql) > 0:
-        clauses.append(frame_sql)
-    return Ok(" ".join(clauses))
-
-
-def _function_argument_sql(argument: FunctionArgument, input_columns: list[str]) -> Result[str, BackendError]:
-    """Render one value argument carried by a Substrait function call."""
+) -> Result[DataFusionExpr, BackendError]:
+    """Translate one value argument carried by a Substrait function call."""
     match argument.arg_type:
-        Some(ArgType.Value(expr)) => return _sql_expr(expr, input_columns)
+        Some(ArgType.Value(expr)) => return _datafusion_expr(ctx, expr, input_columns)
         _ =>
             return Err(
-                backend_error(BackendErrorKind.BackendPlanningError, "window SQL bridge only supports value arguments"),
+                backend_error(
+                    BackendErrorKind.BackendPlanningError,
+                    "window expression bridge only supports value arguments",
+                ),
             )
 
 
-def _sql_expr(expr: Expression, input_columns: list[str]) -> Result[str, BackendError]:
-    """Render Substrait scalar expressions needed by window arguments and boundaries."""
+def _datafusion_expr(
+    ctx: SessionContext,
+    expr: Expression,
+    input_columns: list[str],
+) -> Result[DataFusionExpr, BackendError]:
+    """Translate Substrait scalar expressions needed by window arguments and boundaries."""
     field_index = field_index_from_expression(expr.clone())
     if field_index >= 0 and field_index < len(input_columns):
-        return Ok(_quoted_ident(input_columns[field_index]))
+        return Ok(_datafusion_column(input_columns[field_index]))
     match expr.rex_type:
         Some(RexType.Literal(literal)) =>
             match literal.literal_type:
-                Some(LiteralType.I64(value)) => return Ok(f"{value}")
-                Some(LiteralType.Fp64(value)) => return Ok(f"{value}")
+                Some(LiteralType.I64(value)) => return Ok(DataFusionExpr.Literal(ScalarValue.Int64(Some(value)), None))
+                Some(LiteralType.Fp64(value)) =>
+                    return Ok(DataFusionExpr.Literal(ScalarValue.Float64(Some(value)), None))
                 Some(LiteralType.Boolean(value)) =>
-                    if value:
-                        return Ok("TRUE")
-                    return Ok("FALSE")
+                    return Ok(DataFusionExpr.Literal(ScalarValue.Boolean(Some(value)), None))
                 Some(LiteralType.String(value)) =>
-                    escaped = f"{value}".replace("'", "''")
-                    return Ok(f"'{escaped}'")
+                    return Ok(DataFusionExpr.Literal(ScalarValue.Utf8(Some(f"{value}")), None))
                 _ => pass
         Some(RexType.ScalarFunction(function)) =>
-            return _scalar_function_sql(function.function_reference, function.arguments, input_columns)
+            return _datafusion_scalar_function_expr(ctx, function.function_reference, function.arguments, input_columns)
         _ => pass
-    return Err(_unsupported_window_sql_expr("window SQL bridge cannot render this scalar expression"))
+    return Err(_unsupported_window_expr("window expression bridge cannot translate this scalar expression"))
 
 
-def _scalar_function_sql(
+def _datafusion_scalar_function_expr(
+    ctx: SessionContext,
     function_reference: u32,
     arguments: list[FunctionArgument],
     input_columns: list[str],
-) -> Result[str, BackendError]:
-    """Render one registry-backed scalar function as portable DataFusion SQL."""
+) -> Result[DataFusionExpr, BackendError]:
+    """Translate one registry-backed scalar function into DataFusion's typed expression model."""
     function_name = scalar_function_name_from_anchor(function_reference)
-    rendered_args = _render_function_arguments(arguments, input_columns)?
+    rendered_args = _datafusion_function_arguments(ctx.clone(), arguments, input_columns)?
     if function_name == "add":
-        return _binary_sql("+", rendered_args)
+        return _datafusion_binary_expr(DataFusionOperator.Plus, rendered_args)
     if function_name == "subtract":
-        return _binary_sql("-", rendered_args)
+        return _datafusion_binary_expr(DataFusionOperator.Minus, rendered_args)
     if function_name == "multiply":
-        return _binary_sql("*", rendered_args)
+        return _datafusion_binary_expr(DataFusionOperator.Multiply, rendered_args)
     if function_name == "divide":
-        return _binary_sql("/", rendered_args)
+        return _datafusion_binary_expr(DataFusionOperator.Divide, rendered_args)
     if function_name == "modulus":
-        return _binary_sql("%", rendered_args)
+        return _datafusion_binary_expr(DataFusionOperator.Modulo, rendered_args)
     if function_name == "equal":
-        return _binary_sql("=", rendered_args)
+        return _datafusion_binary_expr(DataFusionOperator.Eq, rendered_args)
     if function_name == "not_equal":
-        return _binary_sql("<>", rendered_args)
+        return _datafusion_binary_expr(DataFusionOperator.NotEq, rendered_args)
     if function_name == "gt":
-        return _binary_sql(">", rendered_args)
+        return _datafusion_binary_expr(DataFusionOperator.Gt, rendered_args)
     if function_name == "gte":
-        return _binary_sql(">=", rendered_args)
+        return _datafusion_binary_expr(DataFusionOperator.GtEq, rendered_args)
     if function_name == "lt":
-        return _binary_sql("<", rendered_args)
+        return _datafusion_binary_expr(DataFusionOperator.Lt, rendered_args)
     if function_name == "lte":
-        return _binary_sql("<=", rendered_args)
+        return _datafusion_binary_expr(DataFusionOperator.LtEq, rendered_args)
+    if function_name == "equal_null":
+        return _datafusion_binary_expr(DataFusionOperator.IsNotDistinctFrom, rendered_args)
     if function_name == "and":
-        return _binary_sql("AND", rendered_args)
+        return _datafusion_binary_expr(DataFusionOperator.And, rendered_args)
     if function_name == "or":
-        return _binary_sql("OR", rendered_args)
+        return _datafusion_binary_expr(DataFusionOperator.Or, rendered_args)
     if function_name == "not":
-        return _unary_sql("NOT ", rendered_args)
+        return _datafusion_unary_expr("not", rendered_args)
     if function_name == "negate":
-        return _unary_sql("-", rendered_args)
+        return _datafusion_unary_expr("negate", rendered_args)
     if function_name == "is_null":
-        return _postfix_unary_sql(" IS NULL", rendered_args)
+        return _datafusion_unary_expr("is_null", rendered_args)
     if function_name == "is_not_null":
-        return _postfix_unary_sql(" IS NOT NULL", rendered_args)
+        return _datafusion_unary_expr("is_not_null", rendered_args)
     if function_name == "between":
-        if len(rendered_args) != 3:
-            return Err(_unsupported_window_sql_expr("between requires three arguments"))
-        return Ok("(" + rendered_args[0] + " BETWEEN " + rendered_args[1] + " AND " + rendered_args[2] + ")")
-    return Ok(function_name + "(" + ", ".join(rendered_args) + ")")
+        return _datafusion_between_expr(rendered_args)
+    if function_name == "abs":
+        return _datafusion_common_math_expr("abs", rendered_args)
+    if function_name == "ceil":
+        return _datafusion_common_math_expr("ceil", rendered_args)
+    if function_name == "floor":
+        return _datafusion_common_math_expr("floor", rendered_args)
+    if function_name == "round":
+        return _datafusion_common_math_expr("round", rendered_args)
+    return Err(
+        _unsupported_window_expr(f"window expression bridge does not yet translate scalar function `{function_name}`"),
+    )
 
 
-def _render_function_arguments(
+def _datafusion_function_arguments(
+    ctx: SessionContext,
     arguments: list[FunctionArgument],
     input_columns: list[str],
-) -> Result[list[str], BackendError]:
-    """Render scalar function value arguments recursively."""
-    mut rendered: list[str] = []
-    for argument in arguments:
-        match argument.arg_type.clone():
-            Some(ArgType.Value(expr)) => rendered.append(_sql_expr(expr, input_columns.clone())?)
-            _ => return Err(_unsupported_window_sql_expr("scalar function argument is not a value expression"))
-    return Ok(rendered)
+) -> Result[list[DataFusionExpr], BackendError]:
+    """Translate scalar function value arguments recursively."""
+    return Ok([_datafusion_function_argument(ctx.clone(), argument, input_columns.clone())? for argument in arguments])
 
 
-def _binary_sql(operator: str, rendered_args: list[str]) -> Result[str, BackendError]:
-    """Render one binary infix SQL expression."""
+def _datafusion_binary_expr(
+    operator: DataFusionOperator,
+    rendered_args: list[DataFusionExpr],
+) -> Result[DataFusionExpr, BackendError]:
+    """Build one binary DataFusion expression."""
     if len(rendered_args) != 2:
-        return Err(_unsupported_window_sql_expr(f"{operator} requires two arguments"))
-    return Ok("(" + rendered_args[0] + " " + operator + " " + rendered_args[1] + ")")
+        return Err(_unsupported_window_expr(f"{operator} requires two arguments"))
+    return Ok(
+        DataFusionExpr.BinaryExpr(
+            DataFusionBinaryExpr.new(Box.new(rendered_args[0].clone()), operator, Box.new(rendered_args[1].clone())),
+        ),
+    )
 
 
-def _unary_sql(operator: str, rendered_args: list[str]) -> Result[str, BackendError]:
-    """Render one unary prefix SQL expression."""
+def _datafusion_unary_expr(kind: str, rendered_args: list[DataFusionExpr]) -> Result[DataFusionExpr, BackendError]:
+    """Build one unary DataFusion expression."""
     if len(rendered_args) != 1:
-        return Err(_unsupported_window_sql_expr(f"{operator}requires one argument"))
-    return Ok("(" + operator + rendered_args[0] + ")")
+        return Err(_unsupported_window_expr(f"{kind} requires one argument"))
+    if kind == "not":
+        return Ok(DataFusionExpr.Not(Box.new(rendered_args[0].clone())))
+    if kind == "negate":
+        return Ok(DataFusionExpr.Negative(Box.new(rendered_args[0].clone())))
+    if kind == "is_null":
+        return Ok(DataFusionExpr.IsNull(Box.new(rendered_args[0].clone())))
+    if kind == "is_not_null":
+        return Ok(DataFusionExpr.IsNotNull(Box.new(rendered_args[0].clone())))
+    return Err(_unsupported_window_expr(f"unknown unary expression `{kind}`"))
 
 
-def _postfix_unary_sql(operator: str, rendered_args: list[str]) -> Result[str, BackendError]:
-    """Render one unary postfix SQL expression."""
+def _datafusion_between_expr(rendered_args: list[DataFusionExpr]) -> Result[DataFusionExpr, BackendError]:
+    """Build one DataFusion BETWEEN expression."""
+    if len(rendered_args) != 3:
+        return Err(_unsupported_window_expr("between requires three arguments"))
+    return Ok(
+        DataFusionExpr.Between(
+            DataFusionBetween.new(
+                Box.new(rendered_args[0].clone()),
+                false,
+                Box.new(rendered_args[1].clone()),
+                Box.new(rendered_args[2].clone()),
+            ),
+        ),
+    )
+
+
+def _datafusion_common_math_expr(
+    function_name: str,
+    rendered_args: list[DataFusionExpr],
+) -> Result[DataFusionExpr, BackendError]:
+    """Build one typed DataFusion expression for the RFC 018 math slice."""
+    if function_name == "round":
+        if len(rendered_args) < 1:
+            return Err(_unsupported_window_expr("round requires at least one argument"))
+        return Ok(datafusion_round(rendered_args))
     if len(rendered_args) != 1:
-        return Err(_unsupported_window_sql_expr(f"{operator} requires one argument"))
-    return Ok("(" + rendered_args[0] + operator + ")")
+        return Err(_unsupported_window_expr(f"{function_name} requires one argument"))
+    if function_name == "abs":
+        return Ok(datafusion_abs(rendered_args[0].clone()))
+    if function_name == "ceil":
+        return Ok(datafusion_ceil(rendered_args[0].clone()))
+    if function_name == "floor":
+        return Ok(datafusion_floor(rendered_args[0].clone()))
+    return Err(_unsupported_window_expr(f"unknown common math function `{function_name}`"))
 
 
-def _unsupported_window_sql_expr(message: str) -> BackendError:
-    """Build a backend planning diagnostic for unsupported SQL bridge expressions."""
-    return backend_error(BackendErrorKind.BackendPlanningError, message)
+def _datafusion_window_function_definition(
+    ctx: SessionContext,
+    function_name: str,
+) -> Result[DataFusionWindowFunctionDefinition, BackendError]:
+    """Resolve one InQL window function against DataFusion's function registry."""
+    state = ctx.state()
+    match state.udwf(function_name):
+        Ok(udwf) => return Ok(DataFusionWindowFunctionDefinition.WindowUDF(udwf))
+        Err(_) =>
+            match state.udaf(function_name):
+                Ok(udaf) => return Ok(DataFusionWindowFunctionDefinition.AggregateUDF(udaf))
+                Err(err) =>
+                    return Err(
+                        backend_error(
+                            BackendErrorKind.BackendPlanningError,
+                            f"DataFusion does not expose window function `{function_name}`: {err.to_string()}",
+                        ),
+                    )
 
 
-def _sort_sql(sort: SortField, input_columns: list[str]) -> Result[str, BackendError]:
-    """Render one Substrait sort field for a SQL OVER clause."""
-    mut sort_expr = ""
+def _datafusion_sort(
+    ctx: SessionContext,
+    sort: SortField,
+    input_columns: list[str],
+) -> Result[DataFusionSort, BackendError]:
+    """Translate one Substrait sort field for a DataFusion window expression."""
+    mut sort_expr = _datafusion_column("")
     match sort.expr:
         Some(expr) =>
-            sort_expr = _sql_expr(expr, input_columns)?
+            sort_expr = _datafusion_expr(ctx, expr, input_columns)?
         None =>
             return Err(backend_error(BackendErrorKind.BackendPlanningError, "window sort field is missing expression"))
     match sort.sort_kind:
-        Some(SortKind.Direction(direction)) => return Ok(sort_expr + _sort_direction_sql(direction))
-        _ => return Ok(sort_expr)
+        Some(SortKind.Direction(direction)) => return Ok(_datafusion_sort_direction(sort_expr, direction))
+        _ => return Ok(DataFusionSort.new(sort_expr, true, true))
 
 
-def _sort_direction_sql(direction: RustI32) -> str:
-    """Render DataFusion SQL sort direction and null placement."""
+def _datafusion_sort_direction(expr: DataFusionExpr, direction: RustI32) -> DataFusionSort:
+    """Translate Substrait sort direction into DataFusion's sort expression flags."""
     asc_nulls_first: RustI32 = SortDirection.AscNullsFirst.into()
     asc_nulls_last: RustI32 = SortDirection.AscNullsLast.into()
     desc_nulls_first: RustI32 = SortDirection.DescNullsFirst.into()
     desc_nulls_last: RustI32 = SortDirection.DescNullsLast.into()
     if direction == asc_nulls_first:
-        return " ASC NULLS FIRST"
+        return DataFusionSort.new(expr, true, true)
     if direction == asc_nulls_last:
-        return " ASC NULLS LAST"
+        return DataFusionSort.new(expr, true, false)
     if direction == desc_nulls_first:
-        return " DESC NULLS FIRST"
+        return DataFusionSort.new(expr, false, true)
     if direction == desc_nulls_last:
-        return " DESC NULLS LAST"
-    return ""
+        return DataFusionSort.new(expr, false, false)
+    return DataFusionSort.new(expr, true, true)
 
 
-def _window_frame_sql(window_function: WindowRelFunction) -> Result[str, BackendError]:
-    """Render an explicit SQL frame preserved from Substrait window bounds."""
-    bounds_type = _window_bounds_type_sql(window_function.bounds_type)
-    if len(bounds_type) == 0:
-        return Ok("")
-    lower = _window_bound_sql(window_function.lower_bound, true)?
-    upper = _window_bound_sql(window_function.upper_bound, false)?
-    return Ok(bounds_type + " BETWEEN " + lower + " AND " + upper)
+def _datafusion_window_frame(
+    window_function: WindowRelFunction,
+    has_ordering: bool,
+) -> Result[DataFusionWindowFrame, BackendError]:
+    """Translate Substrait window bounds into DataFusion's frame model."""
+    bounds_type = _datafusion_window_frame_units(window_function.bounds_type)
+    match bounds_type:
+        Some(units) =>
+            lower = _datafusion_window_bound(window_function.lower_bound, true)?
+            upper = _datafusion_window_bound(window_function.upper_bound, false)?
+            return Ok(DataFusionWindowFrame.new_bounds(units, lower, upper))
+        None =>
+            if has_ordering:
+                return Ok(DataFusionWindowFrame.new(Some(false)))
+            return Ok(DataFusionWindowFrame.new(None))
 
 
-def _window_bounds_type_sql(value: RustI32) -> str:
-    """Render a Substrait window bounds-type discriminant."""
+def _datafusion_window_frame_units(value: RustI32) -> Option[DataFusionWindowFrameUnits]:
+    """Translate the Substrait window-frame unit discriminant."""
     rows: RustI32 = BoundsType.Rows.into()
     range_bounds: RustI32 = BoundsType.Range.into()
     if value == rows:
-        return "ROWS"
+        return Some(DataFusionWindowFrameUnits.Rows)
     if value == range_bounds:
-        return "RANGE"
-    return ""
+        return Some(DataFusionWindowFrameUnits.Range)
+    return None
 
 
-def _window_bound_sql(bound: Option[Bound], is_lower: bool) -> Result[str, BackendError]:
-    """Render one SQL window-frame bound."""
+def _datafusion_window_bound(bound: Option[Bound], is_lower: bool) -> Result[DataFusionWindowFrameBound, BackendError]:
+    """Translate one Substrait window-frame bound into DataFusion's frame model."""
     match bound:
         Some(value) =>
             match value.kind:
                 Some(BoundKind.Unbounded(_)) =>
                     if is_lower:
-                        return Ok("UNBOUNDED PRECEDING")
-                    return Ok("UNBOUNDED FOLLOWING")
-                Some(BoundKind.CurrentRow(_)) => return Ok("CURRENT ROW")
-                Some(BoundKind.Preceding(preceding)) => return Ok(f"{preceding.offset} PRECEDING")
-                Some(BoundKind.Following(following)) => return Ok(f"{following.offset} FOLLOWING")
+                        return Ok(DataFusionWindowFrameBound.Preceding(ScalarValue.UInt64(None)))
+                    return Ok(DataFusionWindowFrameBound.Following(ScalarValue.UInt64(None)))
+                Some(BoundKind.CurrentRow(_)) => return Ok(DataFusionWindowFrameBound.CurrentRow)
+                Some(BoundKind.Preceding(preceding)) =>
+                    return Ok(
+                        DataFusionWindowFrameBound.Preceding(
+                            ScalarValue.UInt64(Some(_rust_i64_to_u64(preceding.offset)?)),
+                        ),
+                    )
+                Some(BoundKind.Following(following)) =>
+                    return Ok(
+                        DataFusionWindowFrameBound.Following(
+                            ScalarValue.UInt64(Some(_rust_i64_to_u64(following.offset)?)),
+                        ),
+                    )
                 None => pass
         None => pass
     return Err(backend_error(BackendErrorKind.BackendPlanningError, "window frame bound is missing"))
 
 
-def _window_invocation_sql(invocation: RustI32) -> str:
-    """Render DISTINCT for windowed aggregate invocations."""
+def _datafusion_window_distinct(invocation: RustI32) -> bool:
+    """Return whether a Substrait aggregate invocation requests DISTINCT."""
     distinct: RustI32 = AggregationInvocation.Distinct.into()
-    if invocation == distinct:
-        return "DISTINCT "
-    return ""
+    return invocation == distinct
+
+
+def _window_output_expr(function_name: str, expr: DataFusionExpr) -> DataFusionExpr:
+    """Cast DataFusion unsigned analytic outputs to InQL's signed integer surface."""
+    if _window_output_needs_i64_cast(function_name):
+        return DataFusionExpr.Cast(DataFusionCast.new(Box.new(expr), ArrowDataType.Int64))
+    return expr
+
+
+def _datafusion_alias(expr: DataFusionExpr, output_name: str) -> DataFusionExpr:
+    """Attach one InQL output name to a DataFusion expression."""
+    return DataFusionExpr.Alias(DataFusionAlias(expr=Box.new(expr), relation=None, name=f"{output_name}", metadata=None))
+
+
+def _datafusion_column(column_name: str) -> DataFusionExpr:
+    """Build a typed DataFusion column reference."""
+    return DataFusionExpr.Column(Column.from_name(f"{column_name}"))
+
+
+def _datafusion_null_treatment(options: list[FunctionOption]) -> Option[DataFusionNullTreatment]:
+    """Translate optional InQL null treatment metadata into DataFusion's window model."""
+    for option in options:
+        if option.name == WINDOW_NULL_TREATMENT_OPTION and len(option.preference) > 0:
+            if option.preference[0] == "ignore_nulls":
+                return Some(DataFusionNullTreatment.IgnoreNulls)
+            if option.preference[0] == "respect_nulls":
+                return Some(DataFusionNullTreatment.RespectNulls)
+    return None
+
+
+def _unsupported_window_expr(message: str) -> BackendError:
+    """Build a backend planning diagnostic for unsupported window expression bridge shapes."""
+    return backend_error(BackendErrorKind.BackendPlanningError, message)
 
 
 def _window_output_needs_i64_cast(function_name: str) -> bool:
@@ -1465,17 +1616,12 @@ def _window_function_output_name(options: list[FunctionOption]) -> str:
     return ""
 
 
-def _window_null_treatment_sql(options: list[FunctionOption]) -> str:
-    """Render optional DataFusion SQL null treatment for value and offset windows."""
-    for option in options:
-        if option.name == WINDOW_NULL_TREATMENT_OPTION and len(option.preference) > 0 and option.preference[0] == "ignore_nulls":
-            return " IGNORE NULLS"
-    return ""
-
-
-def _quoted_ident(identifier: str) -> str:
-    """Quote a SQL identifier for DataFusion."""
-    return "\"" + identifier.replace("\"", "\"\"") + "\""
+def _rust_i64_to_u64(value: RustI64) -> Result[RustU64, BackendError]:
+    """Convert a non-negative Substrait frame offset into DataFusion's unsigned scalar value."""
+    match RustU64.try_from(value):
+        Ok(converted) => return Ok(converted)
+        Err(_) =>
+            return Err(backend_error(BackendErrorKind.BackendPlanningError, "window frame offset must be non-negative"))
 
 
 def _generator_input_rel(extension: ExtensionSingleRel) -> Result[Rel, BackendError]:

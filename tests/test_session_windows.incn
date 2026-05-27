@@ -1,6 +1,7 @@
 """End-to-end Session window execution tests over the DataFusion backend."""
 
 from functions import (
+    abs,
     add,
     col,
     count_distinct,
@@ -247,6 +248,10 @@ def test_session_windows__collect_executes_scalar_and_distinct_window_arguments(
         "running_adjusted_amount",
         sum(add(col("amount"), lit(1))).over(running_spec),
     )
+    math_arg = _orders(session, "aggregate_orders_math_arg").with_window_column(
+        "running_abs_delta",
+        sum(abs(add(col("amount"), lit(-20)))).over(running_spec),
+    )
     distinct_arg = _modifier_orders(session, "aggregate_modifiers_window_distinct").with_window_column(
         "running_distinct_products",
         count_distinct(col("product_id")).over(
@@ -257,13 +262,19 @@ def test_session_windows__collect_executes_scalar_and_distinct_window_arguments(
         ),
     )
     scalar_df = _collect_or_fail(session, scalar_arg)
+    math_df = _collect_or_fail(session, math_arg)
     distinct_df = _collect_modifier_or_fail(session, distinct_arg)
 
     # -- Assert --
     _assert_preview_row_contains(
         scalar_df.preview_text(),
         ["A", "10", "27"],
-        "windowed aggregate should execute scalar arguments through the SQL bridge",
+        "windowed aggregate should execute scalar arguments through the DataFusion expression bridge",
+    )
+    _assert_preview_row_contains(
+        math_df.preview_text(),
+        ["A", "10", "15"],
+        "windowed aggregate should execute RFC 018 math arguments through the DataFusion expression bridge",
     )
     _assert_preview_row_contains(
         distinct_df.preview_text(),
@@ -277,6 +288,7 @@ def test_session_windows__collect_executes_window_below_filter() -> None:
     mut session = Session.default()
     spec = _customer_amount_window()
 
+    # -- Act --
     filtered = _orders(session, "aggregate_orders_nested_filter").with_window_column("amount_rank", rank().over(spec)).filter(
         eq(col("amount_rank"), lit(1)),
     )
@@ -284,11 +296,8 @@ def test_session_windows__collect_executes_window_below_filter() -> None:
     payload = df.preview_text()
     resolved = df.resolved_columns()
 
+    # -- Assert --
     assert df.row_count() == 2, "filter above a window should execute through nested window materialization"
     assert resolved == ["customer_id", "amount", "amount_rank"], "filtered window output columns should stay stable"
     _assert_preview_row_contains(payload, ["A", "15", "1"], "customer A top amount should survive the filter")
     _assert_preview_row_contains(payload, ["B", "7", "1"], "customer B top amount should survive the filter")
-
-    # -- Act --
-
-    # -- Assert --
