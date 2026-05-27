@@ -281,6 +281,12 @@ def _resolved_scalar_function_application_expr(
                     f"{entry.function_ref} is only valid in {entry.substrait.function_name} context",
                 ),
             )
+        SubstraitMappingKind.RelationExtension =>
+            return Err(
+                invalid_scalar_expression(
+                    f"{entry.function_ref} is a relation-shaping generator and must be applied through generate(...)",
+                ),
+            )
         SubstraitMappingKind.Rewrite =>
             return Err(
                 invalid_scalar_expression(

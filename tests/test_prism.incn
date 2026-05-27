@@ -1,9 +1,10 @@
 """Internal Prism engine tests against the shared-store cursor substrate."""
 
-from functions import always_false, always_true, col, count, lit, mul, sum
+from functions import always_false, always_true, col, count, count_expr, explode, lit, mul, sum
 from prism import (
     PrismCursor,
     prism_cursor_apply_filter,
+    prism_cursor_apply_generate,
     prism_cursor_apply_limit,
     prism_cursor_apply_select,
     prism_cursor_authored_node_count,
@@ -33,6 +34,17 @@ model Order:
 
 def _register_projection_test_schema(table_name: str) -> None:
     register_named_table_schema(table_name, [RowColumnSpec(name="id", kind=SubstraitPrimitiveKind.I64, nullable=false)])
+
+
+def _register_generator_test_schema(table_name: str) -> None:
+    register_named_table_schema(
+        table_name,
+        [RowColumnSpec(name="id", kind=SubstraitPrimitiveKind.I64, nullable=false), RowColumnSpec(
+            name="line_items",
+            kind=SubstraitPrimitiveKind.String,
+            nullable=true,
+        )],
+    )
 
 
 def test_prism__branching_keeps_base_reachable_history_small() -> None:
@@ -206,6 +218,7 @@ def test_prism__cross_store_adoption_keeps_distinct_aggregate_modifier_state() -
 def test_prism__cursor_native_nodes_cover_current_method_surface() -> None:
     # -- Arrange --
     _register_projection_test_schema(str("orders"))
+    _register_generator_test_schema(str("orders_generator_prism"))
     projected: PrismCursor[Order] = prism_cursor_named_table(str("orders")).select()
     grouped: PrismCursor[Order] = prism_cursor_named_table(str("orders")).group_by([col("id")])
 
@@ -214,6 +227,9 @@ def test_prism__cursor_native_nodes_cover_current_method_surface() -> None:
     ordered: PrismCursor[Order] = prism_cursor_named_table(str("orders")).order_by([col("id")])
     limited: PrismCursor[Order] = prism_cursor_named_table(str("orders")).limit(10)
     exploded: PrismCursor[Order] = prism_cursor_named_table(str("orders")).explode()
+    generated: PrismCursor[Order] = prism_cursor_named_table(str("orders_generator_prism")).generate(
+        explode(col("line_items"), "line_item"),
+    )
 
     # -- Assert --
     assert prism_cursor_tip_kind_name(projected) == str("Project"), "select should append a native project node"
@@ -222,6 +238,8 @@ def test_prism__cursor_native_nodes_cover_current_method_surface() -> None:
     assert prism_cursor_tip_kind_name(ordered) == str("OrderBy"), "order_by should append a native sort node"
     assert prism_cursor_tip_kind_name(limited) == str("Limit"), "limit should append a native limit node"
     assert prism_cursor_tip_kind_name(exploded) == str("Explode"), "explode should append a native explode node"
+    assert prism_cursor_tip_kind_name(generated) == str("Generate"), "generate should append a native generator node"
+    assert prism_cursor_output_columns(generated) == ["id", "line_items", "line_item"], "generate should append declared output aliases"
 
 
 def test_prism__rewrite_eliminates_filter_true_by_default() -> None:
@@ -332,3 +350,21 @@ def test_prism__cursor_methods_match_apply_helpers() -> None:
     assert relation_kind_name(root_rel(via_methods.to_substrait_plan())) == relation_kind_name(
         root_rel(via_helpers.to_substrait_plan()),
     ), "method and helper paths should lower to equivalent root relation kinds"
+
+
+def test_prism__generate_method_matches_apply_helper() -> None:
+    # -- Arrange --
+    _register_generator_test_schema("orders_generator_apply")
+    base: PrismCursor[Order] = prism_cursor_named_table(str("orders_generator_apply"))
+    generator = explode(col("line_items"), "line_item")
+
+    # -- Act --
+    via_method = base.generate(generator)
+    via_helper = prism_cursor_apply_generate(base, generator)
+
+    # -- Assert --
+    assert prism_cursor_tip_kind_name(via_method) == prism_cursor_tip_kind_name(via_helper), "method and helper paths should produce the same generator node kind"
+    assert prism_cursor_output_columns(via_method) == ["id", "line_items", "line_item"], "generator helper should preserve planned output columns"
+    assert relation_kind_name(root_rel(via_method.to_substrait_plan())) == relation_kind_name(
+        root_rel(via_helper.to_substrait_plan()),
+    ), "generator method and helper paths should lower to equivalent root relation kinds"

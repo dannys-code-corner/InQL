@@ -8,6 +8,7 @@ pub from functions.nested.array_flatten import array_flatten
 pub from functions.nested.array_intersect import array_intersect
 pub from functions.nested.array_join import array_join
 pub from functions.nested.array_position import array_position
+pub from functions.nested.array_range import array_range
 pub from functions.nested.array_reverse import array_reverse
 pub from functions.nested.array_slice import array_slice
 pub from functions.nested.array_sort import array_sort

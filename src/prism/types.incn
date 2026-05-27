@@ -1,6 +1,7 @@
 """Shared Prism types that define the internal planning substrate contract."""
 
 from aggregate_builders import AggregateMeasure
+from generator_builders import GeneratorApplication
 from projection_builders import ColumnExpr, ProjectionAssignment
 
 
@@ -17,6 +18,7 @@ pub enum PrismNodeKind(str):
     Project = "Project"
     GroupBy = "GroupBy"
     Aggregate = "Aggregate"
+    Generate = "Generate"
     OrderBy = "OrderBy"
     Limit = "Limit"
     Explode = "Explode"
@@ -41,6 +43,7 @@ pub model PrismNode:
     pub group_columns: list[ColumnExpr]
     pub sort_columns: list[ColumnExpr]
     pub aggregate_measures: list[AggregateMeasure]
+    pub generator_applications: list[GeneratorApplication]
     pub projection_assignments: list[ProjectionAssignment]
 
 

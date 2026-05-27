@@ -46,6 +46,7 @@ from rust::substrait::proto::sort_field import SortDirection, SortKind
 from aggregate_builders import AggregateKind, AggregateMeasure
 from function_registry import FunctionClass, FunctionRegistryEntry, SubstraitMappingKind
 from functions.registry import function_registry_entry
+from generator_builders import GeneratorApplication
 from projection_builders import ColumnExpr, ProjectionAssignment, ScalarFunctionApplicationExpr, col
 from substrait.expr_lowering import (
     bool_expr,
@@ -57,6 +58,7 @@ from substrait.expr_lowering import (
     string_expr,
 )
 from substrait.errors import SubstraitLoweringError, invalid_scalar_expression
+from substrait.generator_payload import encode_generator_extension_payload
 from substrait.inspect import relation_output_columns
 from substrait.schema_registry import named_table_base_schema, unknown_named_struct
 
@@ -79,6 +81,15 @@ model ResolvedRelationExpression:
     """One relation expression payload kept appendable before extracting the proto expression list."""
 
     expr: Expression
+
+
+@derive(Clone)
+model ResolvedGeneratorApplication:
+    """One generator application resolved against input columns and registry metadata."""
+
+    generator: GeneratorApplication
+    entry: FunctionRegistryEntry
+    arguments: list[Expression]
 
 
 pub enum SubstraitJoinKind:
@@ -158,7 +169,14 @@ def _rel_reference(reference: ReferenceRel) -> Rel:
 
 def _rel_extension_single(input: Rel, extension_uri: str) -> Rel:
     """Wrap one input relation in an ExtensionSingleRel with the provided URI."""
-    detail = Any(type_url=extension_uri, value=[])
+    detail = Any(type_url=extension_uri, value=b"")
+    rel = ExtensionSingleRel(common=Some(_direct_common()), input=Some(Box.new(input)), detail=Some(detail))
+    return Rel(rel_type=Some(RelType.ExtensionSingle(Box.new(rel))))
+
+
+def _rel_extension_single_with_payload(input: Rel, extension_uri: str, payload: bytes) -> Rel:
+    """Wrap one input relation in an ExtensionSingleRel with relation-extension payload bytes."""
+    detail = Any(type_url=extension_uri, value=payload)
     rel = ExtensionSingleRel(common=Some(_direct_common()), input=Some(Box.new(input)), detail=Some(detail))
     return Rel(rel_type=Some(RelType.ExtensionSingle(Box.new(rel))))
 
@@ -257,6 +275,61 @@ def _validate_aggregate_modifiers(measure: ResolvedAggregateMeasure) -> Result[N
     if len(measure.ordering) > 0 and not entry.aggregate_modifiers.allows_ordered_input:
         return Err(invalid_scalar_expression(f"{entry.function_ref} does not allow ordered aggregate input"))
     return Ok(None)
+
+
+def _generator_registry_entry(generator: GeneratorApplication) -> Result[FunctionRegistryEntry, SubstraitLoweringError]:
+    """Resolve one generator registry entry and validate its semantic class."""
+    match function_registry_entry(generator.function_ref):
+        Some(entry) =>
+            if entry.function_class != FunctionClass.Generator:
+                return Err(invalid_scalar_expression(f"{entry.function_ref} is not registered as a generator function"))
+            if entry.substrait.kind != SubstraitMappingKind.RelationExtension:
+                return Err(
+                    invalid_scalar_expression(f"{entry.function_ref} does not declare a relation-extension mapping"),
+                )
+            return Ok(entry)
+        None =>
+            return Err(invalid_scalar_expression(f"missing generator registry entry for `{generator.canonical_name}`"))
+
+
+def _resolved_generator(
+    generator: GeneratorApplication,
+    input_columns: list[str],
+) -> Result[ResolvedGeneratorApplication, SubstraitLoweringError]:
+    """Resolve one generator application against input-column names."""
+    _validate_generator_output_columns(input_columns, generator.clone())?
+    return Ok(
+        ResolvedGeneratorApplication(
+            generator=generator.clone(),
+            entry=_generator_registry_entry(generator.clone())?,
+            arguments=[scalar_expr(input_columns, argument)? for argument in generator.arguments],
+        ),
+    )
+
+
+def _validate_generator_output_columns(
+    input_columns: list[str],
+    generator: GeneratorApplication,
+) -> Result[None, SubstraitLoweringError]:
+    """Validate generator output columns against the current input relation shape."""
+    mut output_columns: list[str] = []
+    if generator.preserves_input_columns:
+        output_columns.extend(input_columns)
+    for output_column in generator.output_columns:
+        if _contains_text(output_columns, output_column):
+            return Err(
+                invalid_scalar_expression(f"generator output column `{output_column}` conflicts with an existing column"),
+            )
+        output_columns.append(output_column)
+    return Ok(None)
+
+
+def _contains_text(values: list[str], expected: str) -> bool:
+    """Return whether a string list contains a value."""
+    for value in values:
+        if value == expected:
+            return true
+    return false
 
 
 def _aggregate_function_reference(measure: ResolvedAggregateMeasure) -> Result[u32, SubstraitLoweringError]:
@@ -515,6 +588,19 @@ pub def try_project_rel_of_columns(
     )
 
 
+pub def project_rel_with_expressions(input: Rel, expressions: list[Expression]) -> Rel:
+    """Append already-lowered Substrait expressions to a relation."""
+    # The DataFusion adapter uses this to evaluate generator arguments into temporary columns before unnesting.
+    return _rel_project(
+        ProjectRel(
+            common=Some(_direct_common()),
+            input=Some(Box.new(input)),
+            expressions=expressions,
+            advanced_extension=None,
+        ),
+    )
+
+
 pub def join_rel(left: Rel, right: Rel, on_predicate: bool) -> Rel:
     """Wrap two child relations in an inner `JoinRel`."""
     return join_rel_of_kind(left, right, on_predicate, SubstraitJoinKind.Inner)
@@ -601,6 +687,38 @@ pub def try_aggregate_rel_of_columns(
             ),
         ),
     )
+
+
+pub def generator_rel(input: Rel, generator: GeneratorApplication) -> Rel:
+    """Wrap a child relation in a generator relation-extension node."""
+    return _lowered_rel_or_raise(try_generator_rel(input, generator))
+
+
+pub def try_generator_rel(input: Rel, generator: GeneratorApplication) -> Result[Rel, SubstraitLoweringError]:
+    """Fallibly wrap a child relation in a generator relation-extension node."""
+    return try_generator_rel_of_columns(input.clone(), relation_output_columns(input), generator)
+
+
+pub def generator_rel_of_columns(input: Rel, input_columns: list[str], generator: GeneratorApplication) -> Rel:
+    """Wrap a child relation in a generator relation-extension node using explicit input-column names."""
+    return _lowered_rel_or_raise(try_generator_rel_of_columns(input, input_columns, generator))
+
+
+pub def try_generator_rel_of_columns(
+    input: Rel,
+    input_columns: list[str],
+    generator: GeneratorApplication,
+) -> Result[Rel, SubstraitLoweringError]:
+    """Fallibly wrap a child relation in a generator relation-extension node using explicit input-column names."""
+    resolved = _resolved_generator(generator, input_columns)?
+    # Keep generator semantics in Substrait IR. Non-standard generator details travel in the extension payload instead
+    # of being copied into backend-only side channels.
+    payload = encode_generator_extension_payload(
+        resolved.generator.row_count,
+        resolved.generator.output_columns,
+        resolved.arguments,
+    )
+    return Ok(_rel_extension_single_with_payload(input, resolved.entry.substrait.uri, payload))
 
 
 pub def sort_rel(input: Rel) -> Rel:

@@ -1,0 +1,88 @@
+"""Tests for registry-backed generator and table-valued function builders."""
+
+from std.testing import assert_raises
+from generator_builders import GeneratorKind, generator_output_columns, generator_primary_output_column
+from functions import col, explode, explode_outer, flatten, inline, inline_outer, posexplode, posexplode_outer, stack
+
+
+def test_generator_functions__explode_family_builds_relation_applications() -> None:
+    # -- Arrange --
+    items = col("line_items")
+
+    # -- Act --
+    inner = explode(items, "line_item")
+    outer = explode_outer(items, "line_item")
+    positional = posexplode(items, "position", "line_item")
+    positional_outer = posexplode_outer(items, "position", "line_item")
+    flattened = flatten(items, "line_item")
+    inlined = inline(items, ["sku", "quantity"])
+    inlined_outer = inline_outer(items, ["sku", "quantity"])
+    stacked = stack(2, [col("left_a"), col("right_a"), col("left_b"), col("right_b")], ["left", "right"])
+
+    # -- Assert --
+    assert inner.kind == GeneratorKind.Explode
+    assert outer.kind == GeneratorKind.ExplodeOuter
+    assert positional.kind == GeneratorKind.PosExplode
+    assert positional_outer.kind == GeneratorKind.PosExplodeOuter
+    assert flattened.kind == GeneratorKind.Flatten
+    assert inlined.kind == GeneratorKind.Inline
+    assert inlined_outer.kind == GeneratorKind.InlineOuter
+    assert stacked.kind == GeneratorKind.Stack
+    assert not inner.is_outer
+    assert outer.is_outer
+    assert not inlined.is_outer
+    assert inlined_outer.is_outer
+    assert positional.position_origin == 0
+    assert positional_outer.position_origin == 0
+    assert stacked.row_count == 2
+    assert generator_primary_output_column(inner) == "line_item"
+    assert generator_primary_output_column(positional) == "line_item"
+    assert generator_primary_output_column(inlined) == "quantity"
+
+
+def test_generator_functions__output_columns_preserve_input_then_append_aliases() -> None:
+    # -- Arrange --
+    input_columns = ["id", "line_items"]
+
+    # -- Act --
+    exploded_columns = generator_output_columns(input_columns, explode(col("line_items"), "line_item"))
+    positional_columns = generator_output_columns(input_columns, posexplode(col("line_items"), "position", "line_item"))
+    inline_columns = generator_output_columns(input_columns, inline(col("line_items"), ["sku", "quantity"]))
+    stack_columns = generator_output_columns(
+        input_columns,
+        stack(2, [col("left_a"), col("right_a"), col("left_b"), col("right_b")], ["left", "right"]),
+    )
+
+    # -- Assert --
+    assert exploded_columns == ["id", "line_items", "line_item"]
+    assert positional_columns == ["id", "line_items", "position", "line_item"]
+    assert inline_columns == ["id", "line_items", "sku", "quantity"]
+    assert stack_columns == ["id", "line_items", "left", "right"]
+
+
+def _call_generator_with_input_collision() -> None:
+    """Call generator output inference with a generated name that collides with input."""
+    generator_output_columns(["id", "line_items"], explode(col("line_items"), "id"))
+    return
+
+
+def test_generator_functions__output_alias_collisions_are_rejected() -> None:
+    # -- Arrange --
+    call = _call_generator_with_input_collision
+
+    # -- Act / Assert --
+    assert_raises[ValueError](call)
+
+
+def _call_stack_with_invalid_shape() -> None:
+    """Call stack with a value count that does not fill the declared rows and columns."""
+    stack(2, [col("a"), col("b"), col("c")], ["left", "right"])
+    return
+
+
+def test_generator_functions__stack_shape_is_validated() -> None:
+    # -- Arrange --
+    call = _call_stack_with_invalid_shape
+
+    # -- Act / Assert --
+    assert_raises[ValueError](call)

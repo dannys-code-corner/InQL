@@ -19,9 +19,10 @@ The Substrait helper surface behind these methods is split by semantic role:
 | `with_column` | `def with_column(self, name: str, expr: ColumnExpr) -> Self` | Add or replace one projected column using a scalar expression.                                 |
 | `group_by`    | `def group_by(self, columns: list[ColumnExpr]) -> Self`      | Define grouping keys using scalar expressions.                                                 |
 | `agg`         | `def agg(self, measures: list[AggregateMeasure]) -> Self`    | Apply aggregate measures over the current relation or current grouping.                        |
+| `generate`    | `def generate(self, generator: GeneratorApplication) -> Self` | Apply a relation-shaping generator such as `explode(...)` with explicit output aliases.        |
 | `order_by`    | `def order_by(self, columns: list[ColumnExpr]) -> Self`      | Sort rows by scalar expressions or ordering helpers such as `asc(...)` and `desc(...)`.        |
 | `limit`       | `def limit(self, n: int) -> Self`                            | Cap row count.                                                                                 |
-| `explode`     | `def explode(self) -> Self`                                  | Expand a nested list column into rows.                                                         |
+| `explode`     | `def explode(self) -> Self`                                  | Emit the lower-level `EXPLODE` extension boundary without expression/schema metadata.          |
 
 ## `with_column`
 
@@ -67,6 +68,7 @@ def enrich(orders: LazyFrame[Order]) -> LazyFrame[Order]:
 
 - `join(...)` is constrained to same-carrier inputs and the boolean join predicate surface shown in the signature.
 - `select(...)` preserves projection shape; explicit projection lists are represented today through `with_column(...)` and scalar-expression builders.
+- `generate(...)` preserves all input columns and appends generated output aliases for `explode`, `explode_outer`, `posexplode`, `posexplode_outer`, `inline`, `inline_outer`, `flatten`, and `stack` generator applications. Alias collisions are rejected during planning/lowering.
 - `DataFrame[T]` exposes materialized metadata and preview text; row-level accessors belong to the materialized DataFrame API surface.
 - Query-block and scoped DSL surfaces lower into these builder APIs rather than defining separate method semantics.
 

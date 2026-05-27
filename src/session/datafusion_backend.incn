@@ -2,10 +2,31 @@
 
 import std.async
 from rust::prost import Message
+from rust::std::boxed import Box
 from rust::std::primitive import i64 as RustI64, usize as RustUsize
-from rust::substrait::proto import Plan
+from rust::std::sync import Arc
+from rust::substrait::proto import (
+    AggregateRel,
+    CrossRel,
+    ExtensionSingleRel,
+    FetchRel,
+    FilterRel,
+    JoinRel,
+    Plan,
+    ProjectRel,
+    Rel,
+    SetRel,
+    SortRel,
+)
+from rust::substrait::proto::rel import RelType
+from rust::substrait::proto::join_rel import JoinType
+from rust::datafusion::common import Column, UnnestOptions
+from rust::datafusion::arrow::record_batch import RecordBatch
+from rust::datafusion::datasource import MemTable
+from rust::datafusion::dataframe import DataFrame as RustDataFrame
 from rust::datafusion::execution::context import SessionContext
 from rust::datafusion::execution::options import ArrowReadOptions
+from rust::datafusion::logical_expr import LogicalPlanBuilder
 from rust::datafusion::prelude import CsvReadOptions, ParquetReadOptions
 from rust::datafusion::dataframe import DataFrameWriteOptions
 from rust::datafusion_substrait::substrait::proto import Plan as ConsumerPlan
@@ -13,7 +34,22 @@ from rust::datafusion_substrait::logical_plan::consumer import from_substrait_pl
 from backends import SourceKind, TableSource
 from dataset.materialization import DataFrameMaterialization
 from session.backend_types import BackendError, BackendErrorKind, BackendRegistration, backend_error
-from substrait.inspect import root_names
+from substrait.function_extensions import (
+    EXPLODE_EXTENSION_URI,
+    EXPLODE_OUTER_EXTENSION_URI,
+    FLATTEN_EXTENSION_URI,
+    INLINE_EXTENSION_URI,
+    INLINE_OUTER_EXTENSION_URI,
+    POSEXPLODE_EXTENSION_URI,
+    POSEXPLODE_OUTER_EXTENSION_URI,
+    STACK_EXTENSION_URI,
+)
+from substrait.generator_payload import GeneratorExtensionPayload, decode_generator_extension_payload
+from substrait.inspect import relation_output_columns, root_names, root_rel
+from substrait.plans import plan_from_root_relation
+from substrait.relations import project_rel_with_expressions, read_named_table_rel
+from substrait.schema import RowColumnSpec, SubstraitPrimitiveKind
+from substrait.schema_registry import register_named_table_schema
 
 
 @derive(Clone)
@@ -25,25 +61,29 @@ enum DataFusionSourceRegistration(str):
     Arrow = "arrow"
 
 
+@derive(Clone)
+model MaterializedGeneratorRelation:
+    """One generator relation that must be bridged through a DataFusion temp view for execution."""
+
+    path: str
+    rel: Rel
+    extension: ExtensionSingleRel
+
+
 pub async def datafusion_execute_async(
     registrations: list[BackendRegistration],
     plan: Plan,
 ) -> Result[None, BackendError]:
     """Execute one Substrait plan via DataFusion and discard collected rows."""
     ctx = SessionContext.new()
-    consumer_plan = _consumer_plan_from_current_plan(plan)?
     await _register_sources(ctx, registrations)?
 
-    state = ctx.state()
-    match await from_substrait_plan(state, consumer_plan):
-        Ok(logical_plan) => match await ctx.execute_logical_plan(logical_plan):
-            Ok(df) => match await df.collect():
-                Ok(_) => return Ok(None)
-                Err(err) => return Err(backend_error(BackendErrorKind.BackendExecutionError, err.to_string()))
-
+    match await _dataframe_from_plan(ctx, plan):
+        Ok(df) => match await df.collect():
+            Ok(_) => return Ok(None)
             Err(err) => return Err(backend_error(BackendErrorKind.BackendExecutionError, err.to_string()))
 
-        Err(err) => return Err(backend_error(BackendErrorKind.BackendPlanningError, err.to_string()))
+        Err(err) => return Err(err)
 
 
 pub async def datafusion_collect_materialization_async(
@@ -53,32 +93,27 @@ pub async def datafusion_collect_materialization_async(
     """Execute one Substrait plan via DataFusion and return structured DataFrame materialization."""
     ctx = SessionContext.new()
     resolved_columns = root_names(plan.clone())
-    consumer_plan = _consumer_plan_from_current_plan(plan)?
     await _register_sources(ctx, registrations)?
 
-    state = ctx.state()
-    match await from_substrait_plan(state, consumer_plan):
-        Ok(logical_plan) => match await ctx.execute_logical_plan(logical_plan):
-            Ok(df) => match await df.clone().collect():
-                Ok(batches) => match await df.to_string():
-                    Ok(rendered) =>
-                        mut row_count = 0
-                        for batch in batches:
-                            row_count += _rust_usize_to_int(batch.num_rows())?
-                        return Ok(
-                            DataFrameMaterialization(
-                                resolved_columns=resolved_columns,
-                                row_count=row_count,
-                                preview_text=rendered,
-                            ),
-                        )
-                    Err(err) => return Err(backend_error(BackendErrorKind.BackendExecutionError, err.to_string()))
-
+    match await _dataframe_from_plan(ctx, plan):
+        Ok(df) => match await df.clone().collect():
+            Ok(batches) => match await df.to_string():
+                Ok(rendered) =>
+                    mut row_count = 0
+                    for batch in batches:
+                        row_count += _rust_usize_to_int(batch.num_rows())?
+                    return Ok(
+                        DataFrameMaterialization(
+                            resolved_columns=resolved_columns,
+                            row_count=row_count,
+                            preview_text=rendered,
+                        ),
+                    )
                 Err(err) => return Err(backend_error(BackendErrorKind.BackendExecutionError, err.to_string()))
 
             Err(err) => return Err(backend_error(BackendErrorKind.BackendExecutionError, err.to_string()))
 
-        Err(err) => return Err(backend_error(BackendErrorKind.BackendPlanningError, err.to_string()))
+        Err(err) => return Err(err)
 
 
 pub async def datafusion_write_csv_async(
@@ -88,19 +123,14 @@ pub async def datafusion_write_csv_async(
 ) -> Result[None, BackendError]:
     """Execute one plan and write result rows to a CSV sink URI via DataFusion."""
     ctx = SessionContext.new()
-    consumer_plan = _consumer_plan_from_current_plan(plan)?
     await _register_sources(ctx, registrations)?
 
-    state = ctx.state()
-    match await from_substrait_plan(state, consumer_plan):
-        Ok(logical_plan) => match await ctx.execute_logical_plan(logical_plan):
-            Ok(df) => match await df.write_csv(uri, DataFrameWriteOptions.new(), None):
-                Ok(_) => return Ok(None)
-                Err(err) => return Err(backend_error(BackendErrorKind.BackendSinkError, err.to_string()))
+    match await _dataframe_from_plan(ctx, plan):
+        Ok(df) => match await df.write_csv(uri, DataFrameWriteOptions.new(), None):
+            Ok(_) => return Ok(None)
+            Err(err) => return Err(backend_error(BackendErrorKind.BackendSinkError, err.to_string()))
 
-            Err(err) => return Err(backend_error(BackendErrorKind.BackendExecutionError, err.to_string()))
-
-        Err(err) => return Err(backend_error(BackendErrorKind.BackendPlanningError, err.to_string()))
+        Err(err) => return Err(err)
 
 
 pub async def datafusion_write_parquet_async(
@@ -110,19 +140,641 @@ pub async def datafusion_write_parquet_async(
 ) -> Result[None, BackendError]:
     """Execute one plan and write result rows to a Parquet sink URI via DataFusion."""
     ctx = SessionContext.new()
-    consumer_plan = _consumer_plan_from_current_plan(plan)?
     await _register_sources(ctx, registrations)?
 
+    match await _dataframe_from_plan(ctx, plan):
+        Ok(df) => match await df.write_parquet(uri, DataFrameWriteOptions.new(), None):
+            Ok(_) => return Ok(None)
+            Err(err) => return Err(backend_error(BackendErrorKind.BackendSinkError, err.to_string()))
+
+        Err(err) => return Err(err)
+
+
+async def _dataframe_from_plan(ctx: SessionContext, plan: Plan) -> Result[RustDataFrame, BackendError]:
+    """Build a DataFusion DataFrame, including InQL-owned generator extension roots."""
+    root = root_rel(plan.clone())
+    # DataFusion's stock Substrait consumer cannot plan InQL generator ExtensionSingleRel nodes. Root generators can
+    # execute directly; nested generators are first materialized and then replaced by execution-only temp reads.
+    match _generator_extension(root):
+        Some(extension) => return await _dataframe_from_generator_extension(ctx, extension)
+        None =>
+            materializations = _collect_materialized_generator_relations(root_rel(plan.clone()), "root")
+            if len(materializations) == 0:
+                return await _dataframe_from_standard_plan(ctx, plan)
+            for materialization in materializations:
+                # The path key must match the later rewrite traversal so each temp read targets the exact generated
+                # subtree that was collected here.
+                table_name = _materialized_generator_table_name(materialization.path)
+                df = await _dataframe_from_generator_extension(ctx.clone(), materialization.extension)?
+                await _register_materialized_generator_dataframe(ctx.clone(), table_name, df)?
+            rewritten_root = _replace_materialized_generator_relations(root_rel(plan.clone()), "root")
+            rewritten_plan = plan_from_root_relation(rewritten_root, root_names(plan))
+            return await _dataframe_from_standard_plan(ctx, rewritten_plan)
+
+
+async def _dataframe_from_standard_plan(ctx: SessionContext, plan: Plan) -> Result[RustDataFrame, BackendError]:
+    """Build a DataFusion DataFrame through the stock Substrait consumer."""
+    consumer_plan = _consumer_plan_from_current_plan(plan)?
     state = ctx.state()
     match await from_substrait_plan(state, consumer_plan):
-        Ok(logical_plan) => match await ctx.execute_logical_plan(logical_plan):
-            Ok(df) => match await df.write_parquet(uri, DataFrameWriteOptions.new(), None):
-                Ok(_) => return Ok(None)
-                Err(err) => return Err(backend_error(BackendErrorKind.BackendSinkError, err.to_string()))
-
-            Err(err) => return Err(backend_error(BackendErrorKind.BackendExecutionError, err.to_string()))
-
+        Ok(logical_plan) =>
+            match await ctx.execute_logical_plan(logical_plan):
+                Ok(df) => return Ok(df)
+                Err(err) => return Err(backend_error(BackendErrorKind.BackendExecutionError, err.to_string()))
         Err(err) => return Err(backend_error(BackendErrorKind.BackendPlanningError, err.to_string()))
+
+
+async def _dataframe_from_generator_extension(
+    ctx: SessionContext,
+    extension: ExtensionSingleRel,
+) -> Result[RustDataFrame, BackendError]:
+    """Build a DataFusion DataFrame for one InQL generator relation-extension root."""
+    payload = _decode_generator_payload(extension.clone())?
+    child = _generator_input_rel(extension.clone())?
+    child_columns = relation_output_columns(child.clone())
+    # Generator arguments are ordinary InQL scalar expressions. Project them into stable temp columns first so the
+    # DataFusion unnest API can operate on columns rather than on arbitrary Substrait expressions.
+    temp_columns = _generator_temp_columns(len(payload.arguments))
+    projected_names = _generator_projected_root_names(
+        child_columns,
+        temp_columns.clone(),
+        extension.clone(),
+        payload.clone(),
+    )?
+    projected_rel = project_rel_with_expressions(child, payload.arguments)
+    projected_plan = plan_from_root_relation(projected_rel, projected_names)
+    projected_df = await _dataframe_from_standard_plan(ctx, projected_plan)?
+    return _apply_generator_dataframe_shape(projected_df, extension, payload, temp_columns)
+
+
+def _collect_materialized_generator_relations(rel: Rel, path: str) -> list[MaterializedGeneratorRelation]:
+    """Return generator relations nested below a non-generator root."""
+    match _generator_extension(rel.clone()):
+        Some(extension) => return [MaterializedGeneratorRelation(path=path, rel=rel, extension=extension)]
+        None => return _collect_materialized_generator_children(rel, path)
+
+
+def _collect_materialized_generator_children(rel: Rel, path: str) -> list[MaterializedGeneratorRelation]:
+    """Return generator relations below direct children of one relation."""
+    # This traversal must stay in lock-step with _replace_materialized_generator_children; the path segments are the
+    # shared key between the discovery pass and the execution-plan rewrite pass.
+    mut materializations: list[MaterializedGeneratorRelation] = []
+    match rel.rel_type.clone():
+        Some(RelType.Filter(filter_rel)) =>
+            filter = filter_rel.as_ref().clone()
+            match filter.input:
+                Some(child) => _extend_materializations(
+                    materializations,
+                    _collect_materialized_generator_relations(child.as_ref().clone(), f"{path}_filter"),
+                )
+                None => pass
+        Some(RelType.Project(project_rel)) =>
+            project = project_rel.as_ref().clone()
+            match project.input:
+                Some(child) => _extend_materializations(
+                    materializations,
+                    _collect_materialized_generator_relations(child.as_ref().clone(), f"{path}_project"),
+                )
+                None => pass
+        Some(RelType.Join(join_rel)) =>
+            join = join_rel.as_ref().clone()
+            match join.left:
+                Some(child) => _extend_materializations(
+                    materializations,
+                    _collect_materialized_generator_relations(child.as_ref().clone(), f"{path}_join_left"),
+                )
+                None => pass
+            match join.right:
+                Some(child) => _extend_materializations(
+                    materializations,
+                    _collect_materialized_generator_relations(child.as_ref().clone(), f"{path}_join_right"),
+                )
+                None => pass
+        Some(RelType.Cross(cross_rel)) =>
+            cross = cross_rel.as_ref().clone()
+            match cross.left:
+                Some(child) => _extend_materializations(
+                    materializations,
+                    _collect_materialized_generator_relations(child.as_ref().clone(), f"{path}_cross_left"),
+                )
+                None => pass
+            match cross.right:
+                Some(child) => _extend_materializations(
+                    materializations,
+                    _collect_materialized_generator_relations(child.as_ref().clone(), f"{path}_cross_right"),
+                )
+                None => pass
+        Some(RelType.Aggregate(aggregate_rel)) =>
+            aggregate = aggregate_rel.as_ref().clone()
+            match aggregate.input:
+                Some(child) => _extend_materializations(
+                    materializations,
+                    _collect_materialized_generator_relations(child.as_ref().clone(), f"{path}_aggregate"),
+                )
+                None => pass
+        Some(RelType.Sort(sort_rel)) =>
+            sort = sort_rel.as_ref().clone()
+            match sort.input:
+                Some(child) => _extend_materializations(
+                    materializations,
+                    _collect_materialized_generator_relations(child.as_ref().clone(), f"{path}_sort"),
+                )
+                None => pass
+        Some(RelType.Fetch(fetch_rel)) =>
+            fetch = fetch_rel.as_ref().clone()
+            match fetch.input:
+                Some(child) => _extend_materializations(
+                    materializations,
+                    _collect_materialized_generator_relations(child.as_ref().clone(), f"{path}_fetch"),
+                )
+                None => pass
+        Some(RelType.Set(set_rel)) =>
+            for idx, input in enumerate(set_rel.inputs):
+                _extend_materializations(
+                    materializations,
+                    _collect_materialized_generator_relations(input, f"{path}_set_{idx}"),
+                )
+        Some(RelType.ExtensionSingle(extension_rel)) =>
+            extension = extension_rel.as_ref().clone()
+            match extension.input:
+                Some(child) => _extend_materializations(
+                    materializations,
+                    _collect_materialized_generator_relations(child.as_ref().clone(), f"{path}_extension"),
+                )
+                None => pass
+        _ => pass
+    return materializations
+
+
+def _extend_materializations(
+    mut target: list[MaterializedGeneratorRelation],
+    values: list[MaterializedGeneratorRelation],
+) -> None:
+    """Append collected materialization records while satisfying list clone requirements."""
+    for value in values:
+        target.append(value.clone())
+    return
+
+
+def _replace_materialized_generator_relations(rel: Rel, path: str) -> Rel:
+    """Replace previously materialized generator relation nodes with temp-view reads."""
+    # This is an adapter-only rewrite. The InQL semantic plan remains a generator extension relation; only DataFusion's
+    # execution plan sees the temporary table scan.
+    match _generator_extension(rel.clone()):
+        Some(_) => return read_named_table_rel(_materialized_generator_table_name(path))
+        None => return _replace_materialized_generator_children(rel, path)
+
+
+def _replace_materialized_generator_children(rel: Rel, path: str) -> Rel:
+    """Recursively rewrite generator-bearing children while preserving the surrounding relation node."""
+    # Keep this dispatcher shallow. The relation-specific helpers own proto reconstruction details; this function owns
+    # only the traversal choice.
+    match rel.rel_type.clone():
+        Some(RelType.Filter(filter_rel)) =>
+            return _replace_filter_generator_child(rel, filter_rel.as_ref().clone(), path)
+        Some(RelType.Project(project_rel)) =>
+            return _replace_project_generator_child(rel, project_rel.as_ref().clone(), path)
+        Some(RelType.Join(join_rel)) => return _replace_join_generator_children(join_rel.as_ref().clone(), path)
+        Some(RelType.Cross(cross_rel)) => return _replace_cross_generator_children(cross_rel.as_ref().clone(), path)
+        Some(RelType.Aggregate(aggregate_rel)) =>
+            return _replace_aggregate_generator_child(rel, aggregate_rel.as_ref().clone(), path)
+        Some(RelType.Sort(sort_rel)) => return _replace_sort_generator_child(rel, sort_rel.as_ref().clone(), path)
+        Some(RelType.Fetch(fetch_rel)) => return _replace_fetch_generator_child(rel, fetch_rel.as_ref().clone(), path)
+        Some(RelType.Set(set_rel)) => return _replace_set_generator_children(set_rel, path)
+        Some(RelType.ExtensionSingle(extension_rel)) =>
+            return _replace_extension_generator_child(rel, extension_rel.as_ref().clone(), path)
+        _ => return rel
+
+
+def _rewritten_generator_child(child: Box[Rel], path: str) -> Box[Rel]:
+    """Return one boxed child after replacing any materialized generator subtree beneath it."""
+    return Box.new(_replace_materialized_generator_relations(child.as_ref().clone(), path))
+
+
+def _replace_filter_generator_child(original: Rel, filter: FilterRel, path: str) -> Rel:
+    """Rebuild a FilterRel with its input child rewritten when present."""
+    match filter.input:
+        Some(child) =>
+            return Rel(
+                rel_type=Some(
+                    RelType.Filter(
+                        Box.new(
+                            FilterRel(
+                                common=filter.common,
+                                input=Some(_rewritten_generator_child(child, f"{path}_filter")),
+                                condition=filter.condition,
+                                advanced_extension=filter.advanced_extension,
+                            ),
+                        ),
+                    ),
+                ),
+            )
+        None => return original
+
+
+def _replace_project_generator_child(original: Rel, project: ProjectRel, path: str) -> Rel:
+    """Rebuild a ProjectRel with its input child rewritten when present."""
+    match project.input:
+        Some(child) =>
+            return Rel(
+                rel_type=Some(
+                    RelType.Project(
+                        Box.new(
+                            ProjectRel(
+                                common=project.common,
+                                input=Some(_rewritten_generator_child(child, f"{path}_project")),
+                                expressions=project.expressions,
+                                advanced_extension=project.advanced_extension,
+                            ),
+                        ),
+                    ),
+                ),
+            )
+        None => return original
+
+
+def _replace_join_generator_children(join: JoinRel, path: str) -> Rel:
+    """Rebuild a JoinRel with rewritten left and right inputs."""
+    mut left = join.left
+    mut right = join.right
+    match left:
+        Some(child) =>
+            left = Some(_rewritten_generator_child(child, f"{path}_join_left"))
+        None => pass
+    match right:
+        Some(child) =>
+            right = Some(_rewritten_generator_child(child, f"{path}_join_right"))
+        None => pass
+    # Public InQL joins currently lower only inner joins; preserve that contract while rewriting child inputs.
+    return Rel(
+        rel_type=Some(
+            RelType.Join(
+                Box.new(
+                    JoinRel(
+                        common=join.common,
+                        left=left,
+                        right=right,
+                        expression=join.expression,
+                        post_join_filter=join.post_join_filter,
+                        type=JoinType.Inner.into(),
+                        advanced_extension=join.advanced_extension,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+
+def _replace_cross_generator_children(cross: CrossRel, path: str) -> Rel:
+    """Rebuild a CrossRel with rewritten left and right inputs."""
+    mut left = cross.left
+    mut right = cross.right
+    match left:
+        Some(child) =>
+            left = Some(_rewritten_generator_child(child, f"{path}_cross_left"))
+        None => pass
+    match right:
+        Some(child) =>
+            right = Some(_rewritten_generator_child(child, f"{path}_cross_right"))
+        None => pass
+    return Rel(
+        rel_type=Some(
+            RelType.Cross(
+                Box.new(
+                    CrossRel(common=cross.common, left=left, right=right, advanced_extension=cross.advanced_extension),
+                ),
+            ),
+        ),
+    )
+
+
+def _replace_aggregate_generator_child(original: Rel, aggregate: AggregateRel, path: str) -> Rel:
+    """Rebuild an AggregateRel with its input child rewritten when present."""
+    match aggregate.input:
+        Some(child) =>
+            return Rel(
+                rel_type=Some(
+                    RelType.Aggregate(
+                        Box.new(
+                            AggregateRel(
+                                common=aggregate.common,
+                                input=Some(_rewritten_generator_child(child, f"{path}_aggregate")),
+                                groupings=aggregate.groupings,
+                                measures=aggregate.measures,
+                                grouping_expressions=aggregate.grouping_expressions,
+                                advanced_extension=aggregate.advanced_extension,
+                            ),
+                        ),
+                    ),
+                ),
+            )
+        None => return original
+
+
+def _replace_sort_generator_child(original: Rel, sort: SortRel, path: str) -> Rel:
+    """Rebuild a SortRel with its input child rewritten when present."""
+    match sort.input:
+        Some(child) =>
+            return Rel(
+                rel_type=Some(
+                    RelType.Sort(
+                        Box.new(
+                            SortRel(
+                                common=sort.common,
+                                input=Some(_rewritten_generator_child(child, f"{path}_sort")),
+                                sorts=sort.sorts,
+                                advanced_extension=sort.advanced_extension,
+                            ),
+                        ),
+                    ),
+                ),
+            )
+        None => return original
+
+
+def _replace_fetch_generator_child(original: Rel, fetch: FetchRel, path: str) -> Rel:
+    """Rebuild a FetchRel with its input child rewritten when present."""
+    match fetch.input:
+        Some(child) =>
+            return Rel(
+                rel_type=Some(
+                    RelType.Fetch(
+                        Box.new(
+                            FetchRel(
+                                common=fetch.common,
+                                input=Some(_rewritten_generator_child(child, f"{path}_fetch")),
+                                advanced_extension=fetch.advanced_extension,
+                                offset_mode=fetch.offset_mode,
+                                count_mode=fetch.count_mode,
+                            ),
+                        ),
+                    ),
+                ),
+            )
+        None => return original
+
+
+def _replace_set_generator_children(set_rel: SetRel, path: str) -> Rel:
+    """Rebuild a SetRel with every input child rewritten."""
+    mut inputs: list[Rel] = []
+    for idx, input in enumerate(set_rel.inputs):
+        rewritten = _replace_materialized_generator_relations(input, f"{path}_set_{idx}")
+        inputs.append(rewritten.clone())
+    return Rel(
+        rel_type=Some(
+            RelType.Set(
+                SetRel(
+                    common=set_rel.common,
+                    inputs=inputs,
+                    op=set_rel.op,
+                    advanced_extension=set_rel.advanced_extension,
+                ),
+            ),
+        ),
+    )
+
+
+def _replace_extension_generator_child(original: Rel, extension: ExtensionSingleRel, path: str) -> Rel:
+    """Rebuild a non-generator ExtensionSingleRel with its input child rewritten when present."""
+    match extension.input:
+        Some(child) =>
+            return Rel(
+                rel_type=Some(
+                    RelType.ExtensionSingle(
+                        Box.new(
+                            ExtensionSingleRel(
+                                common=extension.common,
+                                input=Some(_rewritten_generator_child(child, f"{path}_extension")),
+                                detail=extension.detail,
+                            ),
+                        ),
+                    ),
+                ),
+            )
+        None => return original
+
+
+def _materialized_generator_table_name(path: str) -> str:
+    """Return the internal DataFusion temp-view name for one materialized generator relation path."""
+    return f"__inql_generator_materialized_{path}"
+
+
+async def _register_materialized_generator_dataframe(
+    ctx: SessionContext,
+    table_name: str,
+    df: RustDataFrame,
+) -> Result[None, BackendError]:
+    """Collect one generated DataFrame into a MemTable so Substrait reads see concrete table scans."""
+    match await df.clone().collect():
+        Ok(batches) =>
+            if len(batches) == 0:
+                # Empty generator output still needs a registered relation for the rewritten temp ReadRel to resolve.
+                match ctx.register_table(f"{table_name}", df.into_view()):
+                    Ok(_) => return Ok(None)
+                    Err(err) => return Err(backend_error(BackendErrorKind.BackendPlanningError, err.to_string()))
+            _register_materialized_generator_schema_from_batch(f"{table_name}", batches[0])
+            schema = batches[0].schema()
+            # Non-empty outputs are frozen into a MemTable so the stock consumer reads a concrete table instead of an
+            # InQL-specific generator extension relation.
+            match MemTable.try_new(schema, [batches]):
+                Ok(table) =>
+                    match ctx.register_table(f"{table_name}", Arc.new(table)):
+                        Ok(_) => return Ok(None)
+                        Err(err) => return Err(backend_error(BackendErrorKind.BackendPlanningError, err.to_string()))
+                Err(err) => return Err(backend_error(BackendErrorKind.BackendPlanningError, err.to_string()))
+        Err(err) => return Err(backend_error(BackendErrorKind.BackendExecutionError, err.to_string()))
+
+
+def _register_materialized_generator_schema_from_batch(table_name: str, batch: RecordBatch) -> None:
+    """Mirror one DataFusion materialized generator schema into the Substrait named-table schema registry."""
+    # The rewritten ReadRel uses the same schema inference path as user-registered tables, so mirror DataFusion's batch
+    # schema into that registry before the temporary plan is lowered.
+    schema = batch.schema()
+    mut columns: list[RowColumnSpec] = []
+    for field in schema.fields():
+        columns.append(
+            RowColumnSpec(
+                name=field.name().to_string(),
+                kind=_substrait_kind_for_arrow_type_name(field.data_type().to_string()),
+                nullable=field.is_nullable(),
+            ),
+        )
+    register_named_table_schema(table_name, columns)
+    return
+
+
+def _substrait_kind_for_arrow_type_name(type_name: str) -> SubstraitPrimitiveKind:
+    """Map the current DataFusion primitive output type names into InQL's minimal Substrait schema kinds."""
+    if type_name == "Int64" or type_name == "Int32" or type_name == "UInt64" or type_name == "UInt32":
+        return SubstraitPrimitiveKind.I64
+    if type_name == "Float64" or type_name == "Float32":
+        return SubstraitPrimitiveKind.F64
+    if type_name == "Boolean":
+        return SubstraitPrimitiveKind.Bool
+    if type_name.contains("Timestamp"):
+        return SubstraitPrimitiveKind.Timestamp
+    return SubstraitPrimitiveKind.String
+
+
+def _generator_projected_root_names(
+    child_columns: list[str],
+    temp_columns: list[str],
+    extension: ExtensionSingleRel,
+    payload: GeneratorExtensionPayload,
+) -> Result[list[str], BackendError]:
+    """Return temporary root names, including nested struct field names when Substrait requires them."""
+    mut projected_names = _extended_columns(child_columns, temp_columns)
+    match extension.detail:
+        Some(detail) =>
+            if _generator_expands_struct(detail.type_url):
+                # Struct-expanding generators need field aliases present before DataFusion unnests the temporary struct
+                # column; otherwise the consumer cannot name the generated fields deterministically.
+                for output_column in payload.output_columns:
+                    projected_names.append(f"{output_column}")
+            return Ok(projected_names)
+        None =>
+            return Err(backend_error(BackendErrorKind.BackendPlanningError, "generator extension is missing detail"))
+
+
+def _generator_extension(rel: Rel) -> Option[ExtensionSingleRel]:
+    """Return the root generator extension relation when the plan root is an InQL generator."""
+    match rel.rel_type:
+        Some(RelType.ExtensionSingle(extension)) =>
+            if let Some(detail) = extension.detail.clone():
+                if _is_generator_extension_uri(detail.type_url):
+                    return Some(extension.as_ref().clone())
+            return None
+        _ => return None
+
+
+def _generator_input_rel(extension: ExtensionSingleRel) -> Result[Rel, BackendError]:
+    """Return the child relation for one generator extension."""
+    match extension.input:
+        Some(child) => return Ok(child.as_ref().clone())
+        None => return Err(backend_error(BackendErrorKind.BackendPlanningError, "generator extension is missing input"))
+
+
+def _decode_generator_payload(extension: ExtensionSingleRel) -> Result[GeneratorExtensionPayload, BackendError]:
+    """Decode one InQL generator extension payload."""
+    match extension.detail:
+        Some(detail) =>
+            match decode_generator_extension_payload(detail.value):
+                Ok(payload) => return Ok(payload)
+                Err(message) => return Err(backend_error(BackendErrorKind.BackendPlanningError, message))
+        None =>
+            return Err(backend_error(BackendErrorKind.BackendPlanningError, "generator extension is missing detail"))
+
+
+def _apply_generator_dataframe_shape(
+    df: RustDataFrame,
+    extension: ExtensionSingleRel,
+    payload: GeneratorExtensionPayload,
+    temp_columns: list[str],
+) -> Result[RustDataFrame, BackendError]:
+    """Apply DataFusion unnest and aliasing for one lowered generator payload."""
+    match extension.detail:
+        Some(detail) =>
+            # The first unnest converts arrays into rows. Inline/stack then need a second unnest to split the generated
+            # struct values into separate output columns.
+            mut current = _unnest_columns(df, temp_columns.clone(), _preserve_generator_nulls(detail.type_url))?
+            if _generator_expands_struct(detail.type_url):
+                current = _unnest_columns(current, [temp_columns[0]], _preserve_generator_nulls(detail.type_url))?
+                return _rename_struct_generator_outputs(current, temp_columns[0], payload.output_columns)
+            return _rename_flat_generator_outputs(current, temp_columns, payload.output_columns)
+        None =>
+            return Err(backend_error(BackendErrorKind.BackendPlanningError, "generator extension is missing detail"))
+
+
+def _unnest_columns(df: RustDataFrame, columns: list[str], preserve_nulls: bool) -> Result[RustDataFrame, BackendError]:
+    """Call DataFusion unnest with the InQL inner/outer null-preservation policy."""
+    options = UnnestOptions.new().with_preserve_nulls(preserve_nulls)
+    mut datafusion_columns: list[Column] = []
+    for column in columns:
+        datafusion_column = Column.from_name(f"{column}")
+        datafusion_columns.append(datafusion_column.clone())
+    # DataFusion exposes unnest through LogicalPlanBuilder rather than as a direct DataFrame method, so split the
+    # DataFrame and rebuild it around the transformed logical plan.
+    parts = df.into_parts()
+    state = parts.0
+    logical_plan = parts.1
+    match LogicalPlanBuilder.from(logical_plan).unnest_columns_with_options(datafusion_columns, options):
+        Ok(builder) =>
+            match builder.build():
+                Ok(next_plan) => return Ok(RustDataFrame.new(state, next_plan))
+                Err(err) => return Err(backend_error(BackendErrorKind.BackendPlanningError, err.to_string()))
+        Err(err) => return Err(backend_error(BackendErrorKind.BackendPlanningError, err.to_string()))
+
+
+def _rename_flat_generator_outputs(
+    df: RustDataFrame,
+    temp_columns: list[str],
+    output_columns: list[str],
+) -> Result[RustDataFrame, BackendError]:
+    """Rename generated scalar/list outputs from temporary names to InQL aliases."""
+    if len(temp_columns) != len(output_columns):
+        return Err(backend_error(BackendErrorKind.BackendPlanningError, "generator payload/output arity mismatch"))
+    mut current = df
+    for idx, output_column in enumerate(output_columns):
+        match current.with_column_renamed(temp_columns[idx], output_column):
+            Ok(next_df) =>
+                current = next_df
+            Err(err) => return Err(backend_error(BackendErrorKind.BackendPlanningError, err.to_string()))
+    return Ok(current)
+
+
+def _rename_struct_generator_outputs(
+    df: RustDataFrame,
+    temp_column: str,
+    output_columns: list[str],
+) -> Result[RustDataFrame, BackendError]:
+    """Rename generated struct fields from temporary qualified names to InQL aliases."""
+    mut current = df
+    # DataFusion names unnested struct fields as `temp.field`; the public InQL result should expose only the declared
+    # generator output aliases.
+    for output_column in output_columns:
+        field_name = f"{temp_column}.{output_column}"
+        match current.with_column_renamed(field_name, output_column):
+            Ok(next_df) =>
+                current = next_df
+            Err(err) => return Err(backend_error(BackendErrorKind.BackendPlanningError, err.to_string()))
+    return Ok(current)
+
+
+def _extended_columns(input_columns: list[str], appended_columns: list[str]) -> list[str]:
+    """Return input columns followed by appended temporary generator columns."""
+    mut columns: list[str] = []
+    columns.extend(input_columns)
+    columns.extend(appended_columns)
+    return columns
+
+
+def _generator_temp_columns(argument_count: int) -> list[str]:
+    """Return stable temporary column aliases for lowered generator argument expressions."""
+    return [f"__inql_generator_arg_{idx}" for idx in range(argument_count)]
+
+
+def _preserve_generator_nulls(extension_uri: str) -> bool:
+    """Return whether DataFusion unnest should preserve null/empty inputs for this generator."""
+    return extension_uri == EXPLODE_OUTER_EXTENSION_URI or extension_uri == POSEXPLODE_OUTER_EXTENSION_URI or extension_uri == INLINE_OUTER_EXTENSION_URI
+
+
+def _generator_expands_struct(extension_uri: str) -> bool:
+    """Return whether the generator result should expand a struct value into multiple columns."""
+    return extension_uri == INLINE_EXTENSION_URI or extension_uri == INLINE_OUTER_EXTENSION_URI or extension_uri == STACK_EXTENSION_URI
+
+
+def _is_generator_extension_uri(extension_uri: str) -> bool:
+    """Return whether an ExtensionSingle URI belongs to an InQL generator."""
+    return (
+        extension_uri == EXPLODE_EXTENSION_URI
+        or extension_uri == EXPLODE_OUTER_EXTENSION_URI
+        or extension_uri == POSEXPLODE_EXTENSION_URI
+        or extension_uri == POSEXPLODE_OUTER_EXTENSION_URI
+        or extension_uri == INLINE_EXTENSION_URI
+        or extension_uri == INLINE_OUTER_EXTENSION_URI
+        or extension_uri == FLATTEN_EXTENSION_URI
+        or extension_uri == STACK_EXTENSION_URI
+    )
 
 
 async def _register_sources(

@@ -6,6 +6,7 @@ expression trees.
 """
 
 from rust::incan_stdlib::errors import raise_value_error
+from rust::std::primitive import u32 as RustU32
 from rust::substrait::proto import AggregateFunction, Expression, FunctionArgument, Rel, SortField
 from rust::substrait::proto::extensions import SimpleExtensionDeclaration, SimpleExtensionUrn
 from rust::substrait::proto::extensions::simple_extension_declaration import ExtensionFunction, MappingType
@@ -15,7 +16,7 @@ from rust::substrait::proto::rel import RelType
 from function_registry import FunctionClass, SubstraitMappingKind
 from functions.registry import function_registry_entries
 from substrait.errors import SubstraitLoweringError, invalid_scalar_expression
-from substrait.function_extensions import ExtensionFunctionKind, FunctionExtensionSpec, function_extension_uri
+from substrait.function_extensions import ExtensionFunctionKind, FUNCTION_EXTENSION_URI, FunctionExtensionSpec
 from substrait.traversal import relation_children
 
 
@@ -28,7 +29,23 @@ model ExtensionUrnSpec:
 
 
 const FUNCTION_EXTENSION_URN_ANCHOR: u32 = 0
-const RELATION_EXTENSION_URN_ANCHOR: u32 = 1
+
+
+def _to_extension_urn_anchor(value: int) -> RustU32:
+    """Convert a small extension-URN anchor into the protobuf field type."""
+    match RustU32.try_from(value):
+        Ok(converted) => return converted
+        Err(_) =>
+            message = f"extension URN anchor {value} does not fit Rust u32"
+            return raise_value_error(message)
+
+
+def _has_extension_urn_spec(specs: list[ExtensionUrnSpec], urn: str) -> bool:
+    """Return whether a plan-level extension URN list already contains one URI."""
+    for spec in specs:
+        if spec.urn == urn:
+            return true
+    return false
 
 
 pub def aggregate_function_name_from_anchor(anchor: u32) -> str:
@@ -406,7 +423,11 @@ pub def extension_urns_for_rel(rel: Rel) -> list[SimpleExtensionUrn]:
     """Collect extension URNs required by one relation subtree."""
     mut specs: list[ExtensionUrnSpec] = []
     if _function_extension_urn_is_required(rel.clone()):
-        specs.append(ExtensionUrnSpec(anchor=FUNCTION_EXTENSION_URN_ANCHOR, urn=function_extension_uri()))
+        specs.append(ExtensionUrnSpec(anchor=FUNCTION_EXTENSION_URN_ANCHOR, urn=FUNCTION_EXTENSION_URI))
+    mut relation_anchor_count = 0
     for urn in _collect_extension_urn_strings(rel):
-        specs.append(ExtensionUrnSpec(anchor=RELATION_EXTENSION_URN_ANCHOR, urn=urn))
+        if _has_extension_urn_spec(specs, urn):
+            continue
+        relation_anchor_count += 1
+        specs.append(ExtensionUrnSpec(anchor=_to_extension_urn_anchor(relation_anchor_count), urn=urn))
     return [SimpleExtensionUrn(extension_urn_anchor=spec.anchor, urn=spec.urn) for spec in specs]

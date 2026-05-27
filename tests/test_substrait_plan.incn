@@ -73,15 +73,24 @@ from projection_builders import ColumnExpr, with_column_assignment
 from substrait.errors import SubstraitLoweringErrorKind
 from substrait.expr_lowering import scalar_expr
 from substrait.function_extensions import (
-    explode_extension_uri,
-    function_extension_uri,
+    EXPLODE_EXTENSION_URI,
+    EXPLODE_OUTER_EXTENSION_URI,
+    FLATTEN_EXTENSION_URI,
+    FUNCTION_EXTENSION_URI,
+    INLINE_EXTENSION_URI,
+    INLINE_OUTER_EXTENSION_URI,
+    POSEXPLODE_EXTENSION_URI,
+    POSEXPLODE_OUTER_EXTENSION_URI,
     registered_substrait_extension_uris,
+    STACK_EXTENSION_URI,
 )
 from substrait.inspect import (
     aggregate_measure_filter_flags,
     aggregate_measure_function_names,
     aggregate_measure_invocation_names,
     aggregate_measure_sort_counts,
+    plan_extension_urn_anchor_at,
+    plan_extension_urn_count,
     plan_contains_relation_kind,
     plan_has_extension_urn,
     read_kind_name,
@@ -588,15 +597,24 @@ def test_plan__reference_rel_preserves_subtree_ordinal() -> None:
 
 def test_plan__extension_urns_are_surfaced() -> None:
     # -- Arrange --
-    extension_uri = explode_extension_uri()
+    extension_uri = EXPLODE_EXTENSION_URI
     rel = extension_single_rel(read_named_table_rel("orders"), extension_uri)
+    nested = extension_single_rel(
+        extension_single_rel(read_named_table_rel("orders"), EXPLODE_EXTENSION_URI),
+        POSEXPLODE_EXTENSION_URI,
+    )
 
     # -- Act --
     plan = plan_from_root_relation(rel, ["id"])
+    nested_plan = plan_from_root_relation(nested, ["id", "position", "value"])
 
     # -- Assert --
     assert plan_has_extension_urn(plan, extension_uri), "extension relation should populate extension URNs"
     assert plan_contains_relation_kind(plan, "ExtensionSingleRel"), "extension root should remain inspectable"
+    assert plan_has_extension_urn(nested_plan, EXPLODE_EXTENSION_URI), "nested extension plans should include child extension URNs"
+    assert plan_has_extension_urn(nested_plan, POSEXPLODE_EXTENSION_URI), "nested extension plans should include root extension URNs"
+    assert plan_extension_urn_count(nested_plan) == 2, "different relation extension URIs should be declared once each"
+    assert plan_extension_urn_anchor_at(nested_plan, 0) != plan_extension_urn_anchor_at(nested_plan, 1), "relation extension URNs should use distinct anchors"
 
 
 def test_plan__revision_pin_and_extension_registry_are_exported() -> None:
@@ -610,9 +628,16 @@ def test_plan__revision_pin_and_extension_registry_are_exported() -> None:
     # -- Assert --
     assert tag == "v0.63.0", "revision helpers should expose the currently targeted Substrait release tag"
     assert producer == "inql-rfc002", "revision helpers should expose the package producer label"
-    assert len(registered) == 2, "current package boundary should register both extension URIs"
-    assert registered[0] == function_extension_uri(), "registry should include the shared function extension URI first"
-    assert registered[1] == explode_extension_uri(), "registry should include the emitted explode extension URI"
+    assert len(registered) == 9, "current package boundary should register function and generator extension URIs"
+    assert registered[0] == FUNCTION_EXTENSION_URI, "registry should include the shared function extension URI first"
+    assert registered[1] == EXPLODE_EXTENSION_URI, "registry should include the emitted explode extension URI"
+    assert registered[2] == EXPLODE_OUTER_EXTENSION_URI, "registry should include the outer explode extension URI"
+    assert registered[3] == POSEXPLODE_EXTENSION_URI, "registry should include the positional explode extension URI"
+    assert registered[4] == POSEXPLODE_OUTER_EXTENSION_URI, "registry should include the outer positional explode extension URI"
+    assert registered[5] == INLINE_EXTENSION_URI, "registry should include the inline extension URI"
+    assert registered[6] == INLINE_OUTER_EXTENSION_URI, "registry should include the outer inline extension URI"
+    assert registered[7] == FLATTEN_EXTENSION_URI, "registry should include the flatten extension URI"
+    assert registered[8] == STACK_EXTENSION_URI, "registry should include the stack extension URI"
 
 
 def test_conformance__core_scenarios_validate_emission_output() -> None:

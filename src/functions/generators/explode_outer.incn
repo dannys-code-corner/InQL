@@ -1,0 +1,42 @@
+"""Outer explode generator helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    relation_extension_mapping,
+    v0_1,
+)
+from functions.registry import register_function
+from generator_builders import GeneratorApplication, explode_outer as explode_outer_builder
+from projection_builders import ColumnExpr
+from substrait.function_extensions import EXPLODE_OUTER_EXTENSION_URI
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Generator,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=relation_extension_mapping("explode_outer", EXPLODE_OUTER_EXTENSION_URI),
+))
+pub def explode_outer(expr: ColumnExpr, as_: str) -> GeneratorApplication:
+    """
+    Build an outer row-expanding generator for array values.
+
+    Examples:
+        generated = explode_outer(col("line_items"), "line_item")
+
+    Parameters:
+        expr: Array expression to expand into generated rows.
+        as_: Output alias for the generated nullable value column.
+    """
+    return explode_outer_builder(expr, as_)
+
+
+module tests:
+    from projection_builders import col
+    def test_explode_outer_builds_outer_generator_application() -> None:
+        generator = explode_outer(col("line_items"), "line_item")
+        assert generator.canonical_name == "explode_outer"
+        assert generator.is_outer

@@ -3,6 +3,7 @@
 from prism.store import node_at
 from prism.rewrite import rewritten_node_at
 from prism.types import PrismNodeKind, PrismOptimizedView, PrismStoreId
+from generator_builders import generator_output_columns
 from projection_builders import ColumnExpr, project_output_columns, scalar_expr_output_name
 from substrait.inspect import aggregate_measure_output_names
 from substrait.schema_registry import named_table_columns
@@ -27,6 +28,11 @@ pub def authored_output_columns(store_id: PrismStoreId, tip_id: int) -> list[str
         return authored_output_columns(store_id, node.input_ids[0])
     if node.kind == PrismNodeKind.Project:
         return project_output_columns(authored_output_columns(store_id, node.input_ids[0]), node.projection_assignments)
+    if node.kind == PrismNodeKind.Generate:
+        return generator_output_columns(
+            authored_output_columns(store_id, node.input_ids[0]),
+            node.generator_applications[0],
+        )
     if node.kind == PrismNodeKind.Join:
         # Join output columns preserve the conventional left-then-right relation order.
         # We keep both sides verbatim here; duplicate names are part of the current output shape and are resolved later
@@ -59,6 +65,11 @@ pub def rewritten_output_columns(view: PrismOptimizedView, node_id: int) -> list
         return rewritten_output_columns(view, node.input_ids[0])
     if node.kind == PrismNodeKind.Project:
         return project_output_columns(rewritten_output_columns(view, node.input_ids[0]), node.projection_assignments)
+    if node.kind == PrismNodeKind.Generate:
+        return generator_output_columns(
+            rewritten_output_columns(view, node.input_ids[0]),
+            node.generator_applications[0],
+        )
     if node.kind == PrismNodeKind.Join:
         # Rewritten views keep the same left-then-right join column order as authored views
         # so output-column inference stays stable across Prism rewrite passes.

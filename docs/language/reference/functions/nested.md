@@ -20,6 +20,7 @@ Generator or table-valued operations such as row-expanding `explode(...)` are se
 | `array_intersect(left, right)` | Return elements shared by both arrays. |
 | `array_union(left, right)` | Return the union of both arrays. |
 | `array_join(array_expr, delimiter)` | Join a string array into one string. |
+| `array_range(start, stop)` | Build a row-level integer array from `start` inclusive to `stop` exclusive. |
 | `array_slice(array_expr, start, stop)` | Return a one-based array slice using the backend adapter's slice contract. |
 | `array_reverse(array_expr)` | Reverse one array value. |
 | `array_flatten(array_expr)` | Flatten an array-of-arrays into one row-level array value. |
@@ -54,5 +55,5 @@ projected = (
 
 - Array indexing is one-based for `element_at(...)`, `array_position(...)`, and `array_slice(...)`.
 - `element_at(...)` currently maps to the portable array-element adapter path. Out-of-range behavior follows the current backend adapter's recoverable result until InQL has a richer static/runtime error-policy split for strict versus try-style element access.
-- `array_flatten(...)` is intentionally named to avoid colliding with future table-valued or generator `flatten(...)` forms.
+- `array_flatten(...)` is intentionally named to stay distinct from the relation-shaping generator `flatten(...)`.
 - Grouping or ordering by nested values is not documented as portable until equality and ordering semantics for arrays, maps, and structs are specified.

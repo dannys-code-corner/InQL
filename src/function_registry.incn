@@ -7,7 +7,7 @@ usually come from checked public helper metadata. Decorator metadata may overrid
 source helper name is constrained by the host language, such as the `modulo(...)` helper for canonical `mod`.
 """
 
-from substrait.function_extensions import function_extension_uri
+from substrait.function_extensions import FUNCTION_EXTENSION_URI
 
 pub const CORE_FUNCTION_NAMESPACE: str = "inql.functions"
 
@@ -76,6 +76,7 @@ pub enum SubstraitMappingKind(str):
 
     CoreFunction = "core_function"
     ExtensionFunction = "extension_function"
+    RelationExtension = "relation_extension"
     Rewrite = "rewrite"
     StructuralFunction = "structural_function"
 
@@ -290,11 +291,23 @@ pub def extension_mapping(function_name: str, anchor: u32) -> SubstraitMapping:
     """Build one registered Substrait extension-function mapping."""
     return SubstraitMapping(
         kind=SubstraitMappingKind.ExtensionFunction,
-        uri=function_extension_uri(),
+        uri=FUNCTION_EXTENSION_URI,
         function_name=function_name,
         anchor=anchor,
         rewrite="",
         detail="",
+    )
+
+
+pub def relation_extension_mapping(function_name: str, uri: str) -> SubstraitMapping:
+    """Build one registered Substrait relation-extension mapping."""
+    return SubstraitMapping(
+        kind=SubstraitMappingKind.RelationExtension,
+        uri=uri,
+        function_name=function_name,
+        anchor=0,
+        rewrite="",
+        detail="extension_single",
     )
 
 

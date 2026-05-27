@@ -1,0 +1,44 @@
+"""Outer positional explode generator helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    relation_extension_mapping,
+    v0_1,
+)
+from functions.registry import register_function
+from generator_builders import GeneratorApplication, posexplode_outer as posexplode_outer_builder
+from projection_builders import ColumnExpr
+from substrait.function_extensions import POSEXPLODE_OUTER_EXTENSION_URI
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Generator,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=relation_extension_mapping("posexplode_outer", POSEXPLODE_OUTER_EXTENSION_URI),
+))
+pub def posexplode_outer(expr: ColumnExpr, position_as: str, value_as: str) -> GeneratorApplication:
+    """
+    Build an outer row-expanding generator with a zero-based position column.
+
+    Examples:
+        generated = posexplode_outer(col("line_items"), "position", "line_item")
+
+    Parameters:
+        expr: Array expression to expand into generated rows.
+        position_as: Output alias for the zero-based position column.
+        value_as: Output alias for the generated nullable value column.
+    """
+    return posexplode_outer_builder(expr, position_as, value_as)
+
+
+module tests:
+    from projection_builders import col
+    def test_posexplode_outer_builds_outer_positional_generator_application() -> None:
+        generator = posexplode_outer(col("line_items"), "position", "line_item")
+        assert generator.canonical_name == "posexplode_outer"
+        assert generator.is_outer
+        assert generator.output_columns[1] == "line_item"

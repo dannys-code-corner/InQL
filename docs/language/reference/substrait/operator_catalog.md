@@ -81,6 +81,9 @@ Core Substrait does not define a portable unnest or explode `Rel` at the logical
 Current package-level RFC 002 boundary registration:
 
 - `https://inql.io/extensions/v0.1/unnest.yaml#explode`
+- `https://inql.io/extensions/v0.1/unnest.yaml#explode_outer`
+- `https://inql.io/extensions/v0.1/unnest.yaml#posexplode`
+- `https://inql.io/extensions/v0.1/unnest.yaml#posexplode_outer`
 
 ### Pivot / unpivot
 

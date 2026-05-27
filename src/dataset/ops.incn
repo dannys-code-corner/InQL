@@ -8,8 +8,9 @@ views stay aligned with the lowered relation tree.
 
 from rust::substrait::proto import Rel
 from aggregate_builders import AggregateMeasure
+from generator_builders import GeneratorApplication
 from projection_builders import ColumnExpr, ProjectionAssignment, with_column_assignment
-from substrait.function_extensions import explode_extension_uri
+from substrait.function_extensions import EXPLODE_EXTENSION_URI
 from substrait.inspect import relation_output_columns
 from substrait.relations import (
     aggregate_rel_of_columns,
@@ -19,6 +20,7 @@ from substrait.relations import (
     join_rel,
     project_rel_of_columns,
     sort_rel_of_columns,
+    generator_rel_of_columns,
 )
 
 
@@ -122,6 +124,16 @@ pub def agg_ds_of_columns(rel: Rel, input_columns: list[str], measures: list[Agg
     return aggregate_rel_of_columns(rel, input_columns, [], measures)
 
 
+pub def generate_ds(rel: Rel, generator: GeneratorApplication) -> Rel:
+    """Apply one relation-shaping generator to a relation."""
+    return generate_ds_of_columns(rel, relation_output_columns(rel.clone()), generator)
+
+
+pub def generate_ds_of_columns(rel: Rel, input_columns: list[str], generator: GeneratorApplication) -> Rel:
+    """Apply one relation-shaping generator using explicit input-column names."""
+    return generator_rel_of_columns(rel, input_columns, generator)
+
+
 pub def order_by_ds(rel: Rel, columns: list[ColumnExpr]) -> Rel:
     """
     Apply dataset-level ordering intent to one relation.
@@ -165,4 +177,4 @@ pub def explode_ds(rel: Rel) -> Rel:
     Returns:
         A relation shaped as the registered explode extension over the input relation.
     """
-    return extension_single_rel(rel, explode_extension_uri())
+    return extension_single_rel(rel, EXPLODE_EXTENSION_URI)

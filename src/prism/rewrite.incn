@@ -168,6 +168,7 @@ def _build_collapsed_limit_node(
         group_columns=[],
         sort_columns=[],
         aggregate_measures=[],
+        generator_applications=[],
         projection_assignments=[],
     )
 
@@ -204,6 +205,7 @@ def _build_collapsed_project_node(
         group_columns=[],
         sort_columns=[],
         aggregate_measures=[],
+        generator_applications=[],
         projection_assignments=merged_assignments,
     )
 
@@ -240,6 +242,7 @@ def _build_collapsed_aggregate_node(
         group_columns=[],
         sort_columns=[],
         aggregate_measures=merged_measures,
+        generator_applications=[],
         projection_assignments=[],
     )
 
@@ -274,6 +277,7 @@ def _build_collapsed_order_by_node(
         group_columns=[],
         sort_columns=node.sort_columns,
         aggregate_measures=[],
+        generator_applications=[],
         projection_assignments=[],
     )
 
@@ -291,6 +295,7 @@ def _build_rewritten_node(node: PrismNode, remapped_inputs: list[int], rewritten
         group_columns=node.group_columns,
         sort_columns=node.sort_columns,
         aggregate_measures=node.aggregate_measures,
+        generator_applications=node.generator_applications,
         projection_assignments=node.projection_assignments,
     )
 
@@ -336,6 +341,7 @@ def _compact_optimized_view(view: PrismOptimizedView) -> PrismOptimizedView:
                 group_columns=old_node.group_columns,
                 sort_columns=old_node.sort_columns,
                 aggregate_measures=old_node.aggregate_measures,
+                generator_applications=old_node.generator_applications,
                 projection_assignments=old_node.projection_assignments,
             ),
         )
