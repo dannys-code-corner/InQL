@@ -16,7 +16,7 @@ from rust::substrait::proto::rel import RelType
 from function_registry import FunctionClass, SubstraitMappingKind
 from functions.registry import function_registry_entries
 from substrait.errors import SubstraitLoweringError, invalid_scalar_expression
-from substrait.function_extensions import ExtensionFunctionKind, FunctionExtensionSpec, function_extension_uri
+from substrait.function_extensions import ExtensionFunctionKind, FUNCTION_EXTENSION_URI, FunctionExtensionSpec
 from substrait.traversal import relation_children
 
 
@@ -423,7 +423,7 @@ pub def extension_urns_for_rel(rel: Rel) -> list[SimpleExtensionUrn]:
     """Collect extension URNs required by one relation subtree."""
     mut specs: list[ExtensionUrnSpec] = []
     if _function_extension_urn_is_required(rel.clone()):
-        specs.append(ExtensionUrnSpec(anchor=FUNCTION_EXTENSION_URN_ANCHOR, urn=function_extension_uri()))
+        specs.append(ExtensionUrnSpec(anchor=FUNCTION_EXTENSION_URN_ANCHOR, urn=FUNCTION_EXTENSION_URI))
     mut relation_anchor_count = 0
     for urn in _collect_extension_urn_strings(rel):
         if _has_extension_urn_spec(specs, urn):

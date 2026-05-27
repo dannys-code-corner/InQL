@@ -82,6 +82,7 @@ pub from functions.nested.array_flatten import array_flatten
 pub from functions.nested.array_intersect import array_intersect
 pub from functions.nested.array_join import array_join
 pub from functions.nested.array_position import array_position
+pub from functions.nested.array_range import array_range
 pub from functions.nested.array_reverse import array_reverse
 pub from functions.nested.array_slice import array_slice
 pub from functions.nested.array_sort import array_sort
@@ -98,8 +99,12 @@ pub from functions.nested.map_values import map_values
 pub from functions.nested.named_struct import named_struct
 pub from functions.generators.explode import explode
 pub from functions.generators.explode_outer import explode_outer
+pub from functions.generators.flatten import flatten
+pub from functions.generators.inline import inline
+pub from functions.generators.inline_outer import inline_outer
 pub from functions.generators.posexplode import posexplode
 pub from functions.generators.posexplode_outer import posexplode_outer
+pub from functions.generators.stack import stack
 pub from functions.operators.add import add
 pub from functions.operators.and_ import and_
 pub from functions.operators.div import div
@@ -247,12 +252,16 @@ pub from substrait.inspect import (
     set_operation_name,
 )
 pub from substrait.function_extensions import (
-    explode_extension_uri,
-    explode_outer_extension_uri,
-    function_extension_uri,
-    posexplode_extension_uri,
-    posexplode_outer_extension_uri,
+    EXPLODE_EXTENSION_URI,
+    EXPLODE_OUTER_EXTENSION_URI,
+    FLATTEN_EXTENSION_URI,
+    FUNCTION_EXTENSION_URI,
+    INLINE_EXTENSION_URI,
+    INLINE_OUTER_EXTENSION_URI,
+    POSEXPLODE_EXTENSION_URI,
+    POSEXPLODE_OUTER_EXTENSION_URI,
     registered_substrait_extension_uris,
+    STACK_EXTENSION_URI,
 )
 pub from substrait.conformance_catalog import (
     ConformanceCapabilityTags,

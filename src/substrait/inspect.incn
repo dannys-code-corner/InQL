@@ -22,11 +22,16 @@ from projection_builders import scalar_expr_output_name
 from substrait.expr_lowering import field_index_from_expression, project_output_columns_with_emit, rust_u32_to_int
 from substrait.extensions import aggregate_function_name_from_anchor
 from substrait.function_extensions import (
-    explode_extension_uri,
-    explode_outer_extension_uri,
-    posexplode_extension_uri,
-    posexplode_outer_extension_uri,
+    EXPLODE_EXTENSION_URI,
+    EXPLODE_OUTER_EXTENSION_URI,
+    FLATTEN_EXTENSION_URI,
+    INLINE_EXTENSION_URI,
+    INLINE_OUTER_EXTENSION_URI,
+    POSEXPLODE_EXTENSION_URI,
+    POSEXPLODE_OUTER_EXTENSION_URI,
+    STACK_EXTENSION_URI,
 )
+from substrait.generator_payload import decode_generator_extension_payload
 from substrait.schema_registry import named_table_columns, unknown_named_struct
 from substrait.traversal import relation_children
 
@@ -185,7 +190,8 @@ def _relation_output_columns(rel: Rel) -> list[str]:
                 Some(child) =>
                     input_columns = _relation_output_columns(child.as_ref().clone())
                     match extension_rel.detail:
-                        Some(detail) => return _extension_single_output_columns(input_columns, detail.type_url)
+                        Some(detail) =>
+                            return _extension_single_output_columns(input_columns, detail.type_url, detail.value)
                         None => return input_columns
                 None => return []
         Some(RelType.Join(join_rel)) =>
@@ -219,14 +225,23 @@ pub def relation_output_columns(rel: Rel) -> list[str]:
     return _relation_output_columns(rel)
 
 
-def _extension_single_output_columns(input_columns: list[str], extension_uri: str) -> list[str]:
+def _extension_single_output_columns(input_columns: list[str], extension_uri: str, payload: bytes) -> list[str]:
     """Return best-effort output columns for known extension-single relation encodings."""
     mut columns: list[str] = []
     columns.extend(input_columns)
-    if extension_uri == explode_extension_uri() or extension_uri == explode_outer_extension_uri():
+    match decode_generator_extension_payload(payload):
+        Ok(decoded) =>
+            columns.extend(decoded.output_columns)
+            return columns
+        Err(_) => pass
+    if extension_uri == EXPLODE_EXTENSION_URI or extension_uri == EXPLODE_OUTER_EXTENSION_URI:
         columns.append("value")
-    elif extension_uri == posexplode_extension_uri() or extension_uri == posexplode_outer_extension_uri():
+    elif extension_uri == POSEXPLODE_EXTENSION_URI or extension_uri == POSEXPLODE_OUTER_EXTENSION_URI:
         columns.append("position")
+        columns.append("value")
+    elif extension_uri == FLATTEN_EXTENSION_URI:
+        columns.append("value")
+    elif extension_uri == INLINE_EXTENSION_URI or extension_uri == INLINE_OUTER_EXTENSION_URI or extension_uri == STACK_EXTENSION_URI:
         columns.append("value")
     return columns
 

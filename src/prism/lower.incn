@@ -3,7 +3,7 @@
 from rust::substrait::proto import Plan, Rel
 from rust::incan_stdlib::errors import raise_value_error
 from prism.output_columns import rewritten_output_columns
-from substrait.function_extensions import explode_extension_uri
+from substrait.function_extensions import EXPLODE_EXTENSION_URI
 from substrait.plans import plan_from_root_relation
 from substrait.relations import (
     extension_single_rel,
@@ -135,4 +135,4 @@ def _try_lower_node(view: PrismOptimizedView, node_id: int) -> Result[Rel, Subst
             )
         PrismNodeKind.Limit => return Ok(fetch_rel(_try_lower_node(view, node.input_ids[0])?, 0, node.limit_count))
         PrismNodeKind.Explode =>
-            return Ok(extension_single_rel(_try_lower_node(view, node.input_ids[0])?, explode_extension_uri()))
+            return Ok(extension_single_rel(_try_lower_node(view, node.input_ids[0])?, EXPLODE_EXTENSION_URI))

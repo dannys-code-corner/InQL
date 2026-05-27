@@ -1,0 +1,251 @@
+"""End-to-end Session generator execution tests over the DataFusion backend."""
+
+from dataset import DataFrame, LazyFrame
+from functions import (
+    array,
+    col,
+    eq,
+    explode,
+    explode_outer,
+    flatten,
+    inline,
+    inline_outer,
+    lit,
+    named_struct,
+    posexplode,
+    posexplode_outer,
+    stack,
+)
+from session import Session
+from std.testing import assert_is_ok, fail_t
+from projection_builders import ColumnExpr
+
+
+@derive(Clone)
+pub model AggregateOrder:
+    pub customer_id: str
+    pub amount: int
+
+
+const AGGREGATE_ORDERS_CSV_FIXTURE: str = "tests/fixtures/aggregate_orders.csv"
+
+
+def _collect_or_fail(mut session: Session, generated: LazyFrame[AggregateOrder]) -> DataFrame[AggregateOrder]:
+    """Collect a generated aggregate-order frame or fail with the backend diagnostic."""
+    match session.collect(generated):
+        Ok(df) => return df
+        Err(err) => return fail_t(err.error_message())
+
+
+def _preview_line_contains_all(line: str, expected_cells: list[str]) -> bool:
+    """Return whether one rendered preview row contains every expected cell value."""
+    for cell in expected_cells:
+        if not line.contains(cell):
+            return false
+    return true
+
+
+def _assert_preview_row_contains(payload: str, expected_cells: list[str], context: str) -> None:
+    """Assert one rendered preview row carries the expected materialized cells together."""
+    for line in payload.split("\n"):
+        if _preview_line_contains_all(line, expected_cells):
+            return
+    return fail_t(context)
+
+
+def _aggregate_orders(mut session: Session) -> LazyFrame[AggregateOrder]:
+    """Register and return the aggregate-order fixture."""
+    return assert_is_ok(
+        session.read_csv("aggregate_orders", AGGREGATE_ORDERS_CSV_FIXTURE),
+        "aggregate orders fixture should load",
+    )
+
+
+def _tags() -> ColumnExpr:
+    """Return a simple two-element string array expression used by generator tests."""
+    return array([lit("paid"), col("customer_id")])
+
+
+def test_session_generators__collect_executes_explode_family() -> None:
+    # -- Arrange --
+    mut session = Session.default()
+    lazy = _aggregate_orders(session)
+
+    # -- Act --
+    df = _collect_or_fail(session, lazy.generate(explode(_tags(), "tag")))
+    payload = df.preview_text()
+    resolved = df.resolved_columns()
+
+    # -- Assert --
+    assert df.row_count() == 6, "explode should emit two generated rows per fixture input row"
+    assert resolved == ["customer_id", "amount", "tag"], "explode should append one generated value column"
+    _assert_preview_row_contains(
+        payload,
+        ["A", "10", "paid"],
+        "explode should materialize the literal tag for customer A",
+    )
+    _assert_preview_row_contains(payload, ["A", "10", "A"], "explode should materialize the customer tag for customer A")
+    _assert_preview_row_contains(payload, ["B", "7", "B"], "explode should materialize the customer tag for customer B")
+
+
+def test_session_generators__collect_executes_explode_outer_family() -> None:
+    # -- Arrange --
+    mut session = Session.default()
+    lazy = _aggregate_orders(session)
+
+    # -- Act --
+    df = _collect_or_fail(session, lazy.generate(explode_outer(_tags(), "tag")))
+    payload = df.preview_text()
+
+    # -- Assert --
+    assert df.row_count() == 6, "explode_outer should match explode for non-empty fixture arrays"
+    _assert_preview_row_contains(
+        payload,
+        ["A", "10", "paid"],
+        "explode_outer should materialize the literal tag for customer A",
+    )
+    _assert_preview_row_contains(
+        payload,
+        ["B", "7", "B"],
+        "explode_outer should materialize the customer tag for customer B",
+    )
+
+
+def test_session_generators__collect_executes_positional_explode_family() -> None:
+    # -- Arrange --
+    mut session = Session.default()
+    lazy = _aggregate_orders(session)
+
+    # -- Act --
+    df = _collect_or_fail(session, lazy.generate(posexplode(_tags(), "position", "tag")))
+    payload = df.preview_text()
+    resolved = df.resolved_columns()
+
+    # -- Assert --
+    assert df.row_count() == 6, "posexplode should emit two generated rows per fixture input row"
+    assert resolved == ["customer_id", "amount", "position", "tag"], "posexplode should append position then value columns"
+    _assert_preview_row_contains(
+        payload,
+        ["A", "10", "0", "paid"],
+        "posexplode should materialize zero-based position 0",
+    )
+    _assert_preview_row_contains(payload, ["A", "10", "1", "A"], "posexplode should materialize zero-based position 1")
+
+
+def test_session_generators__collect_executes_positional_outer_explode_family() -> None:
+    # -- Arrange --
+    mut session = Session.default()
+    lazy = _aggregate_orders(session)
+
+    # -- Act --
+    df = _collect_or_fail(session, lazy.generate(posexplode_outer(_tags(), "position", "tag")))
+    payload = df.preview_text()
+
+    # -- Assert --
+    assert df.row_count() == 6, "posexplode_outer should match posexplode for non-empty fixture arrays"
+    _assert_preview_row_contains(payload, ["B", "7", "1", "B"], "posexplode_outer should materialize positional rows")
+
+
+def test_session_generators__collect_executes_portable_flatten() -> None:
+    # -- Arrange --
+    mut session = Session.default()
+    lazy = _aggregate_orders(session)
+
+    # -- Act --
+    df = _collect_or_fail(session, lazy.generate(flatten(_tags(), "tag")))
+    payload = df.preview_text()
+    resolved = df.resolved_columns()
+
+    # -- Assert --
+    assert df.row_count() == 6, "flatten should emit one generated row per array element"
+    assert resolved == ["customer_id", "amount", "tag"], "flatten should append one generated value column"
+    _assert_preview_row_contains(payload, ["A", "10", "paid"], "flatten should materialize the literal tag")
+
+
+def test_session_generators__collect_executes_inline_family() -> None:
+    # -- Arrange --
+    mut session = Session.default()
+    lazy = _aggregate_orders(session)
+    rows = array(
+        [named_struct(["sku", "quantity"], [lit("A"), lit(1)]), named_struct(["sku", "quantity"], [lit("B"), lit(2)])],
+    )
+
+    # -- Act --
+    df = _collect_or_fail(session, lazy.generate(inline(rows, ["sku", "quantity"])))
+    payload = df.preview_text()
+    resolved = df.resolved_columns()
+
+    # -- Assert --
+    assert df.row_count() == 6, "inline should emit one row per struct element"
+    assert resolved == ["customer_id", "amount", "sku", "quantity"], "inline should append declared struct output columns"
+    _assert_preview_row_contains(payload, ["A", "10", "A", "1"], "inline should materialize the first struct row")
+    _assert_preview_row_contains(payload, ["A", "10", "B", "2"], "inline should materialize the second struct row")
+
+
+def test_session_generators__collect_executes_inline_outer_family() -> None:
+    # -- Arrange --
+    mut session = Session.default()
+    lazy = _aggregate_orders(session)
+    rows = array(
+        [named_struct(["sku", "quantity"], [lit("A"), lit(1)]), named_struct(["sku", "quantity"], [lit("B"), lit(2)])],
+    )
+
+    # -- Act --
+    df = _collect_or_fail(session, lazy.generate(inline_outer(rows, ["sku", "quantity"])))
+    payload = df.preview_text()
+
+    # -- Assert --
+    assert df.row_count() == 6, "inline_outer should match inline for non-empty fixture arrays"
+    _assert_preview_row_contains(payload, ["B", "7", "B", "2"], "inline_outer should materialize struct rows")
+
+
+def test_session_generators__collect_executes_stack() -> None:
+    # -- Arrange --
+    mut session = Session.default()
+    lazy = _aggregate_orders(session)
+
+    # -- Act --
+    df = _collect_or_fail(
+        session,
+        lazy.generate(stack(2, [col("customer_id"), col("amount"), lit("fixed"), lit(99)], ["label", "value"])),
+    )
+    payload = df.preview_text()
+    resolved = df.resolved_columns()
+
+    # -- Assert --
+    assert df.row_count() == 6, "stack should emit the declared number of rows per fixture input row"
+    assert resolved == ["customer_id", "amount", "label", "value"], "stack should append all declared output columns"
+    _assert_preview_row_contains(payload, ["A", "10", "A", "10"], "stack should materialize row-major source values")
+    _assert_preview_row_contains(
+        payload,
+        ["A", "10", "fixed", "99"],
+        "stack should materialize row-major literal values",
+    )
+
+
+def test_session_generators__generated_relations_compose_with_limit() -> None:
+    # -- Arrange --
+    mut session = Session.default()
+    lazy = _aggregate_orders(session)
+
+    # -- Act --
+    df = _collect_or_fail(session, lazy.generate(explode(_tags(), "tag")).limit(4))
+    payload = df.preview_text()
+
+    # -- Assert --
+    assert df.row_count() == 4, "limit after generate should execute over generated rows"
+    _assert_preview_row_contains(payload, ["A", "10", "paid"], "composed generator plan should keep first generated row")
+
+
+def test_session_generators__generated_columns_can_feed_filter() -> None:
+    # -- Arrange --
+    mut session = Session.default()
+    lazy = _aggregate_orders(session)
+
+    # -- Act --
+    df = _collect_or_fail(session, lazy.generate(explode(_tags(), "tag")).filter(eq(col("tag"), lit("paid"))))
+    payload = df.preview_text()
+
+    # -- Assert --
+    assert df.row_count() == 3, "filter after generate should evaluate against generated columns"
+    _assert_preview_row_contains(payload, ["A", "10", "paid"], "filter should retain generated rows with the paid tag")

@@ -1,0 +1,42 @@
+"""Outer struct-expanding generator helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    relation_extension_mapping,
+    v0_1,
+)
+from functions.registry import register_function
+from generator_builders import GeneratorApplication, inline_outer as inline_outer_builder
+from projection_builders import ColumnExpr
+from substrait.function_extensions import INLINE_OUTER_EXTENSION_URI
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Generator,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=relation_extension_mapping("inline_outer", INLINE_OUTER_EXTENSION_URI),
+))
+pub def inline_outer(expr: ColumnExpr, output_columns: list[str]) -> GeneratorApplication:
+    """
+    Build an outer generator that expands array-of-struct values into nullable generated columns.
+
+    Examples:
+        generated = inline_outer(col("line_items"), ["sku", "quantity"])
+
+    Parameters:
+        expr: Array-of-struct expression to expand into generated rows.
+        output_columns: Output aliases for the struct fields in order.
+    """
+    return inline_outer_builder(expr, output_columns)
+
+
+module tests:
+    from projection_builders import col
+    def test_inline_outer_builds_outer_struct_expanding_generator_application() -> None:
+        generator = inline_outer(col("line_items"), ["sku", "quantity"])
+        assert generator.canonical_name == "inline_outer"
+        assert generator.is_outer

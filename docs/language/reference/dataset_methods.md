@@ -68,7 +68,7 @@ def enrich(orders: LazyFrame[Order]) -> LazyFrame[Order]:
 
 - `join(...)` is constrained to same-carrier inputs and the boolean join predicate surface shown in the signature.
 - `select(...)` preserves projection shape; explicit projection lists are represented today through `with_column(...)` and scalar-expression builders.
-- `generate(...)` preserves all input columns and appends generated output aliases. Alias collisions are rejected during planning/lowering.
+- `generate(...)` preserves all input columns and appends generated output aliases for `explode`, `explode_outer`, `posexplode`, `posexplode_outer`, `inline`, `inline_outer`, `flatten`, and `stack` generator applications. Alias collisions are rejected during planning/lowering.
 - `DataFrame[T]` exposes materialized metadata and preview text; row-level accessors belong to the materialized DataFrame API surface.
 - Query-block and scoped DSL surfaces lower into these builder APIs rather than defining separate method semantics.
 

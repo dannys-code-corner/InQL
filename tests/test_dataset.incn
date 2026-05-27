@@ -18,9 +18,12 @@ from functions import (
     eq,
     explode,
     explode_outer,
+    flatten,
     float_expr,
     int_expr,
     int_lit,
+    inline,
+    inline_outer,
     lit,
     max,
     min,
@@ -30,13 +33,18 @@ from functions import (
     str_expr,
     str_lit,
     sum,
+    stack,
 )
 from projection_builders import ColumnExprKind, column_expr_kind, column_expr_name
 from substrait.function_extensions import (
-    explode_extension_uri,
-    explode_outer_extension_uri,
-    posexplode_extension_uri,
-    posexplode_outer_extension_uri,
+    EXPLODE_EXTENSION_URI,
+    EXPLODE_OUTER_EXTENSION_URI,
+    FLATTEN_EXTENSION_URI,
+    INLINE_EXTENSION_URI,
+    INLINE_OUTER_EXTENSION_URI,
+    POSEXPLODE_EXTENSION_URI,
+    POSEXPLODE_OUTER_EXTENSION_URI,
+    STACK_EXTENSION_URI,
 )
 from substrait.inspect import plan_contains_relation_kind, plan_has_extension_urn, relation_kind_name, root_rel
 from substrait.plans import plan_encoded_len, plan_from_named_table, plan_from_root_relation
@@ -396,7 +404,7 @@ def test_dataset_ops__api_lowered_boundary_facts_stay_stable() -> None:
 
     # -- Assert --
     assert relation_kind_name(root_rel(joined_plan)) == "JoinRel", "canonical join function should still lower to a JoinRel root"
-    assert plan_has_extension_urn(exploded_plan, explode_extension_uri()), "explode method should emit the registered extension URI"
+    assert plan_has_extension_urn(exploded_plan, EXPLODE_EXTENSION_URI), "explode method should emit the registered extension URI"
 
 
 def test_lazy_frame__immutable_branching_and_origin_mapping_hold() -> None:
@@ -458,6 +466,18 @@ def test_lazy_frame__native_prism_ops_preserve_current_boundary_shapes() -> None
     generated_positional_outer: LazyFrame[Order] = lazy_frame_named_table("orders_generator_dataset").generate(
         posexplode_outer(col("line_items"), "position", "line_item"),
     )
+    generated_inline: LazyFrame[Order] = lazy_frame_named_table("orders_generator_dataset").generate(
+        inline(col("line_items"), ["sku", "quantity"]),
+    )
+    generated_inline_outer: LazyFrame[Order] = lazy_frame_named_table("orders_generator_dataset").generate(
+        inline_outer(col("line_items"), ["sku", "quantity"]),
+    )
+    generated_flatten: LazyFrame[Order] = lazy_frame_named_table("orders_generator_dataset").generate(
+        flatten(col("line_items"), "line_item"),
+    )
+    generated_stack: LazyFrame[Order] = lazy_frame_named_table("orders_generator_dataset").generate(
+        stack(2, [str_lit("sku_a"), int_lit(1), str_lit("sku_b"), int_lit(2)], ["sku", "quantity"]),
+    )
 
     # -- Assert --
     assert relation_kind_name(root_rel(projected.to_substrait_plan())) == "ProjectRel", "select should lower through the project boundary shape"
@@ -465,12 +485,17 @@ def test_lazy_frame__native_prism_ops_preserve_current_boundary_shapes() -> None
     assert relation_kind_name(root_rel(aggregated.to_substrait_plan())) == "AggregateRel", "agg should lower to AggregateRel"
     assert relation_kind_name(root_rel(ordered.to_substrait_plan())) == "SortRel", "order_by should lower to SortRel"
     assert relation_kind_name(root_rel(limited.to_substrait_plan())) == "FetchRel", "limit should lower to FetchRel"
-    assert plan_has_extension_urn(exploded.to_substrait_plan(), explode_extension_uri()), "explode should keep emitting the registered extension boundary"
+    assert plan_has_extension_urn(exploded.to_substrait_plan(), EXPLODE_EXTENSION_URI), "explode should keep emitting the registered extension boundary"
     assert relation_kind_name(root_rel(generated.to_substrait_plan())) == "ExtensionSingleRel", "generate should lower through the relation extension boundary"
     assert generated.planned_columns() == ["id", "line_items", "line_item"], "generate should append declared output aliases"
-    assert plan_has_extension_urn(generated_outer.to_substrait_plan(), explode_outer_extension_uri()), "outer explode should use its relation extension URI"
-    assert plan_has_extension_urn(generated_positional.to_substrait_plan(), posexplode_extension_uri()), "posexplode should use its relation extension URI"
-    assert plan_has_extension_urn(generated_positional_outer.to_substrait_plan(), posexplode_outer_extension_uri()), "posexplode_outer should use its relation extension URI"
+    assert plan_has_extension_urn(generated_outer.to_substrait_plan(), EXPLODE_OUTER_EXTENSION_URI), "outer explode should use its relation extension URI"
+    assert plan_has_extension_urn(generated_positional.to_substrait_plan(), POSEXPLODE_EXTENSION_URI), "posexplode should use its relation extension URI"
+    assert plan_has_extension_urn(generated_positional_outer.to_substrait_plan(), POSEXPLODE_OUTER_EXTENSION_URI), "posexplode_outer should use its relation extension URI"
+    assert generated_inline.planned_columns() == ["id", "line_items", "sku", "quantity"], "inline should append all declared struct output aliases"
+    assert plan_has_extension_urn(generated_inline.to_substrait_plan(), INLINE_EXTENSION_URI), "inline should use its relation extension URI"
+    assert plan_has_extension_urn(generated_inline_outer.to_substrait_plan(), INLINE_OUTER_EXTENSION_URI), "inline_outer should use its relation extension URI"
+    assert plan_has_extension_urn(generated_flatten.to_substrait_plan(), FLATTEN_EXTENSION_URI), "flatten should use its relation extension URI"
+    assert plan_has_extension_urn(generated_stack.to_substrait_plan(), STACK_EXTENSION_URI), "stack should use its relation extension URI"
 
 
 def test_lazy_frame__deeper_independent_roots_still_lower_with_stable_shapes() -> None:
@@ -516,4 +541,4 @@ def test_lazy_frame__canonical_rewrite_keeps_extension_boundary_for_explode() ->
     plan = exploded.to_substrait_plan()
 
     # -- Assert --
-    assert plan_has_extension_urn(plan, explode_extension_uri()), "canonical rewrites must keep explode extension URI emission intact"
+    assert plan_has_extension_urn(plan, EXPLODE_EXTENSION_URI), "canonical rewrites must keep explode extension URI emission intact"

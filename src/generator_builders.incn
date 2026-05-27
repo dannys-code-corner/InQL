@@ -8,17 +8,25 @@ row-level expression positions.
 
 from rust::incan_stdlib::errors import raise_value_error
 from function_registry import function_ref_for
-from projection_builders import ColumnExpr
+from functions.nested.array import array
+from functions.nested.array_range import array_range
+from functions.nested.cardinality import cardinality
+from functions.nested.named_struct import named_struct
+from projection_builders import ColumnExpr, int_expr
 
 
 @derive(Clone)
 pub enum GeneratorKind(str):
-    """Supported relation-shaping generator kinds in the current portable slice."""
+    """Supported relation-shaping generator kinds."""
 
     Explode = "explode"
     ExplodeOuter = "explode_outer"
     PosExplode = "posexplode"
     PosExplodeOuter = "posexplode_outer"
+    Inline = "inline"
+    InlineOuter = "inline_outer"
+    Flatten = "flatten"
+    Stack = "stack"
 
 
 @derive(Clone)
@@ -29,25 +37,37 @@ pub model GeneratorApplication:
     pub function_ref: str
     pub canonical_name: str
     pub expr: ColumnExpr
+    pub arguments: list[ColumnExpr]
     pub output_columns: list[str]
     pub preserves_input_columns: bool
     pub is_outer: bool
     pub position_origin: int
+    pub row_count: int
 
 
 pub def explode(expr: ColumnExpr, as_: str) -> GeneratorApplication:
     """Build an inner `explode` generator that appends one value column."""
-    return _generator_application("explode", GeneratorKind.Explode, expr, [as_], true, false, 0)
+    return _generator_application("explode", GeneratorKind.Explode, expr, [expr], [as_], true, false, 0, 0)
 
 
 pub def explode_outer(expr: ColumnExpr, as_: str) -> GeneratorApplication:
     """Build an outer `explode` generator that appends one nullable value column."""
-    return _generator_application("explode_outer", GeneratorKind.ExplodeOuter, expr, [as_], true, true, 0)
+    return _generator_application("explode_outer", GeneratorKind.ExplodeOuter, expr, [expr], [as_], true, true, 0, 0)
 
 
 pub def posexplode(expr: ColumnExpr, position_as: str, value_as: str) -> GeneratorApplication:
     """Build an inner positional explode generator with zero-based positions."""
-    return _generator_application("posexplode", GeneratorKind.PosExplode, expr, [position_as, value_as], true, false, 0)
+    return _generator_application(
+        "posexplode",
+        GeneratorKind.PosExplode,
+        expr,
+        [_position_range_expr(expr), expr],
+        [position_as, value_as],
+        true,
+        false,
+        0,
+        0,
+    )
 
 
 pub def posexplode_outer(expr: ColumnExpr, position_as: str, value_as: str) -> GeneratorApplication:
@@ -56,10 +76,55 @@ pub def posexplode_outer(expr: ColumnExpr, position_as: str, value_as: str) -> G
         "posexplode_outer",
         GeneratorKind.PosExplodeOuter,
         expr,
+        [_position_range_expr(expr), expr],
         [position_as, value_as],
         true,
         true,
         0,
+        0,
+    )
+
+
+pub def inline(expr: ColumnExpr, output_columns: list[str]) -> GeneratorApplication:
+    """Build an inner generator that expands an array-of-struct expression into columns."""
+    return _generator_application("inline", GeneratorKind.Inline, expr, [expr], output_columns, true, false, 0, 0)
+
+
+pub def inline_outer(expr: ColumnExpr, output_columns: list[str]) -> GeneratorApplication:
+    """Build an outer generator that expands an array-of-struct expression into nullable columns."""
+    return _generator_application(
+        "inline_outer",
+        GeneratorKind.InlineOuter,
+        expr,
+        [expr],
+        output_columns,
+        true,
+        true,
+        0,
+        0,
+    )
+
+
+pub def flatten(expr: ColumnExpr, as_: str) -> GeneratorApplication:
+    """Build a portable row-expanding flatten generator for one array expression."""
+    return _generator_application("flatten", GeneratorKind.Flatten, expr, [expr], [as_], true, false, 0, 0)
+
+
+pub def stack(row_count: int, values: list[ColumnExpr], output_columns: list[str]) -> GeneratorApplication:
+    """Build a generator that turns row-major scalar values into `row_count` generated rows."""
+    _validate_stack_shape(row_count, values, output_columns)
+    stacked_rows = _stack_row_exprs(row_count, values, output_columns)
+    stacked_array = array(stacked_rows)
+    return _generator_application(
+        "stack",
+        GeneratorKind.Stack,
+        stacked_array,
+        [stacked_array],
+        output_columns,
+        true,
+        false,
+        0,
+        row_count,
     )
 
 
@@ -87,10 +152,12 @@ def _generator_application(
     canonical_name: str,
     kind: GeneratorKind,
     expr: ColumnExpr,
+    arguments: list[ColumnExpr],
     output_columns: list[str],
     preserves_input_columns: bool,
     is_outer: bool,
     position_origin: int,
+    row_count: int,
 ) -> GeneratorApplication:
     """Build one generator application after validating declared output aliases."""
     _validate_output_columns(canonical_name, output_columns)
@@ -99,10 +166,12 @@ def _generator_application(
         function_ref=function_ref_for(canonical_name),
         canonical_name=canonical_name,
         expr=expr,
+        arguments=arguments,
         output_columns=output_columns,
         preserves_input_columns=preserves_input_columns,
         is_outer=is_outer,
         position_origin=position_origin,
+        row_count=row_count,
     )
 
 
@@ -123,6 +192,35 @@ def _validate_output_columns(canonical_name: str, output_columns: list[str]) -> 
     return
 
 
+def _validate_stack_shape(row_count: int, values: list[ColumnExpr], output_columns: list[str]) -> None:
+    """Validate the row-major `stack(...)` value matrix."""
+    if row_count <= 0:
+        return raise_value_error("stack row_count must be greater than zero")
+    if len(output_columns) == 0:
+        return raise_value_error("stack requires at least one output alias")
+    expected_values = row_count * len(output_columns)
+    if len(values) != expected_values:
+        message = f"stack requires exactly {expected_values} values for {row_count} rows and {len(output_columns)} columns"
+        return raise_value_error(message)
+    return
+
+
+def _stack_row_exprs(row_count: int, values: list[ColumnExpr], output_columns: list[str]) -> list[ColumnExpr]:
+    """Return one named struct expression per declared `stack(...)` output row."""
+    column_count = len(output_columns)
+    mut rows: list[ColumnExpr] = []
+    for row_idx in range(row_count):
+        start_idx = row_idx * column_count
+        row_values = [values[start_idx + col_idx] for col_idx in range(column_count)]
+        rows.append(named_struct(output_columns, row_values))
+    return rows
+
+
+def _position_range_expr(expr: ColumnExpr) -> ColumnExpr:
+    """Build the zero-based position array paired with positional generators."""
+    return array_range(int_expr(0), cardinality(expr))
+
+
 def _contains_text(values: list[str], expected: str) -> bool:
     """Return whether a string list contains a value."""
     for value in values:
@@ -139,6 +237,7 @@ module tests:
         assert generator.canonical_name == "explode"
         assert generator.function_ref == "inql.functions.explode"
         assert column_expr_name(generator.expr) == "line_items"
+        assert len(generator.arguments) == 1
         assert generator.output_columns[0] == "line_item"
         assert generator.preserves_input_columns
         assert not generator.is_outer
@@ -146,5 +245,12 @@ module tests:
         generator = posexplode(col("line_items"), "pos", "line_item")
         assert generator.kind == GeneratorKind.PosExplode
         assert generator.position_origin == 0
+        assert len(generator.arguments) == 2
         assert generator.output_columns[0] == "pos"
         assert generator.output_columns[1] == "line_item"
+    def test_stack_records_row_count_and_single_stacked_argument() -> None:
+        generator = stack(2, [col("a"), col("b"), col("c"), col("d")], ["left", "right"])
+        assert generator.kind == GeneratorKind.Stack
+        assert generator.row_count == 2
+        assert len(generator.arguments) == 1
+        assert generator.output_columns == ["left", "right"]

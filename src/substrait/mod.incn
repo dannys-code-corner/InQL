@@ -32,6 +32,7 @@ pub from substrait.relations import (
     join_rel_of_kind,
     project_rel,
     project_rel_of_columns,
+    project_rel_with_expressions,
     read_local_files_rel,
     read_local_parquet_rel,
     read_named_table_rel,
@@ -79,10 +80,14 @@ pub from substrait.inspect import (
     source_named_table_name,
 )
 pub from substrait.function_extensions import (
-    explode_extension_uri,
-    explode_outer_extension_uri,
-    function_extension_uri,
-    posexplode_extension_uri,
-    posexplode_outer_extension_uri,
+    EXPLODE_EXTENSION_URI,
+    EXPLODE_OUTER_EXTENSION_URI,
+    FLATTEN_EXTENSION_URI,
+    FUNCTION_EXTENSION_URI,
+    INLINE_EXTENSION_URI,
+    INLINE_OUTER_EXTENSION_URI,
+    POSEXPLODE_EXTENSION_URI,
+    POSEXPLODE_OUTER_EXTENSION_URI,
     registered_substrait_extension_uris,
+    STACK_EXTENSION_URI,
 )

@@ -10,7 +10,7 @@ from rust::substrait::proto import Rel
 from aggregate_builders import AggregateMeasure
 from generator_builders import GeneratorApplication
 from projection_builders import ColumnExpr, ProjectionAssignment, with_column_assignment
-from substrait.function_extensions import explode_extension_uri
+from substrait.function_extensions import EXPLODE_EXTENSION_URI
 from substrait.inspect import relation_output_columns
 from substrait.relations import (
     aggregate_rel_of_columns,
@@ -177,4 +177,4 @@ pub def explode_ds(rel: Rel) -> Rel:
     Returns:
         A relation shaped as the registered explode extension over the input relation.
     """
-    return extension_single_rel(rel, explode_extension_uri())
+    return extension_single_rel(rel, EXPLODE_EXTENSION_URI)

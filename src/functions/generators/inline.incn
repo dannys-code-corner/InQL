@@ -1,0 +1,42 @@
+"""Inner struct-expanding generator helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    relation_extension_mapping,
+    v0_1,
+)
+from functions.registry import register_function
+from generator_builders import GeneratorApplication, inline as inline_builder
+from projection_builders import ColumnExpr
+from substrait.function_extensions import INLINE_EXTENSION_URI
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Generator,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=relation_extension_mapping("inline", INLINE_EXTENSION_URI),
+))
+pub def inline(expr: ColumnExpr, output_columns: list[str]) -> GeneratorApplication:
+    """
+    Build an inner generator that expands array-of-struct values into generated columns.
+
+    Examples:
+        generated = inline(col("line_items"), ["sku", "quantity"])
+
+    Parameters:
+        expr: Array-of-struct expression to expand into generated rows.
+        output_columns: Output aliases for the struct fields in order.
+    """
+    return inline_builder(expr, output_columns)
+
+
+module tests:
+    from projection_builders import col
+    def test_inline_builds_struct_expanding_generator_application() -> None:
+        generator = inline(col("line_items"), ["sku", "quantity"])
+        assert generator.canonical_name == "inline"
+        assert generator.output_columns == ["sku", "quantity"]

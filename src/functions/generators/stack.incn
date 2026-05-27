@@ -1,0 +1,44 @@
+"""Row-major stack generator helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    relation_extension_mapping,
+    v0_1,
+)
+from functions.registry import register_function
+from generator_builders import GeneratorApplication, stack as stack_builder
+from projection_builders import ColumnExpr
+from substrait.function_extensions import STACK_EXTENSION_URI
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Generator,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=relation_extension_mapping("stack", STACK_EXTENSION_URI),
+))
+pub def stack(row_count: int, values: list[ColumnExpr], output_columns: list[str]) -> GeneratorApplication:
+    """
+    Build a generator that creates multiple output rows from row-major scalar values.
+
+    Examples:
+        generated = stack(2, [col("left_a"), col("right_a"), col("left_b"), col("right_b")], ["left", "right"])
+
+    Parameters:
+        row_count: Number of generated rows per input row.
+        values: Row-major scalar values, with `row_count * len(output_columns)` entries.
+        output_columns: Output aliases for each generated column.
+    """
+    return stack_builder(row_count, values, output_columns)
+
+
+module tests:
+    from projection_builders import col
+    def test_stack_builds_row_major_generator_application() -> None:
+        generator = stack(2, [col("a"), col("b"), col("c"), col("d")], ["left", "right"])
+        assert generator.canonical_name == "stack"
+        assert generator.row_count == 2
+        assert generator.output_columns == ["left", "right"]

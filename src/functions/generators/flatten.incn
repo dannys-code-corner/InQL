@@ -1,0 +1,42 @@
+"""Portable table-valued flatten generator helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    relation_extension_mapping,
+    v0_1,
+)
+from functions.registry import register_function
+from generator_builders import GeneratorApplication, flatten as flatten_builder
+from projection_builders import ColumnExpr
+from substrait.function_extensions import FLATTEN_EXTENSION_URI
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Generator,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=relation_extension_mapping("flatten", FLATTEN_EXTENSION_URI),
+))
+pub def flatten(expr: ColumnExpr, as_: str) -> GeneratorApplication:
+    """
+    Build a portable row-expanding flatten generator for array values.
+
+    Examples:
+        generated = flatten(col("nested_items"), "item")
+
+    Parameters:
+        expr: Array expression to expand into generated rows.
+        as_: Output alias for the generated value column.
+    """
+    return flatten_builder(expr, as_)
+
+
+module tests:
+    from projection_builders import col
+    def test_flatten_builds_table_valued_generator_application() -> None:
+        generator = flatten(col("nested_items"), "item")
+        assert generator.canonical_name == "flatten"
+        assert generator.output_columns[0] == "item"

@@ -75,38 +75,18 @@ pub const MAP_EXTRACT_FUNCTION_ANCHOR: u32 = 48
 pub const NAMED_STRUCT_FUNCTION_ANCHOR: u32 = 49
 pub const ARRAY_HAS_ANY_FUNCTION_ANCHOR: u32 = 50
 pub const ARRAY_FLATTEN_FUNCTION_ANCHOR: u32 = 51
-const FUNCTION_EXTENSION_URI: str = "https://inql.io/extensions/v0.1/functions.yaml"
-const EXPLODE_EXTENSION_URI: str = "https://inql.io/extensions/v0.1/unnest.yaml#explode"
-const EXPLODE_OUTER_EXTENSION_URI: str = "https://inql.io/extensions/v0.1/unnest.yaml#explode_outer"
-const POSEXPLODE_EXTENSION_URI: str = "https://inql.io/extensions/v0.1/unnest.yaml#posexplode"
-const POSEXPLODE_OUTER_EXTENSION_URI: str = "https://inql.io/extensions/v0.1/unnest.yaml#posexplode_outer"
-
-
-pub def function_extension_uri() -> str:
-    """Return the registered extension URI used for shared function anchors."""
-    return FUNCTION_EXTENSION_URI
-
-
-pub def explode_extension_uri() -> str:
-    """Return the registered extension URI used for EXPLODE-style gap encoding."""
-    return EXPLODE_EXTENSION_URI
-
-
-pub def explode_outer_extension_uri() -> str:
-    """Return the registered extension URI used for outer EXPLODE gap encoding."""
-    return EXPLODE_OUTER_EXTENSION_URI
-
-
-pub def posexplode_extension_uri() -> str:
-    """Return the registered extension URI used for positional EXPLODE gap encoding."""
-    return POSEXPLODE_EXTENSION_URI
-
-
-pub def posexplode_outer_extension_uri() -> str:
-    """Return the registered extension URI used for outer positional EXPLODE gap encoding."""
-    return POSEXPLODE_OUTER_EXTENSION_URI
+pub const RANGE_FUNCTION_ANCHOR: u32 = 52
+pub const FUNCTION_EXTENSION_URI: str = "https://inql.io/extensions/v0.1/functions.yaml"
+pub const EXPLODE_EXTENSION_URI: str = "https://inql.io/extensions/v0.1/unnest.yaml#explode"
+pub const EXPLODE_OUTER_EXTENSION_URI: str = "https://inql.io/extensions/v0.1/unnest.yaml#explode_outer"
+pub const POSEXPLODE_EXTENSION_URI: str = "https://inql.io/extensions/v0.1/unnest.yaml#posexplode"
+pub const POSEXPLODE_OUTER_EXTENSION_URI: str = "https://inql.io/extensions/v0.1/unnest.yaml#posexplode_outer"
+pub const INLINE_EXTENSION_URI: str = "https://inql.io/extensions/v0.1/unnest.yaml#inline"
+pub const INLINE_OUTER_EXTENSION_URI: str = "https://inql.io/extensions/v0.1/unnest.yaml#inline_outer"
+pub const FLATTEN_EXTENSION_URI: str = "https://inql.io/extensions/v0.1/unnest.yaml#flatten"
+pub const STACK_EXTENSION_URI: str = "https://inql.io/extensions/v0.1/table_functions.yaml#stack"
 
 
 pub def registered_substrait_extension_uris() -> list[str]:
     """Return the registered extension URIs used by current package-level Substrait lowering."""
-    return [FUNCTION_EXTENSION_URI, EXPLODE_EXTENSION_URI, EXPLODE_OUTER_EXTENSION_URI, POSEXPLODE_EXTENSION_URI, POSEXPLODE_OUTER_EXTENSION_URI]
+    return [FUNCTION_EXTENSION_URI, EXPLODE_EXTENSION_URI, EXPLODE_OUTER_EXTENSION_URI, POSEXPLODE_EXTENSION_URI, POSEXPLODE_OUTER_EXTENSION_URI, INLINE_EXTENSION_URI, INLINE_OUTER_EXTENSION_URI, FLATTEN_EXTENSION_URI, STACK_EXTENSION_URI]

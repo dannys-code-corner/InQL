@@ -11,14 +11,14 @@ from function_registry import (
 from functions.registry import register_function
 from generator_builders import GeneratorApplication, explode as explode_builder
 from projection_builders import ColumnExpr
-from substrait.function_extensions import explode_extension_uri
+from substrait.function_extensions import EXPLODE_EXTENSION_URI
 
 
 @register_function(deterministic_spec(
     function_class=FunctionClass.Generator,
     lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
     null_behavior=FunctionNullBehavior.DependsOnInputs,
-    substrait=relation_extension_mapping("explode", explode_extension_uri()),
+    substrait=relation_extension_mapping("explode", EXPLODE_EXTENSION_URI),
 ))
 pub def explode(expr: ColumnExpr, as_: str) -> GeneratorApplication:
     """

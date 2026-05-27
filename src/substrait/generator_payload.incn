@@ -1,0 +1,140 @@
+"""Binary payload for InQL generator relation-extension nodes."""
+
+from rust::prost import Message
+from rust::std::string import String as RustString
+from rust::substrait::proto import Expression
+
+const _MAGIC: list[int] = [73, 78, 81, 76, 71, 69, 78, 49]
+
+
+@derive(Clone)
+pub model GeneratorExtensionPayload:
+    """Decoded generator relation-extension payload."""
+
+    pub row_count: int
+    pub output_columns: list[str]
+    pub arguments: list[Expression]
+
+
+pub def encode_generator_extension_payload(
+    row_count: int,
+    output_columns: list[str],
+    arguments: list[Expression],
+) -> bytes:
+    """Encode generator metadata and lowered scalar arguments into stable bytes."""
+    mut out: list[u8] = []
+    for idx in range(len(_MAGIC)):
+        _append_byte(out, _MAGIC[idx])
+    _append_u64_le(out, row_count)
+    _append_u64_le(out, len(output_columns))
+    for output_column in output_columns:
+        encoded_name = RustString.from(f"{output_column}").into_bytes()
+        _append_u64_le(out, len(encoded_name))
+        _append_bytes(out, encoded_name)
+    _append_u64_le(out, len(arguments))
+    for argument in arguments:
+        encoded = argument.encode_to_vec()
+        _append_u64_le(out, len(encoded))
+        _append_bytes(out, encoded)
+    return out
+
+
+pub def decode_generator_extension_payload(data: bytes) -> Result[GeneratorExtensionPayload, str]:
+    """Decode generator relation-extension payload bytes."""
+    match _validate_magic(data):
+        Ok(_) => pass
+        Err(message) => return Err(message)
+    mut offset = len(_MAGIC)
+    row_count = _read_u64_le(data, offset)
+    offset += 8
+    output_column_count = _read_u64_le(data, offset)
+    offset += 8
+    mut output_columns: list[str] = []
+    for _ in range(output_column_count):
+        if offset + 8 > len(data):
+            return Err("generator extension payload ended before output column length")
+        column_len = _read_u64_le(data, offset)
+        offset += 8
+        if offset + column_len > len(data):
+            return Err("generator extension payload ended inside an output column")
+        column_bytes = _slice_bytes(data, offset, column_len)
+        offset += column_len
+        match RustString.from_utf8(column_bytes):
+            Ok(column_name) => output_columns.append(column_name.to_string())
+            Err(err) => return Err(err.to_string())
+    argument_count = _read_u64_le(data, offset)
+    offset += 8
+    mut arguments: list[Expression] = []
+    for _ in range(argument_count):
+        if offset + 8 > len(data):
+            return Err("generator extension payload ended before argument length")
+        argument_len = _read_u64_le(data, offset)
+        offset += 8
+        if offset + argument_len > len(data):
+            return Err("generator extension payload ended inside an argument")
+        argument_bytes = _slice_bytes(data, offset, argument_len)
+        offset += argument_len
+        match Expression.decode(argument_bytes.as_slice()):
+            Ok(argument) => arguments.append(argument.clone())
+            Err(err) => return Err(err.to_string())
+    if offset != len(data):
+        return Err("generator extension payload contains trailing bytes")
+    return Ok(GeneratorExtensionPayload(row_count=row_count, output_columns=output_columns, arguments=arguments))
+
+
+def _validate_magic(data: bytes) -> Result[None, str]:
+    """Validate the generator payload prefix."""
+    if len(data) < len(_MAGIC) + 24:
+        return Err("generator extension payload is too short")
+    for idx, expected in enumerate(_MAGIC):
+        if int(data[idx]) != expected:
+            return Err("generator extension payload has an invalid prefix")
+    return Ok(None)
+
+
+def _slice_bytes(data: bytes, offset: int, length: int) -> bytes:
+    """Return a copy of a byte slice from a payload list."""
+    mut out: list[u8] = []
+    for idx in range(length):
+        _append_byte(out, int(data[offset + idx]))
+    return out
+
+
+def _append_bytes(mut out: list[u8], data: bytes) -> None:
+    """Append all bytes from `data` to `out`."""
+    for byte in data:
+        _append_byte(out, int(byte))
+    return
+
+
+def _append_u64_le(mut out: list[u8], value: int) -> None:
+    """Append one non-negative integer as a little-endian u64."""
+    _append_byte(out, value % 256)
+    _append_byte(out, (value // 256) % 256)
+    _append_byte(out, (value // 65536) % 256)
+    _append_byte(out, (value // 16777216) % 256)
+    _append_byte(out, (value // 4294967296) % 256)
+    _append_byte(out, (value // 1099511627776) % 256)
+    _append_byte(out, (value // 281474976710656) % 256)
+    _append_byte(out, (value // 72057594037927936) % 256)
+    return
+
+
+def _read_u64_le(data: bytes, offset: int) -> int:
+    """Read one little-endian u64 from a byte list."""
+    mut value = int(data[offset])
+    value += int(data[offset + 1]) * 256
+    value += int(data[offset + 2]) * 65536
+    value += int(data[offset + 3]) * 16777216
+    value += int(data[offset + 4]) * 4294967296
+    value += int(data[offset + 5]) * 1099511627776
+    value += int(data[offset + 6]) * 281474976710656
+    value += int(data[offset + 7]) * 72057594037927936
+    return value
+
+
+def _append_byte(mut out: list[u8], value: int) -> None:
+    """Append the low byte of one integer."""
+    byte: u8 = value.wrapping_resize()
+    out.append(byte)
+    return
