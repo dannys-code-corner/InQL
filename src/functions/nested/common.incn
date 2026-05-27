@@ -1,13 +1,7 @@
 """Shared implementation helpers for nested scalar functions."""
 
 from rust::incan_stdlib::errors import raise_value_error
-from functions.registry import registered_application
 from projection_builders import ColumnExpr, str_expr
-
-
-pub def nested_application(canonical_name: str, arguments: list[ColumnExpr]) -> ColumnExpr:
-    """Build one registry-backed nested scalar function application."""
-    return registered_application(canonical_name, arguments)
 
 
 pub def require_non_empty_args(arguments: list[ColumnExpr]) -> None:

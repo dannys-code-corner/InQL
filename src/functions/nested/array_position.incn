@@ -8,8 +8,7 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.nested.common import nested_application
-from functions.registry import register_function
+from functions.registry import register_function, registered_application
 from projection_builders import ColumnExpr
 from substrait.function_extensions import ARRAY_POSITION_FUNCTION_ANCHOR
 
@@ -31,4 +30,4 @@ pub def array_position(array_expr: ColumnExpr, value: ColumnExpr) -> ColumnExpr:
         array_expr: Array expression to search.
         value: Value expression to find.
     """
-    return nested_application("array_position", [array_expr, value])
+    return registered_application("array_position", [array_expr, value])

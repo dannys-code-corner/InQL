@@ -12,8 +12,8 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.nested.common import nested_application, require_non_empty_args
-from functions.registry import register_function
+from functions.nested.common import require_non_empty_args
+from functions.registry import register_function, registered_application
 from projection_builders import ColumnExpr
 from substrait.function_extensions import MAKE_ARRAY_FUNCTION_ANCHOR
 
@@ -35,4 +35,4 @@ pub def array(values: list[ColumnExpr]) -> ColumnExpr:
         values: Element expressions in array order.
     """
     require_non_empty_args(values)
-    return nested_application("array", values)
+    return registered_application("array", values)

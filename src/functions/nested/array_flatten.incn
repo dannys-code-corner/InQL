@@ -12,8 +12,7 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.nested.common import nested_application
-from functions.registry import register_function
+from functions.registry import register_function, registered_application
 from projection_builders import ColumnExpr
 from substrait.function_extensions import ARRAY_FLATTEN_FUNCTION_ANCHOR
 
@@ -34,4 +33,4 @@ pub def array_flatten(array_expr: ColumnExpr) -> ColumnExpr:
     Parameters:
         array_expr: Array expression to flatten.
     """
-    return nested_application("array_flatten", [array_expr])
+    return registered_application("array_flatten", [array_expr])

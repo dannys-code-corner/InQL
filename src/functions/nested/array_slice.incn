@@ -8,8 +8,7 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.nested.common import nested_application
-from functions.registry import register_function
+from functions.registry import register_function, registered_application
 from projection_builders import ColumnExpr
 from substrait.function_extensions import ARRAY_SLICE_FUNCTION_ANCHOR
 
@@ -32,4 +31,4 @@ pub def array_slice(array_expr: ColumnExpr, start: ColumnExpr, stop: ColumnExpr)
         start: One-based start index.
         stop: One-based stop index following the backend adapter's `array_slice` contract.
     """
-    return nested_application("array_slice", [array_expr, start, stop])
+    return registered_application("array_slice", [array_expr, start, stop])

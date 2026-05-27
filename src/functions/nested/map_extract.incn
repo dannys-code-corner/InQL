@@ -8,8 +8,7 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.nested.common import nested_application
-from functions.registry import register_function
+from functions.registry import register_function, registered_application
 from projection_builders import ColumnExpr
 from substrait.function_extensions import MAP_EXTRACT_FUNCTION_ANCHOR
 
@@ -31,4 +30,4 @@ pub def map_extract(map_expr: ColumnExpr, key: ColumnExpr) -> ColumnExpr:
         map_expr: Map expression to inspect.
         key: Key expression to look up.
     """
-    return nested_application("map_extract", [map_expr, key])
+    return registered_application("map_extract", [map_expr, key])

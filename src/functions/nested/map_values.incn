@@ -8,8 +8,7 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.nested.common import nested_application
-from functions.registry import register_function
+from functions.registry import register_function, registered_application
 from projection_builders import ColumnExpr
 from substrait.function_extensions import MAP_VALUES_FUNCTION_ANCHOR
 
@@ -30,4 +29,4 @@ pub def map_values(map_expr: ColumnExpr) -> ColumnExpr:
     Parameters:
         map_expr: Map expression to inspect.
     """
-    return nested_application("map_values", [map_expr])
+    return registered_application("map_values", [map_expr])

@@ -8,8 +8,8 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.nested.common import named_struct_arguments, nested_application
-from functions.registry import register_function
+from functions.nested.common import named_struct_arguments
+from functions.registry import register_function, registered_application
 from projection_builders import ColumnExpr
 from substrait.function_extensions import NAMED_STRUCT_FUNCTION_ANCHOR
 
@@ -31,4 +31,4 @@ pub def named_struct(field_names: list[str], values: list[ColumnExpr]) -> Column
         field_names: Non-empty struct field names.
         values: Field value expressions in the same order as `field_names`.
     """
-    return nested_application("named_struct", named_struct_arguments(field_names, values))
+    return registered_application("named_struct", named_struct_arguments(field_names, values))
