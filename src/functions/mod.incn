@@ -34,6 +34,7 @@ pub from functions.aggregates.avg import avg
 pub from functions.aggregates.min import min
 pub from functions.aggregates.max import max
 pub from functions.approximate.approx_count_distinct import approx_count_distinct
+pub from functions.approximate.approx_percentile import approx_percentile
 pub from functions.math.abs import abs
 pub from functions.math.ceil import ceil
 pub from functions.math.floor import floor

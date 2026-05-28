@@ -151,10 +151,10 @@ pub model FunctionApproximationPolicy:
     """Approximation contract metadata for functions with intentionally approximate results."""
 
     pub is_approximate: bool
-    pub algorithm: str
-    pub default_error: str
+    pub algorithm: FrozenStr
+    pub default_error: FrozenStr
     pub mergeable: bool
-    pub result_interpretation: str
+    pub result_interpretation: FrozenStr
 
 
 pub const NO_APPROXIMATION: FunctionApproximationPolicy = FunctionApproximationPolicy(
@@ -170,6 +170,13 @@ pub const APPROX_COUNT_DISTINCT_POLICY: FunctionApproximationPolicy = FunctionAp
     default_error="implementation-defined fixed HyperLogLog precision",
     mergeable=true,
     result_interpretation="approximate non-null distinct-count cardinality estimate",
+)
+pub const APPROX_PERCENTILE_POLICY: FunctionApproximationPolicy = FunctionApproximationPolicy(
+    is_approximate=true,
+    algorithm="t-digest",
+    default_error="implementation-defined t-digest approximation bounded by the accuracy argument",
+    mergeable=true,
+    result_interpretation="approximate percentile estimate for numeric non-null values",
 )
 
 
@@ -401,6 +408,10 @@ pub deterministic_spec = partial FunctionSpec(canonical_name=None, namespace=COR
 """Build one approximate distinct-count aggregate function spec."""
 
 pub approx_count_distinct_spec = partial FunctionSpec(canonical_name=None, namespace=CORE_FUNCTION_NAMESPACE, policy_category=FunctionPolicyCategory.PortableCore, function_class=FunctionClass.Aggregate, aliases=[], alias_policy=FunctionAliasPolicy.CoreImport, determinism=FunctionDeterminism.Deterministic, error_behavior=FunctionErrorBehavior.Typechecked, aggregate_modifiers=APPROX_DISTINCT_AGGREGATE_MODIFIERS, approximation=APPROX_COUNT_DISTINCT_POLICY)
+
+"""Build one approximate percentile aggregate function spec."""
+
+pub approx_percentile_spec = partial FunctionSpec(canonical_name=None, namespace=CORE_FUNCTION_NAMESPACE, policy_category=FunctionPolicyCategory.PortableCore, function_class=FunctionClass.Aggregate, aliases=[], alias_policy=FunctionAliasPolicy.CoreImport, determinism=FunctionDeterminism.Deterministic, error_behavior=FunctionErrorBehavior.InvalidInputDiagnostic, aggregate_modifiers=APPROX_DISTINCT_AGGREGATE_MODIFIERS, approximation=APPROX_PERCENTILE_POLICY)
 
 """Build one explicitly namespaced extension-only function spec."""
 

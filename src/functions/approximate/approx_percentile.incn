@@ -1,0 +1,42 @@
+"""
+Approximate percentile aggregate helper.
+
+`approx_percentile` estimates one percentile over numeric non-null values with an explicit accuracy bound.
+"""
+
+from aggregate_builders import AggregateKind, AggregateMeasure, approx_percentile as approx_percentile_builder
+from function_registry import FunctionLifecycle, FunctionNullBehavior, approx_percentile_spec, extension_mapping, v0_1
+from functions.registry import register_function
+from projection_builders import ColumnExpr, col, column_expr_name
+from substrait.function_extensions import APPROX_PERCENTILE_FUNCTION_ANCHOR
+
+
+@register_function(approx_percentile_spec(
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.NullSkippingAggregate,
+    substrait=extension_mapping("approx_percentile", APPROX_PERCENTILE_FUNCTION_ANCHOR),
+))
+pub def approx_percentile(expr: ColumnExpr, percentile: float, accuracy: int = 10000) -> AggregateMeasure:
+    """
+    Estimate one percentile over numeric non-null values.
+
+    Examples:
+        p95_latency = approx_percentile(col("latency_ms"), 0.95, accuracy=10000)
+
+    Parameters:
+        expr: Numeric expression whose non-null values should be estimated.
+        percentile: Percentile fraction between 0.0 and 1.0 inclusive.
+        accuracy: Positive t-digest centroid count hint used by compatible backends.
+    """
+    return approx_percentile_builder(expr, percentile, accuracy)
+
+
+module tests:
+    def test_approx_percentile_builds_approximate_aggregate_measure() -> None:
+        measure = approx_percentile(col("latency_ms"), 0.95, accuracy=2500)
+        assert measure.kind == AggregateKind.ApproxPercentile
+        assert measure.has_expr
+        assert not measure.is_distinct
+        assert not measure.has_filter
+        assert column_expr_name(measure.expr) == "latency_ms"
+        assert len(measure.arguments) == 3

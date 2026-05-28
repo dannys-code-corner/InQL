@@ -7,6 +7,7 @@ from functions import (
     always_true,
     and_,
     approx_count_distinct,
+    approx_percentile,
     array,
     array_contains,
     array_distinct,
@@ -626,12 +627,12 @@ def test_plan__aggregate_rel_lowers_distinct_and_filter_modifiers() -> None:
     assert aggregate_sort_counts == [0, 0, 0], "core aggregates should not emit ordered input fields"
 
 
-def test_plan__aggregate_rel_lowers_approx_count_distinct() -> None:
+def test_plan__aggregate_rel_lowers_approximate_aggregates() -> None:
     # -- Arrange --
     _register_orders_schema()
     base = read_named_table_rel("orders")
-    aggregated = aggregate_rel(base, [col("id")], [approx_count_distinct(col("id"))])
-    plan = plan_from_root_relation(aggregated, ["id", "approx_count_distinct_id"])
+    aggregated = aggregate_rel(base, [col("id")], [approx_count_distinct(col("id")), approx_percentile(col("id"), 0.5)])
+    plan = plan_from_root_relation(aggregated, ["id", "approx_count_distinct_id", "approx_percentile_id"])
 
     # -- Act --
     output_columns = relation_output_columns(aggregated)
@@ -641,9 +642,9 @@ def test_plan__aggregate_rel_lowers_approx_count_distinct() -> None:
     # -- Assert --
     assert relation_kind_name(aggregated) == "AggregateRel", "approximate aggregate lowering should emit AggregateRel"
     assert plan_has_extension_urn(plan, registered_substrait_extension_uris()[0]), "approximate aggregate plans should register aggregate extensions"
-    assert output_columns == ["id", "approx_count_distinct_id"], "approximate aggregate output names should remain stable"
-    assert aggregate_functions == ["approx_count_distinct"], "approx_count_distinct should keep its InQL Substrait extension name"
-    assert aggregate_invocations == ["All"], "approx_count_distinct should not lower as an exact DISTINCT invocation"
+    assert output_columns == ["id", "approx_count_distinct_id", "approx_percentile_id"], "approximate aggregate output names should remain stable"
+    assert aggregate_functions == ["approx_count_distinct", "approx_percentile"], "approximate aggregates should keep their InQL Substrait extension names"
+    assert aggregate_invocations == ["All", "All"], "approximate aggregates should not lower as exact DISTINCT invocations"
 
 
 def test_plan__aggregate_rel_rejects_invalid_modifier_shapes() -> None:

@@ -1,5 +1,5 @@
 """
-Explicit aggregate builder surface for the current InQL-only aggregate slice.
+Explicit aggregate builder surface for InQL aggregate measures.
 
 These builders are the semantic target for future compiler sugar such as `.column` and query-block aggregate calls.
 Today they provide a library-owned way to express grouping columns and aggregate measures without requiring parser or
@@ -7,7 +7,15 @@ typechecker changes in the Incan compiler.
 """
 
 from function_registry import function_ref_for
-from projection_builders import ColumnExpr, col as col_expr, column_expr_name, scalar_expr_output_name
+from projection_builders import (
+    ColumnExpr,
+    col as col_expr,
+    column_expr_name,
+    float_expr,
+    int_expr,
+    scalar_expr_output_name,
+)
+from rust::incan_stdlib::errors import raise_value_error
 from window_builders import WindowFunctionApplication, WindowSpec, aggregate_window_call
 
 pub const COUNT_NO_ARGUMENT_SENTINEL: str = "__inql_count_no_argument__"
@@ -15,7 +23,7 @@ pub const COUNT_NO_ARGUMENT_SENTINEL: str = "__inql_count_no_argument__"
 
 @derive(Clone)
 pub enum AggregateKind(str):
-    """Supported aggregate function kinds in the current package slice."""
+    """Supported aggregate function kinds in the current package."""
 
     Sum = "sum"
     Count = "count"
@@ -23,6 +31,7 @@ pub enum AggregateKind(str):
     Min = "min"
     Max = "max"
     ApproxCountDistinct = "approx_count_distinct"
+    ApproxPercentile = "approx_percentile"
 
 
 @derive(Clone)
@@ -33,6 +42,7 @@ pub model AggregateMeasure:
     pub function_ref: str
     pub canonical_name: str
     pub expr: ColumnExpr
+    pub arguments: list[ColumnExpr]
     pub has_expr: bool
     pub is_distinct: bool
     pub filter_expr: ColumnExpr
@@ -46,6 +56,7 @@ pub model AggregateMeasure:
             function_ref=self.function_ref,
             canonical_name=self.canonical_name,
             expr=self.expr,
+            arguments=self.arguments,
             has_expr=self.has_expr,
             is_distinct=true,
             filter_expr=self.filter_expr,
@@ -60,6 +71,7 @@ pub model AggregateMeasure:
             function_ref=self.function_ref,
             canonical_name=self.canonical_name,
             expr=self.expr,
+            arguments=self.arguments,
             has_expr=self.has_expr,
             is_distinct=self.is_distinct,
             filter_expr=predicate,
@@ -74,6 +86,7 @@ pub model AggregateMeasure:
             function_ref=self.function_ref,
             canonical_name=self.canonical_name,
             expr=self.expr,
+            arguments=self.arguments,
             has_expr=self.has_expr,
             is_distinct=self.is_distinct,
             filter_expr=self.filter_expr,
@@ -83,13 +96,10 @@ pub model AggregateMeasure:
 
     def over(self, spec: WindowSpec) -> WindowFunctionApplication:
         """Place this aggregate measure over a window specification so it remains row-level."""
-        mut arguments: list[ColumnExpr] = []
-        if self.has_expr:
-            arguments.append(self.expr)
         return aggregate_window_call(
             self.function_ref,
             self.canonical_name,
-            arguments,
+            self.arguments,
             self.is_distinct,
             self.has_filter,
         ).over(spec)
@@ -107,6 +117,7 @@ pub def sum(expr: ColumnExpr) -> AggregateMeasure:
         function_ref=function_ref_for("sum"),
         canonical_name="sum",
         expr=expr,
+        arguments=[expr],
         has_expr=true,
         is_distinct=false,
         filter_expr=col_expr(""),
@@ -123,6 +134,7 @@ pub def count(expr: ColumnExpr = col_expr(COUNT_NO_ARGUMENT_SENTINEL)) -> Aggreg
             function_ref=function_ref_for("count"),
             canonical_name="count",
             expr=expr,
+            arguments=[],
             has_expr=false,
             is_distinct=false,
             filter_expr=col_expr(""),
@@ -134,6 +146,7 @@ pub def count(expr: ColumnExpr = col_expr(COUNT_NO_ARGUMENT_SENTINEL)) -> Aggreg
         function_ref=function_ref_for("count"),
         canonical_name="count",
         expr=expr,
+        arguments=[expr],
         has_expr=true,
         is_distinct=false,
         filter_expr=col_expr(""),
@@ -154,6 +167,7 @@ pub def avg(expr: ColumnExpr) -> AggregateMeasure:
         function_ref=function_ref_for("avg"),
         canonical_name="avg",
         expr=expr,
+        arguments=[expr],
         has_expr=true,
         is_distinct=false,
         filter_expr=col_expr(""),
@@ -169,6 +183,7 @@ pub def min(expr: ColumnExpr) -> AggregateMeasure:
         function_ref=function_ref_for("min"),
         canonical_name="min",
         expr=expr,
+        arguments=[expr],
         has_expr=true,
         is_distinct=false,
         filter_expr=col_expr(""),
@@ -184,6 +199,7 @@ pub def max(expr: ColumnExpr) -> AggregateMeasure:
         function_ref=function_ref_for("max"),
         canonical_name="max",
         expr=expr,
+        arguments=[expr],
         has_expr=true,
         is_distinct=false,
         filter_expr=col_expr(""),
@@ -199,6 +215,27 @@ pub def approx_count_distinct(expr: ColumnExpr) -> AggregateMeasure:
         function_ref=function_ref_for("approx_count_distinct"),
         canonical_name="approx_count_distinct",
         expr=expr,
+        arguments=[expr],
+        has_expr=true,
+        is_distinct=false,
+        filter_expr=col_expr(""),
+        has_filter=false,
+        ordering=[],
+    )
+
+
+pub def approx_percentile(expr: ColumnExpr, percentile: float, accuracy: int = 10000) -> AggregateMeasure:
+    """Build one approximate percentile aggregate measure over a numeric scalar expression."""
+    if percentile < 0.0 or percentile > 1.0:
+        return raise_value_error("approx_percentile percentile must be between 0.0 and 1.0")
+    if accuracy <= 0:
+        return raise_value_error("approx_percentile accuracy must be positive")
+    return AggregateMeasure(
+        kind=AggregateKind.ApproxPercentile,
+        function_ref=function_ref_for("approx_percentile"),
+        canonical_name="approx_percentile",
+        expr=expr,
+        arguments=[expr, float_expr(percentile), int_expr(accuracy)],
         has_expr=true,
         is_distinct=false,
         filter_expr=col_expr(""),

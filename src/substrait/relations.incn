@@ -93,6 +93,7 @@ model ResolvedAggregateMeasure:
     function_ref: str
     canonical_name: str
     expr: Expression
+    arguments: list[Expression]
     has_expr: bool
     is_distinct: bool
     filter_expr: Expression
@@ -267,9 +268,7 @@ def _set_operation_from_name(operation: str) -> Result[SubstraitSetOperation, Su
 def _resolved_measure_to_substrait(measure: ResolvedAggregateMeasure) -> Result[Measure, SubstraitLoweringError]:
     """Lower one resolved aggregate measure into a Substrait aggregate measure."""
     _validate_aggregate_modifiers(measure.clone())?
-    mut arguments: list[FunctionArgument] = []
-    if measure.has_expr:
-        arguments = [FunctionArgument(arg_type=Some(ArgType.Value(measure.expr.clone())))]
+    arguments = [FunctionArgument(arg_type=Some(ArgType.Value(argument.clone()))) for argument in measure.arguments]
     mut invocation: RustI32 = AggregationInvocation.All.into()
     if measure.is_distinct:
         invocation = AggregationInvocation.Distinct.into()
@@ -611,6 +610,7 @@ def _resolved_measure(
                 function_ref=measure.function_ref,
                 canonical_name=measure.canonical_name,
                 expr=bool_expr(true),
+                arguments=[],
                 has_expr=false,
                 is_distinct=measure.is_distinct,
                 filter_expr=filter_expr,
@@ -624,6 +624,7 @@ def _resolved_measure(
             function_ref=measure.function_ref,
             canonical_name=measure.canonical_name,
             expr=scalar_expr(input_columns, measure.expr)?,
+            arguments=[scalar_expr(input_columns, argument)? for argument in measure.arguments],
             has_expr=true,
             is_distinct=measure.is_distinct,
             filter_expr=filter_expr,

@@ -17,6 +17,7 @@ Current aggregate authoring is explicit and scalar-expression-based.
 | `min`   | `def min(expr: ColumnExpr) -> AggregateMeasure`             | Return the minimum non-null value for one orderable scalar expression.  |
 | `max`   | `def max(expr: ColumnExpr) -> AggregateMeasure`             | Return the maximum non-null value for one orderable scalar expression.  |
 | `approx_count_distinct` | `def approx_count_distinct(expr: ColumnExpr) -> AggregateMeasure` | Estimate distinct non-null expression values. |
+| `approx_percentile` | `def approx_percentile(expr: ColumnExpr, percentile: float, accuracy: int = 10000) -> AggregateMeasure` | Estimate one percentile over numeric non-null expression values. |
 
 ## Modifiers
 
@@ -31,7 +32,7 @@ Aggregate measures support method-style modifiers:
 ## Example
 
 ```incan
-from pub::inql.functions import add, approx_count_distinct, avg, col, count, count_distinct, count_if, eq, lit, max, min, str_lit, sum
+from pub::inql.functions import add, approx_count_distinct, approx_percentile, avg, col, count, count_distinct, count_if, eq, lit, max, min, str_lit, sum
 
 grouped = orders.group_by([col("customer_id")]).agg([
     sum(add(col("amount"), lit(5))),
@@ -44,6 +45,7 @@ grouped = orders.group_by([col("customer_id")]).agg([
     min(col("created_at")),
     max(col("created_at")),
     approx_count_distinct(col("user_id")),
+    approx_percentile(col("latency_ms"), 0.95),
 ])
 ```
 
@@ -59,5 +61,7 @@ grouped = orders.group_by([col("customer_id")]).agg([
 - `sum`, `avg`, `min`, and `max` skip null values. They return backend-null results when no non-null input value exists.
 - `approx_count_distinct(expr)` is approximate by contract, skips null values, allows aggregate-local filters, and rejects
   an extra `distinct()` modifier because distinct estimation is already the helper's semantics.
+- `approx_percentile(expr, percentile, accuracy=10000)` is approximate by contract, skips null values, requires
+  `percentile` between `0.0` and `1.0`, allows aggregate-local filters, and rejects `distinct()` or ordered input.
 - Unsupported aggregate modifiers fail at lowering or backend planning; they are not ignored.
 - Future `.column` sugar and scoped aggregate symbols should lower to this same surface rather than replacing its semantics.

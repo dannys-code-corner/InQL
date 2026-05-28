@@ -2,6 +2,7 @@
 
 from functions import (
     approx_count_distinct,
+    approx_percentile,
     always_false,
     always_true,
     col,
@@ -359,7 +360,7 @@ def test_prism__aggregate_output_columns_include_approximate_measures() -> None:
     # -- Arrange --
     _register_projection_test_schema(str("orders"))
     aggregated: PrismCursor[Order] = prism_cursor_named_table(str("orders")).group_by([col("id")]).agg(
-        [approx_count_distinct(col("id"))],
+        [approx_count_distinct(col("id")), approx_percentile(col("id"), 0.5)],
     )
 
     # -- Act --
@@ -367,7 +368,7 @@ def test_prism__aggregate_output_columns_include_approximate_measures() -> None:
     plan = aggregated.to_substrait_plan()
 
     # -- Assert --
-    assert output_cols == ["id", "approx_count_distinct_id"], "approximate aggregate output columns should stay stable through Prism"
+    assert output_cols == ["id", "approx_count_distinct_id", "approx_percentile_id"], "approximate aggregate output columns should stay stable through Prism"
     assert relation_kind_name(root_rel(plan)) == str("AggregateRel"), "approximate aggregate should lower through AggregateRel"
 
 

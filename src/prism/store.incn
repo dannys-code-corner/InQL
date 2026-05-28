@@ -324,6 +324,8 @@ def _aggregate_measures_structurally_equal(left: AggregateMeasure, right: Aggreg
         return false
     if not _column_exprs_structurally_equal(left.expr, right.expr):
         return false
+    if not _column_expr_lists_structurally_equal(left.arguments, right.arguments):
+        return false
     if not _column_exprs_structurally_equal(left.filter_expr, right.filter_expr):
         return false
     return _column_expr_lists_structurally_equal(left.ordering, right.ordering)

@@ -101,6 +101,8 @@ from substrait.window_metadata import WINDOW_NULL_TREATMENT_OPTION, WINDOW_OUTPU
 
 const SUBSTRAIT_APPROX_COUNT_DISTINCT_FUNCTION_NAME: str = "approx_count_distinct"
 const DATAFUSION_APPROX_COUNT_DISTINCT_FUNCTION_NAME: str = "approx_distinct"
+const SUBSTRAIT_APPROX_PERCENTILE_FUNCTION_NAME: str = "approx_percentile"
+const DATAFUSION_APPROX_PERCENTILE_FUNCTION_NAME: str = "approx_percentile_cont"
 
 
 @derive(Clone)
@@ -1655,7 +1657,7 @@ def _consumer_plan_from_current_plan(plan: Plan) -> Result[ConsumerPlan, Backend
 
 def _datafusion_producer_plan(plan: Plan) -> Plan:
     """Return a producer plan with extension names adapted for the DataFusion consumer only."""
-    # Rebuild the producer-side plan before encoding so InQL's emitted plan keeps standard Substrait names.
+    # Rebuild the producer-side plan before encoding so InQL's emitted plan keeps InQL extension names.
     # The DataFusion consumer re-export currently does not expose extension declarations to Incan metadata.
     return Plan(
         version=plan.version,
@@ -1675,6 +1677,8 @@ def _datafusion_extension_declaration(extension: SimpleExtensionDeclaration) -> 
         Some(MappingType.ExtensionFunction(function)) =>
             if function.name == SUBSTRAIT_APPROX_COUNT_DISTINCT_FUNCTION_NAME:
                 return _renamed_datafusion_extension_function(function, DATAFUSION_APPROX_COUNT_DISTINCT_FUNCTION_NAME)
+            if function.name == SUBSTRAIT_APPROX_PERCENTILE_FUNCTION_NAME:
+                return _renamed_datafusion_extension_function(function, DATAFUSION_APPROX_PERCENTILE_FUNCTION_NAME)
             return SimpleExtensionDeclaration(mapping_type=Some(MappingType.ExtensionFunction(function)))
         _ => return extension
 

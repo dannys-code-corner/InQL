@@ -2,6 +2,7 @@
 
 from functions import (
     approx_count_distinct,
+    approx_percentile,
     avg,
     col,
     count,
@@ -176,7 +177,7 @@ def test_session_aggregates__count_expression_preserves_scalar_argument() -> Non
     _assert_preview_row_contains(payload, ["B", "3", "1"], "customer B should count one non-paid scalar result")
 
 
-def test_session_aggregates__grouped_collect_executes_approx_count_distinct() -> None:
+def test_session_aggregates__grouped_collect_executes_approximate_aggregates() -> None:
     # -- Arrange --
     mut session = Session.default()
 
@@ -186,18 +187,22 @@ def test_session_aggregates__grouped_collect_executes_approx_count_distinct() ->
         "aggregate modifiers fixture should load",
     )
     paid = eq(col("status"), str_lit("paid"))
-    grouped = lazy.group_by([col("customer_id")]).agg([approx_count_distinct(col("product_id")).filter(paid)])
+    grouped = lazy.group_by([col("customer_id")]).agg(
+        [approx_count_distinct(col("product_id")).filter(paid.clone()), approx_percentile(col("amount"), 0.0).filter(
+            paid,
+        )],
+    )
     df = _collect_modifier_or_fail(session, grouped)
     payload = df.preview_text()
     resolved = df.resolved_columns()
 
     # -- Assert --
     assert df.row_count() == 2, "approximate grouped aggregate should produce one row per customer"
-    assert resolved == ["customer_id", "approx_count_distinct_product_id_filtered"], "approximate aggregate output columns should be stable"
+    assert resolved == ["customer_id", "approx_count_distinct_product_id_filtered", "approx_percentile_amount_filtered"], "approximate aggregate output columns should be stable"
     assert payload.contains("A"), "approximate aggregate output should contain customer A"
     assert payload.contains("B"), "approximate aggregate output should contain customer B"
-    assert payload.contains("1"), "customer A paid product estimate should materialize"
-    assert payload.contains("2"), "customer B paid product estimate should materialize"
+    _assert_preview_row_contains(payload, ["A", "1", "10"], "customer A approximate aggregates should materialize")
+    _assert_preview_row_contains(payload, ["B", "2", "7"], "customer B approximate aggregates should materialize")
 
 
 def test_session_aggregates__global_collect_executes_count() -> None:

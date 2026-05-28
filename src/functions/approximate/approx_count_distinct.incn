@@ -18,9 +18,9 @@ from substrait.function_extensions import APPROX_COUNT_DISTINCT_FUNCTION_ANCHOR
 
 
 @register_function(approx_count_distinct_spec(
-    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-    FunctionNullBehavior.NullSkippingAggregate,
-    extension_mapping("approx_count_distinct", APPROX_COUNT_DISTINCT_FUNCTION_ANCHOR),
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.NullSkippingAggregate,
+    substrait=extension_mapping("approx_count_distinct", APPROX_COUNT_DISTINCT_FUNCTION_ANCHOR),
 ))
 pub def approx_count_distinct(expr: ColumnExpr) -> AggregateMeasure:
     """

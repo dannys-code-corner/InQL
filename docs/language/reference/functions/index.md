@@ -1,6 +1,6 @@
 # Functions (Reference)
 
-This section is the landing page for broad function families as InQL grows beyond the current builder-first slice.
+This section is the landing page for InQL's registered function families.
 
 Today the concrete shipped surfaces are documented here:
 
@@ -42,6 +42,6 @@ The registered helper surface currently includes:
 | `md5(...)`, `sha1(...)`, `sha224(...)`, `sha256(...)`, `sha384(...)`, `sha512(...)`, `sha2(...)`, `crc32(...)`, `xxhash64(...)`, JSON helpers, CSV helpers, URL helpers | scalar | registered RFC 022 format helpers; concrete helpers lower through Substrait extension mappings, while `sha2(...)` rewrites to a supported concrete SHA-2 helper |
 | `asc(...)`, `desc(...)`, `asc_nulls_first(...)`, `asc_nulls_last(...)`, `desc_nulls_first(...)`, `desc_nulls_last(...)` | ordering | structural sort-field helpers consumed by `order_by(...)` and lowered to Substrait `SortRel.sorts` |
 | `sum(...)`, `count(...)`, `count_expr(...)`, `count_distinct(...)`, `count_if(...)`, `avg(...)`, `min(...)`, `max(...)` | aggregate | registered Substrait extension functions for core aggregates plus compatibility rewrites for `count_expr(...)`, `count_distinct(...)`, and `count_if(...)`; core aggregates allow `DISTINCT` and aggregate-local `FILTER` where the aggregate shape is valid |
-| `approx_count_distinct(...)` | aggregate | approximate aggregate that lowers through InQL's registered Substrait `approx_count_distinct` extension and is adapted to DataFusion's `approx_distinct` implementation at the backend boundary |
+| `approx_count_distinct(...)`, `approx_percentile(...)` | aggregate | approximate aggregates that lower through InQL's registered Substrait extension names and are adapted to DataFusion implementation names at the backend boundary |
 
 Future ANSI-style families should grow under this section instead of bloating `dataset_types` or `dataset_methods`.
