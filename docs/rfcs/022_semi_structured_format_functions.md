@@ -1,6 +1,6 @@
 # InQL RFC 022: Semi-structured and format functions
 
-- **Status:** In Progress
+- **Status:** Implemented
 - **Created:** 2026-04-27
 - **Author(s):** Danny Meijer (@dannymeijer)
 - **Related:**
@@ -13,7 +13,7 @@
 - **Issue:** [InQL #39](https://github.com/dannys-code-corner/InQL/issues/39)
 - **RFC PR:** [InQL #49](https://github.com/dannys-code-corner/InQL/pull/49)
 - **Written against:** Incan v0.3-era InQL
-- **Shipped in:** —
+- **Shipped in:** v0.1
 
 ## Summary
 
@@ -139,7 +139,7 @@ This RFC is additive. It should not change existing CSV ingestion behavior.
 
 ## Progress Checklist
 
-- [x] RFC 022 moved to In Progress with full scalar format helper design decisions recorded.
+- [x] RFC 022 marked Implemented with full scalar format helper design decisions recorded.
 - [x] `md5`, `sha1`, `sha224`, `sha256`, `sha384`, `sha512`, `sha2`, `crc32`, and `xxhash64` helpers added under the function catalog.
 - [x] JSON, CSV, and URL scalar payload helpers added under the function catalog.
 - [x] Concrete helpers registered with Substrait extension metadata.
