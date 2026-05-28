@@ -1,0 +1,40 @@
+"""URL component parsing helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionErrorBehavior,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import register_function, registered_application
+from projection_builders import ColumnExpr, str_expr
+from rust::incan_stdlib::errors import raise_value_error
+from substrait.function_extensions import PARSE_URL_FUNCTION_ANCHOR
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    error_behavior=FunctionErrorBehavior.InvalidInputDiagnostic,
+    substrait=extension_mapping("parse_url", PARSE_URL_FUNCTION_ANCHOR),
+))
+pub def parse_url(expr: ColumnExpr, part: str) -> ColumnExpr:
+    """
+    Extract one URL component such as `scheme`, `host`, `path`, `query`, `fragment`, `port`, `username`, or `password`.
+
+    Examples:
+        host = parse_url(col("landing_page"), "host")
+
+    Parameters:
+        expr: String expression containing one absolute URL.
+        part: URL component to extract.
+    """
+    if part == "scheme" or part == "host" or part == "path" or part == "query" or part == "fragment" or part == "port" or part == "username" or part == "password":
+        return registered_application("parse_url", [expr, str_expr(part)])
+    return raise_value_error(
+        "parse_url part must be one of scheme, host, path, query, fragment, port, username, or password",
+    )

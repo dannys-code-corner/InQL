@@ -11,8 +11,10 @@ from functions import (
     case_when,
     cast,
     ceil,
+    check_json,
     coalesce,
     col,
+    crc32,
     desc,
     div,
     floor,
@@ -24,14 +26,32 @@ from functions import (
     neg,
     nullif,
     round,
+    sha1,
     sha2,
     sha224,
     sha384,
     sha512,
     sub,
+    xxhash64,
     try_cast,
     cardinality,
     element_at,
+    from_csv,
+    from_json,
+    get_json_object,
+    json_array_length,
+    json_extract_path_text,
+    json_object_keys,
+    parse_json,
+    parse_url,
+    schema_of_csv,
+    schema_of_json,
+    to_csv,
+    to_json,
+    try_from_json,
+    try_url_decode,
+    url_decode,
+    url_encode,
 )
 from dataset import DataFrame, LazyFrame
 from session import Session, SessionErrorKind
@@ -214,7 +234,7 @@ def test_session_projection__collect_executes_common_math_scalar_projection_func
 
 
 def test_session_projection__collect_executes_format_hashing_projection_functions() -> None:
-    """collect should execute the first RFC 022 hashing helpers through DataFusion."""
+    """collect should execute RFC 022 hashing helpers through DataFusion."""
     # -- Arrange --
     mut session = Session.default()
 
@@ -223,7 +243,10 @@ def test_session_projection__collect_executes_format_hashing_projection_function
         session.read_csv("aggregate_orders", AGGREGATE_ORDERS_CSV_FIXTURE),
         "aggregate orders fixture should load",
     )
-    projected = lazy.with_column("md5_abc", md5(lit("abc"))).with_column("sha224_abc", sha224(lit("abc"))).with_column(
+    projected = lazy.with_column("md5_abc", md5(lit("abc"))).with_column("sha1_abc", sha1(lit("abc"))).with_column(
+        "crc32_abc",
+        crc32(lit("abc")),
+    ).with_column("xxhash64_abc", xxhash64(lit("abc"))).with_column("sha224_abc", sha224(lit("abc"))).with_column(
         "sha2_256_abc",
         sha2(lit("abc"), 256),
     ).with_column("sha384_abc", sha384(lit("abc"))).with_column("sha512_abc", sha512(lit("abc")))
@@ -233,10 +256,13 @@ def test_session_projection__collect_executes_format_hashing_projection_function
 
     # -- Assert --
     assert df.row_count() == 3, "hashing projections should preserve the input rows"
-    assert len(resolved) == 7, "projection should expose all appended hash outputs"
+    assert len(resolved) == 10, "projection should expose all appended hash outputs"
     assert payload.contains("md5_abc"), "md5 projection should materialize its alias"
     assert payload.contains("sha2_256_abc"), "sha2 compatibility projection should materialize its alias"
     assert payload.contains("900150983cd24fb0d6963f7d28e17f72"), "md5 should return the lowercase hex digest for abc"
+    assert payload.contains("a9993e364706816aba3e25717850c26c9cd0d89d"), "sha1 should return the lowercase hex digest for abc"
+    assert payload.contains("352441c2"), "crc32 should return the lowercase hex digest for abc"
+    assert payload.contains("44bc2cf5ad770999"), "xxhash64 should return the lowercase hex digest for abc"
     assert payload.contains("23097d223405d8228642a477bda255b32aadbce4bda0b3f7e36c9da7"), "sha224 should return the lowercase hex digest for abc"
     assert payload.contains("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"), "sha2(..., 256) should rewrite to sha256"
     assert payload.contains(
@@ -245,6 +271,75 @@ def test_session_projection__collect_executes_format_hashing_projection_function
     assert payload.contains(
         "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f",
     ), "sha512 should return the lowercase hex digest for abc"
+
+
+def test_session_projection__collect_executes_json_url_and_csv_format_functions() -> None:
+    """collect should execute RFC 022 scalar format helpers through adapter-owned DataFusion UDFs."""
+    # -- Arrange --
+    mut session = Session.default()
+
+    # -- Act --
+    lazy: LazyFrame[AggregateOrder] = assert_is_ok(
+        session.read_csv("aggregate_orders_format", AGGREGATE_ORDERS_CSV_FIXTURE),
+        "aggregate orders fixture should load",
+    )
+    json_payload = lit("{\"type\":\"click\",\"tags\":[\"paid\",\"web\"],\"user\":{\"id\":7}}")
+    csv_payload = lit("42,paid")
+    projected = lazy.with_column("json_valid", check_json(json_payload)).with_column(
+        "json_type",
+        json_extract_path_text(json_payload, "$.type"),
+    ).with_column("json_object", get_json_object(json_payload, "$.user")).with_column(
+        "json_tags",
+        json_array_length(lit("[\"paid\",\"web\"]")),
+    ).with_column("json_keys", json_object_keys(json_payload)).with_column("json_schema", schema_of_json(json_payload)).with_column(
+        "json_normalized",
+        parse_json(json_payload),
+    ).with_column("json_from", from_json(json_payload, "STRUCT<type: STRING>")).with_column(
+        "json_try_invalid",
+        try_from_json(lit("{"), "STRUCT<type: STRING>"),
+    ).with_column("json_string", to_json(lit("paid"))).with_column(
+        "url_host",
+        parse_url(lit("https://example.com/orders?id=7#top"), "host"),
+    ).with_column("url_encoded", url_encode(lit("a b"))).with_column("url_decoded", url_decode(lit("a%20b"))).with_column(
+        "url_try_invalid",
+        try_url_decode(lit("%zz")),
+    ).with_column("csv_schema", schema_of_csv(csv_payload)).with_column(
+        "csv_json",
+        from_csv(csv_payload, "STRUCT<id: STRING, status: STRING>"),
+    ).with_column("csv_line", to_csv(lit("[\"42\",\"paid\"]")))
+    df = _collect_or_fail(session, projected)
+    payload = df.preview_text()
+    resolved = df.resolved_columns()
+
+    # -- Assert --
+    assert df.row_count() == 3, "format projections should preserve input rows"
+    assert len(resolved) == 19, "projection should expose all appended format outputs"
+    assert payload.contains("click"), "JSON path extraction should return scalar text"
+    assert payload.contains("{\"id\":7}"), "get_json_object should return nested JSON text"
+    assert payload.contains("example.com"), "parse_url should extract the host"
+    assert payload.contains("a%20b"), "url_encode should percent-encode spaces"
+    assert payload.contains("a b"), "url_decode should decode valid percent escapes"
+    assert payload.contains("STRUCT<"), "schema helpers should emit deterministic schema text"
+    assert payload.contains("{\"id\":\"42\",\"status\":\"paid\"}"), "from_csv should use schema field names"
+    assert payload.contains("42,paid"), "to_csv should serialize JSON arrays as CSV rows"
+
+
+def test_session_projection__collect_reports_strict_format_decode_errors() -> None:
+    """collect should surface strict format parsing failures as backend execution errors."""
+    # -- Arrange --
+    mut session = Session.default()
+
+    # -- Act --
+    lazy: LazyFrame[AggregateOrder] = assert_is_ok(
+        session.read_csv("aggregate_orders_bad_format", AGGREGATE_ORDERS_CSV_FIXTURE),
+        "aggregate orders fixture should load",
+    )
+    projected = lazy.with_column("bad_url", url_decode(lit("%zz")))
+    err = assert_is_err(session.collect(projected), "expected strict URL decoding to fail")
+
+    # -- Assert --
+    assert err.kind == SessionErrorKind.BackendExecutionError, err.error_message()
+    assert err.message.contains("invalid percent-encoded URL component"), err.error_message()
 
 
 def test_session_projection__collect_executes_nested_scalar_projection_functions() -> None:

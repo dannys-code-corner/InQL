@@ -6,13 +6,13 @@ SHA-2 compatibility helper.
 
 from rust::incan_stdlib::errors import raise_value_error
 from function_registry import (
+    CORE_FUNCTION_NAMESPACE,
     FunctionClass,
     FunctionDeterminism,
     FunctionErrorBehavior,
     FunctionLifecycle,
     FunctionNullBehavior,
     compatibility_alias_spec,
-    core_function_namespace,
     rewrite_mapping,
     v0_1,
 )
@@ -20,19 +20,19 @@ from functions.hashing.sha224 import sha224
 from functions.hashing.sha256 import sha256
 from functions.hashing.sha384 import sha384
 from functions.hashing.sha512 import sha512
-from functions.registry import function_registry
+from functions.registry import register_function
 from projection_builders import ColumnExpr
 
 
-@function_registry.add("sha2", compatibility_alias_spec(
-    core_function_namespace(),
-    FunctionClass.Scalar,
-    ["sha224", "sha256", "sha384", "sha512"],
-    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-    FunctionDeterminism.Deterministic,
-    FunctionNullBehavior.DependsOnInputs,
-    FunctionErrorBehavior.InvalidInputDiagnostic,
-    rewrite_mapping("sha2(expr, bits) -> sha224/sha256/sha384/sha512(expr) for supported literal bit lengths"),
+@register_function(compatibility_alias_spec(
+    namespace=CORE_FUNCTION_NAMESPACE,
+    function_class=FunctionClass.Scalar,
+    aliases=["sha224", "sha256", "sha384", "sha512"],
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    determinism=FunctionDeterminism.Deterministic,
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    error_behavior=FunctionErrorBehavior.InvalidInputDiagnostic,
+    substrait=rewrite_mapping("sha2(expr, bits) -> sha224/sha256/sha384/sha512(expr) for supported literal bit lengths"),
 ))
 pub def sha2(expr: ColumnExpr, bit_length: int) -> ColumnExpr:
     """

@@ -12,16 +12,16 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import function_registry, registered_application
+from functions.registry import register_function, registered_application
 from projection_builders import ColumnExpr
 from substrait.function_extensions import SHA224_FUNCTION_ANCHOR
 
 
-@function_registry.add("sha224", deterministic_spec(
-    FunctionClass.Scalar,
-    FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-    FunctionNullBehavior.DependsOnInputs,
-    extension_mapping("sha224", SHA224_FUNCTION_ANCHOR),
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=extension_mapping("sha224", SHA224_FUNCTION_ANCHOR),
 ))
 pub def sha224(expr: ColumnExpr) -> ColumnExpr:
     """

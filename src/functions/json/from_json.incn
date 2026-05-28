@@ -1,0 +1,35 @@
+"""JSON parse helper with an explicit schema description."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionErrorBehavior,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import register_function, registered_application
+from projection_builders import ColumnExpr, str_expr
+from substrait.function_extensions import FROM_JSON_FUNCTION_ANCHOR
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    error_behavior=FunctionErrorBehavior.InvalidInputDiagnostic,
+    substrait=extension_mapping("from_json", FROM_JSON_FUNCTION_ANCHOR),
+))
+pub def from_json(expr: ColumnExpr, schema: str) -> ColumnExpr:
+    """
+    Validate JSON using an explicit schema description and return a normalized JSON payload.
+
+    Examples:
+        payload = from_json(col("payload"), "STRUCT<type: STRING>")
+
+    Parameters:
+        expr: String expression containing a JSON payload.
+        schema: Explicit schema description for the expected JSON payload.
+    """
+    return registered_application("from_json", [expr, str_expr(schema)])

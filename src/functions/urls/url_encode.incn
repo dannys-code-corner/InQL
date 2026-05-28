@@ -1,0 +1,32 @@
+"""URL component encoding helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import register_function, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import URL_ENCODE_FUNCTION_ANCHOR
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=extension_mapping("url_encode", URL_ENCODE_FUNCTION_ANCHOR),
+))
+pub def url_encode(expr: ColumnExpr) -> ColumnExpr:
+    """
+    Percent-encode one UTF-8 string for URL component use.
+
+    Examples:
+        encoded = url_encode(col("query_text"))
+
+    Parameters:
+        expr: String expression to percent-encode as a URL component.
+    """
+    return registered_application("url_encode", [expr])

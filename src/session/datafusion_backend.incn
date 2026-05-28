@@ -72,6 +72,7 @@ from rust::datafusion::prelude import (
 from rust::datafusion::dataframe import DataFrameWriteOptions
 from rust::datafusion_substrait::substrait::proto import Plan as ConsumerPlan
 from rust::datafusion_substrait::logical_plan::consumer import from_substrait_plan
+from rust::inql_datafusion_format import register_format_udfs
 from backends import SourceKind, TableSource
 from dataset.materialization import DataFrameMaterialization
 from session.backend_types import BackendError, BackendErrorKind, BackendRegistration, backend_error
@@ -146,6 +147,7 @@ pub async def datafusion_execute_async(
 ) -> Result[None, BackendError]:
     """Execute one Substrait plan via DataFusion and discard collected rows."""
     ctx = SessionContext.new()
+    register_format_udfs(ctx.clone())
     await _register_sources(ctx, registrations)?
 
     df = await _dataframe_from_plan(ctx, plan)?
@@ -161,6 +163,7 @@ pub async def datafusion_collect_materialization_async(
     """Execute one Substrait plan via DataFusion and return structured DataFrame materialization."""
     ctx = SessionContext.new()
     resolved_columns = root_names(plan.clone())
+    register_format_udfs(ctx.clone())
     await _register_sources(ctx, registrations)?
 
     df = await _dataframe_from_plan(ctx, plan)?
@@ -189,6 +192,7 @@ pub async def datafusion_write_csv_async(
 ) -> Result[None, BackendError]:
     """Execute one plan and write result rows to a CSV sink URI via DataFusion."""
     ctx = SessionContext.new()
+    register_format_udfs(ctx.clone())
     await _register_sources(ctx, registrations)?
 
     df = await _dataframe_from_plan(ctx, plan)?
@@ -204,6 +208,7 @@ pub async def datafusion_write_parquet_async(
 ) -> Result[None, BackendError]:
     """Execute one plan and write result rows to a Parquet sink URI via DataFusion."""
     ctx = SessionContext.new()
+    register_format_udfs(ctx.clone())
     await _register_sources(ctx, registrations)?
 
     df = await _dataframe_from_plan(ctx, plan)?

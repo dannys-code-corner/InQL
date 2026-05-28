@@ -1,0 +1,34 @@
+"""CSV scalar schema inference helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionErrorBehavior,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import register_function, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import SCHEMA_OF_CSV_FUNCTION_ANCHOR
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    error_behavior=FunctionErrorBehavior.InvalidInputDiagnostic,
+    substrait=extension_mapping("schema_of_csv", SCHEMA_OF_CSV_FUNCTION_ANCHOR),
+))
+pub def schema_of_csv(expr: ColumnExpr) -> ColumnExpr:
+    """
+    Infer a deterministic schema description from one CSV row string.
+
+    Examples:
+        schema = schema_of_csv(col("line"))
+
+    Parameters:
+        expr: String expression containing one CSV row.
+    """
+    return registered_application("schema_of_csv", [expr])

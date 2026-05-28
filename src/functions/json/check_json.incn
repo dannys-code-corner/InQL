@@ -1,0 +1,32 @@
+"""JSON validity predicate helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import register_function, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import CHECK_JSON_FUNCTION_ANCHOR
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=extension_mapping("check_json", CHECK_JSON_FUNCTION_ANCHOR),
+))
+pub def check_json(expr: ColumnExpr) -> ColumnExpr:
+    """
+    Return whether one string expression contains valid JSON.
+
+    Examples:
+        valid = check_json(col("payload"))
+
+    Parameters:
+        expr: String expression containing a JSON payload.
+    """
+    return registered_application("check_json", [expr])

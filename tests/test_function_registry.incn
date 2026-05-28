@@ -32,6 +32,7 @@ from functions import (
     case_when,
     cast,
     ceil,
+    check_json,
     col,
     coalesce,
     cardinality,
@@ -39,6 +40,7 @@ from functions import (
     count_distinct,
     count_expr,
     count_if,
+    crc32,
     cume_dist,
     desc,
     desc_nulls_first,
@@ -55,6 +57,8 @@ from functions import (
     floor,
     float_expr,
     following,
+    from_csv,
+    from_json,
     function_registry_canonical_names,
     function_registry_entries,
     function_registry_entry,
@@ -63,6 +67,7 @@ from functions import (
     function_registry_function_refs,
     gt,
     gte,
+    get_json_object,
     in_,
     int_expr,
     int_lit,
@@ -71,6 +76,9 @@ from functions import (
     is_not_nan,
     is_not_null,
     is_null,
+    json_array_length,
+    json_extract_path_text,
+    json_object_keys,
     inline,
     inline_outer,
     lag,
@@ -106,6 +114,11 @@ from functions import (
     rank,
     round,
     row_number,
+    parse_json,
+    parse_url,
+    schema_of_csv,
+    schema_of_json,
+    sha1,
     sha2,
     sha224,
     sha256,
@@ -117,9 +130,16 @@ from functions import (
     sum,
     stack,
     try_cast,
+    try_from_json,
+    try_url_decode,
+    to_csv,
+    to_json,
+    url_decode,
+    url_encode,
     unbounded_following,
     unbounded_preceding,
     window,
+    xxhash64,
 )
 from function_registry import (
     CORE_FUNCTION_NAMESPACE,
@@ -164,20 +184,28 @@ from substrait.function_extensions import (
     BETWEEN_FUNCTION_ANCHOR,
     CARDINALITY_FUNCTION_ANCHOR,
     CEIL_FUNCTION_ANCHOR,
+    CHECK_JSON_FUNCTION_ANCHOR,
     COALESCE_FUNCTION_ANCHOR,
     COUNT_FUNCTION_ANCHOR,
+    CRC32_FUNCTION_ANCHOR,
     CUME_DIST_FUNCTION_ANCHOR,
     DENSE_RANK_FUNCTION_ANCHOR,
     DIVIDE_FUNCTION_ANCHOR,
     EQUAL_FUNCTION_ANCHOR,
     FIRST_VALUE_FUNCTION_ANCHOR,
     FLOOR_FUNCTION_ANCHOR,
+    FROM_CSV_FUNCTION_ANCHOR,
+    FROM_JSON_FUNCTION_ANCHOR,
+    GET_JSON_OBJECT_FUNCTION_ANCHOR,
     GT_FUNCTION_ANCHOR,
     GTE_FUNCTION_ANCHOR,
     IS_NAN_FUNCTION_ANCHOR,
     IS_NOT_DISTINCT_FROM_FUNCTION_ANCHOR,
     IS_NOT_NULL_FUNCTION_ANCHOR,
     IS_NULL_FUNCTION_ANCHOR,
+    JSON_ARRAY_LENGTH_FUNCTION_ANCHOR,
+    JSON_EXTRACT_PATH_TEXT_FUNCTION_ANCHOR,
+    JSON_OBJECT_KEYS_FUNCTION_ANCHOR,
     LT_FUNCTION_ANCHOR,
     LTE_FUNCTION_ANCHOR,
     LAG_FUNCTION_ANCHOR,
@@ -207,12 +235,24 @@ from substrait.function_extensions import (
     ROW_NUMBER_FUNCTION_ANCHOR,
     ROUND_FUNCTION_ANCHOR,
     STACK_EXTENSION_URI,
+    PARSE_JSON_FUNCTION_ANCHOR,
+    PARSE_URL_FUNCTION_ANCHOR,
+    SCHEMA_OF_CSV_FUNCTION_ANCHOR,
+    SCHEMA_OF_JSON_FUNCTION_ANCHOR,
+    SHA1_FUNCTION_ANCHOR,
     SHA224_FUNCTION_ANCHOR,
     SHA256_FUNCTION_ANCHOR,
     SHA384_FUNCTION_ANCHOR,
     SHA512_FUNCTION_ANCHOR,
     SUBTRACT_FUNCTION_ANCHOR,
     SUM_FUNCTION_ANCHOR,
+    TO_CSV_FUNCTION_ANCHOR,
+    TO_JSON_FUNCTION_ANCHOR,
+    TRY_FROM_JSON_FUNCTION_ANCHOR,
+    TRY_URL_DECODE_FUNCTION_ANCHOR,
+    URL_DECODE_FUNCTION_ANCHOR,
+    URL_ENCODE_FUNCTION_ANCHOR,
+    XXHASH64_FUNCTION_ANCHOR,
     EXPLODE_EXTENSION_URI,
     EXPLODE_OUTER_EXTENSION_URI,
     FLATTEN_EXTENSION_URI,
@@ -280,12 +320,12 @@ def _local_entry_by_namespace_and_name_or_fail(
 
 def _expected_registry_names() -> list[str]:
     """Return the expected registered public helper names."""
-    return ["col", "lit", "sum", "count", "count_expr", "count_distinct", "count_if", "avg", "min", "max", "int_expr", "float_expr", "str_expr", "bool_expr", "add", "mul", "int_lit", "str_lit", "bool_lit", "always_true", "always_false", "eq", "gt", "cast", "try_cast", "ne", "lt", "lte", "gte", "equal_null", "and_", "or_", "not_", "is_null", "is_not_null", "is_nan", "is_not_nan", "sub", "div", "mod", "neg", "coalesce", "nullif", "case_when", "in_", "between", "asc", "desc", "asc_nulls_first", "asc_nulls_last", "desc_nulls_first", "desc_nulls_last", "abs", "ceil", "floor", "round", "array", "array_contains", "array_distinct", "array_except", "array_flatten", "array_intersect", "array_join", "array_position", "range", "array_reverse", "array_slice", "array_sort", "array_union", "arrays_overlap", "cardinality", "element_at", "map_contains_key", "map_entries", "map_extract", "map_from_arrays", "map_keys", "map_values", "named_struct", "explode", "explode_outer", "posexplode", "posexplode_outer", "inline", "inline_outer", "flatten", "stack", "window", "unbounded_preceding", "preceding", "current_row", "following", "unbounded_following", "row_number", "rank", "dense_rank", "percent_rank", "cume_dist", "ntile", "lag", "lead", "first_value", "last_value", "nth_value", "sha224", "sha256", "sha384", "sha512", "sha2", "md5"]
+    return ["col", "lit", "sum", "count", "count_expr", "count_distinct", "count_if", "avg", "min", "max", "int_expr", "float_expr", "str_expr", "bool_expr", "add", "mul", "int_lit", "str_lit", "bool_lit", "always_true", "always_false", "eq", "gt", "cast", "try_cast", "ne", "lt", "lte", "gte", "equal_null", "and_", "or_", "not_", "is_null", "is_not_null", "is_nan", "is_not_nan", "sub", "div", "mod", "neg", "coalesce", "nullif", "case_when", "in_", "between", "asc", "desc", "asc_nulls_first", "asc_nulls_last", "desc_nulls_first", "desc_nulls_last", "abs", "ceil", "floor", "round", "array", "array_contains", "array_distinct", "array_except", "array_flatten", "array_intersect", "array_join", "array_position", "range", "array_reverse", "array_slice", "array_sort", "array_union", "arrays_overlap", "cardinality", "element_at", "map_contains_key", "map_entries", "map_extract", "map_from_arrays", "map_keys", "map_values", "named_struct", "explode", "explode_outer", "posexplode", "posexplode_outer", "inline", "inline_outer", "flatten", "stack", "window", "unbounded_preceding", "preceding", "current_row", "following", "unbounded_following", "row_number", "rank", "dense_rank", "percent_rank", "cume_dist", "ntile", "lag", "lead", "first_value", "last_value", "nth_value", "sha224", "sha256", "sha384", "sha512", "sha2", "md5", "sha1", "crc32", "xxhash64", "parse_url", "try_url_decode", "url_decode", "url_encode", "check_json", "from_json", "get_json_object", "json_array_length", "json_extract_path_text", "json_object_keys", "parse_json", "schema_of_json", "to_json", "try_from_json", "from_csv", "schema_of_csv", "to_csv"]
 
 
 def _expected_substrait_mapped_names() -> list[str]:
     """Return helpers with concrete Substrait extension-function mappings."""
-    return ["sum", "count", "avg", "min", "max", "add", "mul", "eq", "gt", "ne", "lt", "lte", "gte", "equal_null", "and_", "or_", "not_", "is_null", "is_not_null", "is_nan", "sub", "div", "mod", "neg", "coalesce", "nullif", "between", "abs", "ceil", "floor", "round", "array", "array_contains", "array_distinct", "array_except", "array_flatten", "array_intersect", "array_join", "array_position", "range", "array_reverse", "array_slice", "array_sort", "array_union", "arrays_overlap", "cardinality", "element_at", "map_entries", "map_extract", "map_from_arrays", "map_keys", "map_values", "named_struct", "row_number", "rank", "dense_rank", "percent_rank", "cume_dist", "ntile", "lag", "lead", "first_value", "last_value", "nth_value", "sha224", "sha256", "sha384", "sha512", "md5"]
+    return ["sum", "count", "avg", "min", "max", "add", "mul", "eq", "gt", "ne", "lt", "lte", "gte", "equal_null", "and_", "or_", "not_", "is_null", "is_not_null", "is_nan", "sub", "div", "mod", "neg", "coalesce", "nullif", "between", "abs", "ceil", "floor", "round", "array", "array_contains", "array_distinct", "array_except", "array_flatten", "array_intersect", "array_join", "array_position", "range", "array_reverse", "array_slice", "array_sort", "array_union", "arrays_overlap", "cardinality", "element_at", "map_entries", "map_extract", "map_from_arrays", "map_keys", "map_values", "named_struct", "row_number", "rank", "dense_rank", "percent_rank", "cume_dist", "ntile", "lag", "lead", "first_value", "last_value", "nth_value", "sha224", "sha256", "sha384", "sha512", "md5", "sha1", "crc32", "xxhash64", "parse_url", "try_url_decode", "url_decode", "url_encode", "check_json", "from_json", "get_json_object", "json_array_length", "json_extract_path_text", "json_object_keys", "parse_json", "schema_of_json", "to_json", "try_from_json", "from_csv", "schema_of_csv", "to_csv"]
 
 
 def _exercise_current_public_helpers() -> None:
@@ -401,6 +441,26 @@ def _exercise_current_public_helpers() -> None:
     sha512(status)
     sha2(status, 256)
     md5(status)
+    sha1(status)
+    crc32(status)
+    xxhash64(status)
+    parse_url(status, "host")
+    url_encode(status)
+    url_decode(status)
+    try_url_decode(status)
+    parse_json(status)
+    check_json(status)
+    schema_of_json(status)
+    get_json_object(status, "$.type")
+    json_extract_path_text(status, "$.type")
+    json_array_length(status)
+    json_object_keys(status)
+    from_json(status, "STRUCT<type: STRING>")
+    try_from_json(status, "STRUCT<type: STRING>")
+    to_json(status)
+    schema_of_csv(status)
+    from_csv(status, "STRUCT<id: STRING>")
+    to_csv(status)
     return
 
 
@@ -725,6 +785,26 @@ def test_function_registry__substrait_extension_mappings_are_structured() -> Non
     _assert_extension_mapping("sha384", "sha384", SHA384_FUNCTION_ANCHOR)
     _assert_extension_mapping("sha512", "sha512", SHA512_FUNCTION_ANCHOR)
     _assert_extension_mapping("md5", "md5", MD5_FUNCTION_ANCHOR)
+    _assert_extension_mapping("sha1", "sha1", SHA1_FUNCTION_ANCHOR)
+    _assert_extension_mapping("crc32", "crc32", CRC32_FUNCTION_ANCHOR)
+    _assert_extension_mapping("xxhash64", "xxhash64", XXHASH64_FUNCTION_ANCHOR)
+    _assert_extension_mapping("parse_url", "parse_url", PARSE_URL_FUNCTION_ANCHOR)
+    _assert_extension_mapping("url_encode", "url_encode", URL_ENCODE_FUNCTION_ANCHOR)
+    _assert_extension_mapping("url_decode", "url_decode", URL_DECODE_FUNCTION_ANCHOR)
+    _assert_extension_mapping("try_url_decode", "try_url_decode", TRY_URL_DECODE_FUNCTION_ANCHOR)
+    _assert_extension_mapping("parse_json", "parse_json", PARSE_JSON_FUNCTION_ANCHOR)
+    _assert_extension_mapping("check_json", "check_json", CHECK_JSON_FUNCTION_ANCHOR)
+    _assert_extension_mapping("schema_of_json", "schema_of_json", SCHEMA_OF_JSON_FUNCTION_ANCHOR)
+    _assert_extension_mapping("json_array_length", "json_array_length", JSON_ARRAY_LENGTH_FUNCTION_ANCHOR)
+    _assert_extension_mapping("json_object_keys", "json_object_keys", JSON_OBJECT_KEYS_FUNCTION_ANCHOR)
+    _assert_extension_mapping("get_json_object", "get_json_object", GET_JSON_OBJECT_FUNCTION_ANCHOR)
+    _assert_extension_mapping("json_extract_path_text", "json_extract_path_text", JSON_EXTRACT_PATH_TEXT_FUNCTION_ANCHOR)
+    _assert_extension_mapping("from_json", "from_json", FROM_JSON_FUNCTION_ANCHOR)
+    _assert_extension_mapping("try_from_json", "try_from_json", TRY_FROM_JSON_FUNCTION_ANCHOR)
+    _assert_extension_mapping("to_json", "to_json", TO_JSON_FUNCTION_ANCHOR)
+    _assert_extension_mapping("schema_of_csv", "schema_of_csv", SCHEMA_OF_CSV_FUNCTION_ANCHOR)
+    _assert_extension_mapping("from_csv", "from_csv", FROM_CSV_FUNCTION_ANCHOR)
+    _assert_extension_mapping("to_csv", "to_csv", TO_CSV_FUNCTION_ANCHOR)
 
 
 def test_function_registry__generator_helpers_are_relation_extensions() -> None:
@@ -858,7 +938,18 @@ def test_function_registry__public_helpers_preserve_existing_behavior() -> None:
         status,
         [str_lit("paid"), str_lit("open")],
     ), lt(amount, int_lit(10)), lte(amount, int_lit(10)), modulo(amount, lit(2)), round(amount)]
-    hash_exprs = [md5(status), sha2(status, 256), sha224(status), sha256(status), sha384(status), sha512(status)]
+    hash_exprs = [md5(status), sha2(status, 256), sha224(status), sha256(status), sha384(status), sha512(status), sha1(
+        status,
+    ), crc32(status), xxhash64(status)]
+    format_exprs = [parse_url(status, "host"), url_encode(status), url_decode(status), try_url_decode(status), parse_json(
+        status,
+    ), check_json(status), schema_of_json(status), get_json_object(status, "$.type"), json_extract_path_text(
+        status,
+        "$.type",
+    ), json_array_length(status), json_object_keys(status), from_json(status, "STRUCT<type: STRING>"), try_from_json(
+        status,
+        "STRUCT<type: STRING>",
+    ), to_json(status), schema_of_csv(status), from_csv(status, "STRUCT<id: STRING>"), to_csv(status)]
 
     # -- Assert --
     assert column_expr_kind(amount) == ColumnExprKind.Column, "col should still build a column reference"
@@ -885,5 +976,7 @@ def test_function_registry__public_helpers_preserve_existing_behavior() -> None:
         assert column_expr_kind(core_expr) != ColumnExprKind.Column, "core scalar helpers should build scalar expressions"
     for hash_expr in hash_exprs:
         assert column_expr_kind(hash_expr) == ColumnExprKind.ScalarFunction, "hash helpers should build scalar expressions"
+    for format_expr in format_exprs:
+        assert column_expr_kind(format_expr) == ColumnExprKind.ScalarFunction, "format helpers should build scalar expressions"
     assert column_expr_kind(always_true()) == ColumnExprKind.BoolLiteral, "always_true should still build a bool literal"
     assert column_expr_kind(always_false()) == ColumnExprKind.BoolLiteral, "always_false should still build a bool literal"

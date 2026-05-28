@@ -1,0 +1,13 @@
+"""Shared validation helpers for JSON scalar payload functions."""
+
+from projection_builders import ColumnExpr, str_expr
+from rust::incan_stdlib::errors import raise_value_error
+
+
+pub def json_path_expr(path: str) -> ColumnExpr:
+    """Build a path literal expression after validating the supported JSON path prefix."""
+    if path == "$":
+        return str_expr(path)
+    if len(path) >= 2 and path[0] == "$" and (path[1] == "." or path[1] == "["):
+        return str_expr(path)
+    return raise_value_error("JSON path must be `$`, start with `$.`, or start with `$[`")

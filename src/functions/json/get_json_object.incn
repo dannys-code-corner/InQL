@@ -1,0 +1,36 @@
+"""JSON object-path extraction helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionErrorBehavior,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.json.common import json_path_expr
+from functions.registry import register_function, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import GET_JSON_OBJECT_FUNCTION_ANCHOR
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    error_behavior=FunctionErrorBehavior.InvalidInputDiagnostic,
+    substrait=extension_mapping("get_json_object", GET_JSON_OBJECT_FUNCTION_ANCHOR),
+))
+pub def get_json_object(expr: ColumnExpr, path: str) -> ColumnExpr:
+    """
+    Extract one JSON value at a literal object path and return it as JSON text.
+
+    Examples:
+        event_type = get_json_object(col("payload"), "$.type")
+
+    Parameters:
+        expr: String expression containing a JSON payload.
+        path: Literal JSON path beginning with `$`, `$.`, or `$[`.
+    """
+    return registered_application("get_json_object", [expr, json_path_expr(path)])

@@ -1,0 +1,32 @@
+"""JSON serialization helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import register_function, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import TO_JSON_FUNCTION_ANCHOR
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=extension_mapping("to_json", TO_JSON_FUNCTION_ANCHOR),
+))
+pub def to_json(expr: ColumnExpr) -> ColumnExpr:
+    """
+    Serialize one scalar expression as JSON text.
+
+    Examples:
+        payload = to_json(col("event_type"))
+
+    Parameters:
+        expr: String-backed scalar expression to serialize as JSON text.
+    """
+    return registered_application("to_json", [expr])

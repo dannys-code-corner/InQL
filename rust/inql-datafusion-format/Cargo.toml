@@ -1,0 +1,15 @@
+[package]
+name = "inql-datafusion-format"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+crc32fast = "1"
+csv = "1"
+datafusion = "53"
+hex = "0.4"
+percent-encoding = "2"
+serde_json = "1"
+sha1 = "0.10"
+url = "2"
+xxhash-rust = { version = "0.8", features = ["xxh64"] }

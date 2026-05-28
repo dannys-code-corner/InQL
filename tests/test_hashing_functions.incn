@@ -1,7 +1,7 @@
 """Test: RFC 022 hashing helper surface."""
 
 from std.testing import assert_raises
-from functions import col, md5, sha2, sha224, sha256, sha384, sha512
+from functions import col, crc32, md5, sha1, sha2, sha224, sha256, sha384, sha512, xxhash64
 from function_registry import function_ref_for
 from projection_builders import (
     ColumnExpr,
@@ -37,6 +37,9 @@ def test_hashing_functions__concrete_helpers_share_scalar_application_node() -> 
     _assert_hash_application(sha256(payload), "sha256")
     _assert_hash_application(sha384(payload), "sha384")
     _assert_hash_application(sha512(payload), "sha512")
+    _assert_hash_application(sha1(payload), "sha1")
+    _assert_hash_application(crc32(payload), "crc32")
+    _assert_hash_application(xxhash64(payload), "xxhash64")
 
 
 def test_hashing_functions__sha2_rewrites_to_concrete_sha2_helpers() -> None:

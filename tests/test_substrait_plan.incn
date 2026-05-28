@@ -26,12 +26,14 @@ from functions import (
     case_when,
     cast,
     ceil,
+    check_json,
     col,
     cume_dist,
     coalesce,
     count,
     count_distinct,
     count_if,
+    crc32,
     dense_rank,
     desc,
     div,
@@ -39,6 +41,9 @@ from functions import (
     equal_null,
     floor,
     first_value,
+    from_csv,
+    from_json,
+    get_json_object,
     gt,
     gte,
     in_,
@@ -46,6 +51,9 @@ from functions import (
     is_not_nan,
     is_not_null,
     is_null,
+    json_array_length,
+    json_extract_path_text,
+    json_object_keys,
     lit,
     lag,
     last_value,
@@ -71,10 +79,15 @@ from functions import (
     nullif,
     ntile,
     or_,
+    parse_json,
+    parse_url,
     percent_rank,
     rank,
     round,
     row_number,
+    schema_of_csv,
+    schema_of_json,
+    sha1,
     sha2,
     sha224,
     sha256,
@@ -82,7 +95,14 @@ from functions import (
     sha512,
     sub,
     sum,
+    to_csv,
+    to_json,
     try_cast,
+    try_from_json,
+    try_url_decode,
+    url_decode,
+    url_encode,
+    xxhash64,
     cardinality,
     element_at,
     explode,
@@ -466,6 +486,26 @@ def test_plan__core_scalar_extension_mappings_lower_to_substrait() -> None:
     _assert_scalar_expr_lowers(sha384(col("status")))
     _assert_scalar_expr_lowers(sha512(col("status")))
     _assert_scalar_expr_lowers(sha2(col("status"), 256))
+    _assert_scalar_expr_lowers(sha1(col("status")))
+    _assert_scalar_expr_lowers(crc32(col("status")))
+    _assert_scalar_expr_lowers(xxhash64(col("status")))
+    _assert_scalar_expr_lowers(parse_url(col("status"), "host"))
+    _assert_scalar_expr_lowers(url_encode(col("status")))
+    _assert_scalar_expr_lowers(url_decode(col("status")))
+    _assert_scalar_expr_lowers(try_url_decode(col("status")))
+    _assert_scalar_expr_lowers(parse_json(col("status")))
+    _assert_scalar_expr_lowers(check_json(col("status")))
+    _assert_scalar_expr_lowers(schema_of_json(col("status")))
+    _assert_scalar_expr_lowers(get_json_object(col("status"), "$.type"))
+    _assert_scalar_expr_lowers(json_extract_path_text(col("status"), "$.type"))
+    _assert_scalar_expr_lowers(json_array_length(col("status")))
+    _assert_scalar_expr_lowers(json_object_keys(col("status")))
+    _assert_scalar_expr_lowers(from_json(col("status"), "STRUCT<type: STRING>"))
+    _assert_scalar_expr_lowers(try_from_json(col("status"), "STRUCT<type: STRING>"))
+    _assert_scalar_expr_lowers(to_json(col("status")))
+    _assert_scalar_expr_lowers(schema_of_csv(col("status")))
+    _assert_scalar_expr_lowers(from_csv(col("status"), "STRUCT<id: STRING>"))
+    _assert_scalar_expr_lowers(to_csv(col("status")))
 
 
 def test_plan__nested_scalar_extension_mappings_lower_to_substrait() -> None:

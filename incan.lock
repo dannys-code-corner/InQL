@@ -3,8 +3,8 @@
 
 [incan]
 format = 1
-incan-version = "0.3.0-rc17"
-deps-fingerprint = "sha256:424fd53b12f0e810ffe3ba4188a82203bb011b5dd0769ad2b33ab1b854027487"
+incan-version = "0.3.0-rc21"
+deps-fingerprint = "sha256:3610572303b9930ff93a467137924cf89c26e05467169061f3fb01f6175d8972"
 cargo-features = []
 cargo-no-default-features = false
 cargo-all-features = false
@@ -433,9 +433,9 @@ dependencies = [
 
 [[package]]
 name = "brotli"
-version = "8.0.2"
+version = "8.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4bd8b9603c7aa97359dbd97ecf258968c95f3adddd6db2f7e7a5bef101c84560"
+checksum = "8119e4516436f5708bbc474a9d395bf12f1b5395e93a92a56e647ac3388c8610"
 dependencies = [
  "alloc-no-stdlib",
  "alloc-stdlib",
@@ -444,9 +444,9 @@ dependencies = [
 
 [[package]]
 name = "brotli-decompressor"
-version = "5.0.0"
+version = "5.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "874bb8112abecc98cbd6d81ea4fa7e94fb9449648c93cc89aa40c81c24d7de03"
+checksum = "5962523e1b92ce1b5e793d9169b9943eece10d39f62550bc04bb605d75b94924"
 dependencies = [
  "alloc-no-stdlib",
  "alloc-stdlib",
@@ -1371,9 +1371,9 @@ dependencies = [
 
 [[package]]
 name = "displaydoc"
-version = "0.2.5"
+version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97369cbbc041bc366949bc74d34658d6cda5621039731c6310521892a3a20ae0"
+checksum = "1ac70aa55017e108007fbaf5aa0f54b021c98f92ff8af59d42eda9da96e3dd4f"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1675,9 +1675,9 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "http"
-version = "1.4.0"
+version = "1.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3ba2a386d7f85a81f119ad7498ebe444d2e22c2af0b86b069416ace48b3311a"
+checksum = "8be7462df143984c4598a256ef469b251d7d7f9e271135073e78fc535414f3d0"
 dependencies = [
  "bytes",
  "itoa",
@@ -1824,14 +1824,14 @@ dependencies = [
 
 [[package]]
 name = "incan_core"
-version = "0.3.0-rc17"
+version = "0.3.0-rc21"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "incan_derive"
-version = "0.3.0-rc17"
+version = "0.3.0-rc21"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1840,7 +1840,7 @@ dependencies = [
 
 [[package]]
 name = "incan_stdlib"
-version = "0.3.0-rc17"
+version = "0.3.0-rc21"
 dependencies = [
  "incan_core",
  "incan_derive",
@@ -1862,7 +1862,7 @@ dependencies = [
 
 [[package]]
 name = "inql"
-version = "0.3.0-rc17"
+version = "0.3.0-rc21"
 dependencies = [
  "byteorder",
  "datafusion",
@@ -1870,10 +1870,26 @@ dependencies = [
  "encoding_rs",
  "incan_derive",
  "incan_stdlib",
+ "inql-datafusion-format",
  "prost",
  "prost-types",
  "rustix",
  "substrait 0.63.0",
+]
+
+[[package]]
+name = "inql-datafusion-format"
+version = "0.1.0"
+dependencies = [
+ "crc32fast",
+ "csv",
+ "datafusion",
+ "hex",
+ "percent-encoding",
+ "serde_json",
+ "sha1",
+ "url",
+ "xxhash-rust",
 ]
 
 [[package]]
@@ -2068,9 +2084,9 @@ dependencies = [
 
 [[package]]
 name = "memchr"
-version = "2.8.0"
+version = "2.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
+checksum = "6b947ae49db0d222b1dbc6b113ce7248a3fc3a6ca21b696717bfc000ba4484d8"
 
 [[package]]
 name = "miniz_oxide"
@@ -2729,6 +2745,17 @@ dependencies = [
  "ryu",
  "serde",
  "unsafe-libyaml",
+]
+
+[[package]]
+name = "sha1"
+version = "0.10.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3bf829a2d51ab4a5ddf1352d8470c140cadc8301b2ae1789db023f01cedd6ba"
+dependencies = [
+ "cfg-if",
+ "cpufeatures 0.2.17",
+ "digest",
 ]
 
 [[package]]
@@ -3523,18 +3550,18 @@ dependencies = [
 
 [[package]]
 name = "zerocopy"
-version = "0.8.48"
+version = "0.8.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eed437bf9d6692032087e337407a86f04cd8d6a16a37199ed57949d415bd68e9"
+checksum = "bce33a6288fa3f072a8c2c7d0f2fdbb90e28298f0135c1f99b96c3db2efcc60b"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.8.48"
+version = "0.8.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70e3cd084b1788766f53af483dd21f93881ff30d7320490ec3ef7526d203bad4"
+checksum = "8fd425244944f4ab65ccff928e7323354c5a018c75838362fdce749dfad2ee1e"
 dependencies = [
  "proc-macro2",
  "quote",
