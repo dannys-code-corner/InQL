@@ -52,3 +52,6 @@ Hash helpers operate on UTF-8 string bytes and return lowercase hexadecimal stri
 
 JSON and CSV helpers validate, normalize, and project payload text. They do not read external files or introduce a
 dynamic variant value type.
+
+The DataFusion adapter executes the full RFC 022 catalog with native DataFusion functions where available and
+Incan-authored adapter callbacks for helpers that DataFusion does not expose natively.

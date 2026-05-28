@@ -3,8 +3,8 @@
 
 [incan]
 format = 1
-incan-version = "0.3.0-rc21"
-deps-fingerprint = "sha256:3610572303b9930ff93a467137924cf89c26e05467169061f3fb01f6175d8972"
+incan-version = "0.3.0-rc23"
+deps-fingerprint = "sha256:825926ed0a97c47f458cb9e9ed6c142473cb37e7f047d3de1a32263f1cef5097"
 cargo-features = []
 cargo-no-default-features = false
 cargo-all-features = false
@@ -1824,14 +1824,14 @@ dependencies = [
 
 [[package]]
 name = "incan_core"
-version = "0.3.0-rc21"
+version = "0.3.0-rc23"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "incan_derive"
-version = "0.3.0-rc21"
+version = "0.3.0-rc23"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1840,10 +1840,12 @@ dependencies = [
 
 [[package]]
 name = "incan_stdlib"
-version = "0.3.0-rc21"
+version = "0.3.0-rc23"
 dependencies = [
  "incan_core",
  "incan_derive",
+ "serde",
+ "serde_json",
  "tokio",
  "xxhash-rust",
 ]
@@ -1862,32 +1864,24 @@ dependencies = [
 
 [[package]]
 name = "inql"
-version = "0.3.0-rc21"
+version = "0.3.0-rc23"
 dependencies = [
  "byteorder",
+ "crc32fast",
  "datafusion",
+ "datafusion-common",
+ "datafusion-expr",
  "datafusion-substrait",
  "encoding_rs",
  "incan_derive",
  "incan_stdlib",
- "inql-datafusion-format",
  "prost",
  "prost-types",
  "rustix",
- "substrait 0.63.0",
-]
-
-[[package]]
-name = "inql-datafusion-format"
-version = "0.1.0"
-dependencies = [
- "crc32fast",
- "csv",
- "datafusion",
- "hex",
- "percent-encoding",
- "serde_json",
+ "serde",
  "sha1",
+ "sha2",
+ "substrait 0.63.0",
  "url",
  "xxhash-rust",
 ]

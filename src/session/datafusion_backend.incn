@@ -72,7 +72,6 @@ from rust::datafusion::prelude import (
 from rust::datafusion::dataframe import DataFrameWriteOptions
 from rust::datafusion_substrait::substrait::proto import Plan as ConsumerPlan
 from rust::datafusion_substrait::logical_plan::consumer import from_substrait_plan
-from rust::inql_datafusion_format import register_format_udfs
 from backends import SourceKind, TableSource
 from dataset.materialization import DataFrameMaterialization
 from session.backend_types import BackendError, BackendErrorKind, BackendRegistration, backend_error
@@ -96,6 +95,7 @@ from substrait.relations import project_rel_with_expressions, read_named_table_r
 from substrait.schema import RowColumnSpec, SubstraitPrimitiveKind
 from substrait.schema_registry import register_named_table_schema
 from substrait.window_metadata import WINDOW_NULL_TREATMENT_OPTION, WINDOW_OUTPUT_NAME_OPTION
+from session.datafusion_format_functions import register_format_udfs
 
 
 @derive(Clone)

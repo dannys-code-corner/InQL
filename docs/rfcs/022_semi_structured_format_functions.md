@@ -120,7 +120,7 @@ This RFC is additive. It should not change existing CSV ingestion behavior.
 ### Resolved
 
 - Hash helpers operate on UTF-8 string bytes and return lowercase hexadecimal strings.
-- Portable concrete hash helpers are `md5`, `sha1`, `sha224`, `sha256`, `sha384`, `sha512`, `crc32`, and `xxhash64`, each with an honest Substrait extension mapping and DataFusion-backed execution coverage.
+- Portable concrete hash helpers are `md5`, `sha1`, `sha224`, `sha256`, `sha384`, `sha512`, `crc32`, and `xxhash64`, each with an honest Substrait extension mapping. The DataFusion adapter validates materialized execution for the full helper set, using native DataFusion functions where available and Incan-authored adapter callbacks where DataFusion has no built-in implementation.
 - `sha2(expr, bit_length)` is a compatibility helper, not a separate backend mapping. It rewrites to `sha224`, `sha256`, `sha384`, or `sha512` for supported literal bit lengths and rejects unsupported values.
 - URL helpers accept scalar URL or component strings. `url_decode(...)` is strict and fails malformed percent escapes; `try_url_decode(...)` returns null for malformed percent escapes.
 - JSON helpers accept scalar JSON payload strings. Strict helpers fail invalid JSON; `try_from_json(...)` returns null for invalid JSON; schema and path helpers are deterministic over the provided payload and literal schema/path arguments.
@@ -133,7 +133,7 @@ This RFC is additive. It should not change existing CSV ingestion behavior.
 2. Add registry-backed URL, JSON, and CSV scalar payload helpers under logical function families.
 3. Add stable Substrait extension anchors for concrete helpers.
 4. Keep `sha2(...)` as a compatibility rewrite over concrete helpers rather than a second mapping.
-5. Add focused helper, registry, Substrait lowering, and DataFusion session tests with concrete output values.
+5. Add focused helper, registry, Substrait lowering, and DataFusion-backed session tests with concrete output values across the full helper set.
 6. Add user-facing format-function docs and release notes.
 7. Record semi-structured variant values as InQL RFC 026 rather than accepting fake JSON-text predicates in RFC 022.
 

@@ -1,0 +1,876 @@
+"""DataFusion execution bridge for InQL-owned scalar format functions."""
+
+from rust::crc32fast import Hasher as Crc32Hasher
+from rust::datafusion::arrow::array import ArrayRef, BooleanArray, Int64Array, StringArray
+from rust::datafusion::arrow::datatypes import DataType
+from rust::datafusion::execution::context import SessionContext
+from rust::datafusion_common import DataFusionError, ScalarValue
+from rust::datafusion_expr import ColumnarValue, ScalarFunctionImplementation, ScalarUDF, Volatility, create_udf
+from rust::sha1 import Sha1
+from rust::sha2 import Digest
+from rust::std::primitive import i64 as RustI64, usize as RustUsize
+from rust::std::string import String as RustString
+from rust::std::sync import Arc
+from rust::url import Url
+from rust::xxhash_rust::xxh64 import Xxh64
+from std.encoding.hex import hexlify
+from std.json import JsonError, JsonKind, JsonValue
+
+
+pub def register_format_udfs(ctx: SessionContext) -> None:
+    """Register RFC 022 scalar format functions that DataFusion does not expose natively."""
+    # DataFusion stores UDF callbacks as 'static Rust closures. Keep the captured function identity as a literal inside
+    # each callback instead of borrowing a constructor-local name.
+    ctx.register_udf(_unary_string_udf("sha1", Arc.from((args) => _apply_unary_string("sha1", args.to_vec()))))
+    ctx.register_udf(_unary_string_udf("crc32", Arc.from((args) => _apply_unary_string("crc32", args.to_vec()))))
+    ctx.register_udf(_unary_string_udf("xxhash64", Arc.from((args) => _apply_unary_string("xxhash64", args.to_vec()))))
+    ctx.register_udf(
+        _unary_string_udf("url_encode", Arc.from((args) => _apply_unary_string("url_encode", args.to_vec()))),
+    )
+    ctx.register_udf(
+        _unary_string_udf("url_decode", Arc.from((args) => _apply_unary_string("url_decode", args.to_vec()))),
+    )
+    ctx.register_udf(
+        _unary_string_udf("try_url_decode", Arc.from((args) => _apply_unary_string("try_url_decode", args.to_vec()))),
+    )
+    ctx.register_udf(
+        _binary_string_udf("parse_url", Arc.from((args) => _apply_binary_string("parse_url", args.to_vec()))),
+    )
+    ctx.register_udf(
+        _unary_string_udf("parse_json", Arc.from((args) => _apply_unary_string("parse_json", args.to_vec()))),
+    )
+    ctx.register_udf(_unary_bool_udf("check_json", Arc.from((args) => _apply_unary_bool("check_json", args.to_vec()))))
+    ctx.register_udf(
+        _unary_string_udf("schema_of_json", Arc.from((args) => _apply_unary_string("schema_of_json", args.to_vec()))),
+    )
+    ctx.register_udf(
+        _unary_int_udf("json_array_length", Arc.from((args) => _apply_unary_int("json_array_length", args.to_vec()))),
+    )
+    ctx.register_udf(
+        _unary_string_udf("json_object_keys", Arc.from((args) => _apply_unary_string("json_object_keys", args.to_vec()))),
+    )
+    ctx.register_udf(
+        _binary_string_udf("get_json_object", Arc.from((args) => _apply_binary_string("get_json_object", args.to_vec()))),
+    )
+    ctx.register_udf(
+        _binary_string_udf(
+            "json_extract_path_text",
+            Arc.from((args) => _apply_binary_string("json_extract_path_text", args.to_vec())),
+        ),
+    )
+    ctx.register_udf(
+        _binary_string_udf("from_json", Arc.from((args) => _apply_binary_string("from_json", args.to_vec()))),
+    )
+    ctx.register_udf(
+        _binary_string_udf("try_from_json", Arc.from((args) => _apply_binary_string("try_from_json", args.to_vec()))),
+    )
+    ctx.register_udf(_unary_string_udf("to_json", Arc.from((args) => _apply_unary_string("to_json", args.to_vec()))))
+    ctx.register_udf(
+        _unary_string_udf("schema_of_csv", Arc.from((args) => _apply_unary_string("schema_of_csv", args.to_vec()))),
+    )
+    ctx.register_udf(_binary_string_udf("from_csv", Arc.from((args) => _apply_binary_string("from_csv", args.to_vec()))))
+    ctx.register_udf(_unary_string_udf("to_csv", Arc.from((args) => _apply_unary_string("to_csv", args.to_vec()))))
+
+
+def _unary_string_udf(name: str, implementation: ScalarFunctionImplementation) -> ScalarUDF:
+    """Create one unary string-to-string DataFusion UDF backed by Incan source."""
+    return create_udf(name, [DataType.Utf8], DataType.Utf8, Volatility.Immutable, implementation)
+
+
+def _unary_bool_udf(name: str, implementation: ScalarFunctionImplementation) -> ScalarUDF:
+    """Create one unary string-to-boolean DataFusion UDF backed by Incan source."""
+    return create_udf(name, [DataType.Utf8], DataType.Boolean, Volatility.Immutable, implementation)
+
+
+def _unary_int_udf(name: str, implementation: ScalarFunctionImplementation) -> ScalarUDF:
+    """Create one unary string-to-int DataFusion UDF backed by Incan source."""
+    return create_udf(name, [DataType.Utf8], DataType.Int64, Volatility.Immutable, implementation)
+
+
+def _binary_string_udf(name: str, implementation: ScalarFunctionImplementation) -> ScalarUDF:
+    """Create one binary string-to-string DataFusion UDF backed by Incan source."""
+    return create_udf(name, [DataType.Utf8, DataType.Utf8], DataType.Utf8, Volatility.Immutable, implementation)
+
+
+def _apply_unary_string(name: str, args: list[ColumnarValue]) -> Result[ColumnarValue, DataFusionError]:
+    """Apply one unary string function across scalar and array DataFusion inputs."""
+    _require_arity(args, 1)?
+    if _all_scalar(args):
+        return Ok(ColumnarValue.Scalar(ScalarValue.Utf8(_eval_unary_string(name, _string_at(args[0].clone(), 0)?)?)))
+
+    row_count = _row_count(args)?
+    mut values: list[Option[str]] = []
+    for idx in range(row_count):
+        values.append(_eval_unary_string(name, _string_at(args[0].clone(), idx)?)?)
+    array_ref: ArrayRef = Arc.from(StringArray.from(values))
+    return Ok(ColumnarValue.Array(array_ref))
+
+
+def _apply_unary_bool(name: str, args: list[ColumnarValue]) -> Result[ColumnarValue, DataFusionError]:
+    """Apply one unary string-to-bool function across scalar and array DataFusion inputs."""
+    _require_arity(args, 1)?
+    if _all_scalar(args):
+        return Ok(ColumnarValue.Scalar(ScalarValue.Boolean(_eval_unary_bool(name, _string_at(args[0].clone(), 0)?)?)))
+
+    row_count = _row_count(args)?
+    mut values: list[Option[bool]] = []
+    for idx in range(row_count):
+        values.append(_eval_unary_bool(name, _string_at(args[0].clone(), idx)?)?)
+    array_ref: ArrayRef = Arc.from(BooleanArray.from(values))
+    return Ok(ColumnarValue.Array(array_ref))
+
+
+def _apply_unary_int(name: str, args: list[ColumnarValue]) -> Result[ColumnarValue, DataFusionError]:
+    """Apply one unary string-to-int function across scalar and array DataFusion inputs."""
+    _require_arity(args, 1)?
+    if _all_scalar(args):
+        value = _eval_unary_int(name, _string_at(args[0].clone(), 0)?)?
+        match value:
+            Some(number) => return Ok(ColumnarValue.Scalar(ScalarValue.Int64(Some(_int_to_rust_i64(number)?))))
+            None => return Ok(ColumnarValue.Scalar(ScalarValue.Int64(None)))
+
+    row_count = _row_count(args)?
+    mut values: list[Option[int]] = []
+    for idx in range(row_count):
+        values.append(_eval_unary_int(name, _string_at(args[0].clone(), idx)?)?)
+    array_ref: ArrayRef = Arc.from(Int64Array.from(values))
+    return Ok(ColumnarValue.Array(array_ref))
+
+
+def _apply_binary_string(name: str, args: list[ColumnarValue]) -> Result[ColumnarValue, DataFusionError]:
+    """Apply one binary string function across scalar and array DataFusion inputs."""
+    _require_arity(args, 2)?
+    if _all_scalar(args):
+        return Ok(
+            ColumnarValue.Scalar(
+                ScalarValue.Utf8(
+                    _eval_binary_string(name, _string_at(args[0].clone(), 0)?, _string_at(args[1].clone(), 0)?)?,
+                ),
+            ),
+        )
+
+    row_count = _row_count(args)?
+    mut values: list[Option[str]] = []
+    for idx in range(row_count):
+        values.append(_eval_binary_string(name, _string_at(args[0].clone(), idx)?, _string_at(args[1].clone(), idx)?)?)
+    array_ref: ArrayRef = Arc.from(StringArray.from(values))
+    return Ok(ColumnarValue.Array(array_ref))
+
+
+def _eval_unary_string(name: str, value: Option[str]) -> Result[Option[str], DataFusionError]:
+    """Dispatch unary string-returning format functions."""
+    match name:
+        "sha1" => return _hash_sha1(value)
+        "crc32" => return _hash_crc32(value)
+        "xxhash64" => return _hash_xxhash64(value)
+        "url_encode" => return _url_encode(value)
+        "url_decode" => return _url_decode(value)
+        "try_url_decode" => return _try_url_decode(value)
+        "parse_json" => return _parse_json(value)
+        "schema_of_json" => return _schema_of_json(value)
+        "json_object_keys" => return _json_object_keys(value)
+        "to_json" => return _to_json(value)
+        "schema_of_csv" => return _schema_of_csv(value)
+        "to_csv" => return _to_csv(value)
+        _ => return _datafusion_error(f"unknown unary format function `{name}`")
+
+
+def _eval_unary_bool(name: str, value: Option[str]) -> Result[Option[bool], DataFusionError]:
+    """Dispatch unary boolean-returning format functions."""
+    match name:
+        "check_json" => return _check_json(value)
+        _ => return _datafusion_error(f"unknown boolean format function `{name}`")
+
+
+def _eval_unary_int(name: str, value: Option[str]) -> Result[Option[int], DataFusionError]:
+    """Dispatch unary integer-returning format functions."""
+    match name:
+        "json_array_length" => return _json_array_length(value)
+        _ => return _datafusion_error(f"unknown integer format function `{name}`")
+
+
+def _eval_binary_string(name: str, left: Option[str], right: Option[str]) -> Result[Option[str], DataFusionError]:
+    """Dispatch binary string-returning format functions."""
+    match name:
+        "parse_url" => return _parse_url(left, right)
+        "get_json_object" => return _json_path_value(left, right, false)
+        "json_extract_path_text" => return _json_path_value(left, right, true)
+        "from_json" => return _from_json(left, right)
+        "try_from_json" => return _try_from_json(left, right)
+        "from_csv" => return _from_csv(left, right)
+        _ => return _datafusion_error(f"unknown binary format function `{name}`")
+
+
+def _hash_sha1(value: Option[str]) -> Result[Option[str], DataFusionError]:
+    """Hash one optional string with SHA-1."""
+    match value:
+        Some(text) => return Ok(Some(hexlify(_sha1_digest(_utf8_bytes(text)))))
+        None => return Ok(None)
+
+
+def _hash_crc32(value: Option[str]) -> Result[Option[str], DataFusionError]:
+    """Hash one optional string with CRC-32."""
+    match value:
+        Some(text) =>
+            mut hasher = Crc32Hasher.new()
+            hasher.update(_utf8_bytes(text).as_slice())
+            return Ok(Some(hexlify(_u32_to_be_bytes(hasher.finalize()))))
+        None => return Ok(None)
+
+
+def _hash_xxhash64(value: Option[str]) -> Result[Option[str], DataFusionError]:
+    """Hash one optional string with xxHash64."""
+    match value:
+        Some(text) => return Ok(Some(hexlify(_u64_to_be_bytes(_xxhash64(_utf8_bytes(text))))))
+        None => return Ok(None)
+
+
+def _url_encode(value: Option[str]) -> Result[Option[str], DataFusionError]:
+    """Percent-encode one URL component."""
+    match value:
+        Some(text) =>
+            mut encoded = ""
+            for byte in _utf8_bytes(text):
+                if _url_byte_needs_encoding(byte):
+                    encoded += "%" + _hex_byte(byte).upper()
+                else:
+                    encoded += _byte_to_ascii_text(byte)
+            return Ok(Some(encoded))
+        None => return Ok(None)
+
+
+def _url_decode(value: Option[str]) -> Result[Option[str], DataFusionError]:
+    """Strictly decode one percent-encoded URL component."""
+    decoded = _try_url_decode(value)?
+    match value:
+        Some(_) =>
+            match decoded:
+                Some(_) => return Ok(decoded)
+                None => return _datafusion_error("invalid percent-encoded URL component")
+        None => return Ok(None)
+
+
+def _try_url_decode(value: Option[str]) -> Result[Option[str], DataFusionError]:
+    """Decode one percent-encoded URL component, returning null for malformed input."""
+    match value:
+        Some(text) =>
+            mut out: list[u8] = []
+            mut idx = 0
+            while idx < len(text):
+                ch = text[idx:idx + 1]
+                if ch == "%":
+                    if idx + 2 >= len(text):
+                        return Ok(None)
+                    high = _hex_value(text[idx + 1:idx + 2])
+                    low = _hex_value(text[idx + 2:idx + 3])
+                    if high < 0 or low < 0:
+                        return Ok(None)
+                    _append_byte(out, high * 16 + low)
+                    idx += 3
+                else:
+                    for byte in _utf8_bytes(ch):
+                        _append_byte(out, byte)
+                    idx += 1
+            match RustString.from_utf8(out):
+                Ok(decoded) => return Ok(Some(decoded))
+                Err(_) => return Ok(None)
+        None => return Ok(None)
+
+
+def _parse_url(value: Option[str], part: Option[str]) -> Result[Option[str], DataFusionError]:
+    """Extract one URL part with the Rust URL parser through Incan interop."""
+    match value:
+        Some(raw_url) =>
+            match part:
+                Some(raw_part) =>
+                    match Url.parse(raw_url):
+                        Ok(parsed) =>
+                            normalized = raw_part.lower()
+                            match normalized:
+                                "scheme" => return Ok(Some(f"{parsed.scheme()}"))
+                                "host" =>
+                                    match parsed.host_str():
+                                        Some(host) => return Ok(Some(f"{host}"))
+                                        None => return Ok(None)
+                                "path" => return Ok(Some(f"{parsed.path()}"))
+                                "query" =>
+                                    match parsed.query():
+                                        Some(query) => return Ok(Some(f"{query}"))
+                                        None => return Ok(None)
+                                "fragment" =>
+                                    match parsed.fragment():
+                                        Some(fragment) => return Ok(Some(f"{fragment}"))
+                                        None => return Ok(None)
+                                "port" =>
+                                    match parsed.port():
+                                        Some(port) => return Ok(Some(str(port)))
+                                        None => return Ok(None)
+                                "username" => return Ok(Some(f"{parsed.username()}"))
+                                "password" =>
+                                    match parsed.password():
+                                        Some(password) => return Ok(Some(f"{password}"))
+                                        None => return Ok(None)
+                                _ => return _datafusion_error(f"unknown parse_url part `{raw_part}`")
+                        Err(err) => return _datafusion_error(err.to_string())
+                None => return Ok(None)
+        None => return Ok(None)
+
+
+def _parse_json(value: Option[str]) -> Result[Option[str], DataFusionError]:
+    """Validate and normalize one JSON payload string."""
+    match value:
+        Some(text) =>
+            parsed = _parse_json_value(text)?
+            return Ok(Some(_json_text(parsed)?))
+        None => return Ok(None)
+
+
+def _check_json(value: Option[str]) -> Result[Option[bool], DataFusionError]:
+    """Return whether one optional payload is valid JSON."""
+    match value:
+        Some(text) =>
+            match JsonValue.parse(text):
+                Ok(_) => return Ok(Some(true))
+                Err(_) => return Ok(Some(false))
+        None => return Ok(None)
+
+
+def _schema_of_json(value: Option[str]) -> Result[Option[str], DataFusionError]:
+    """Infer a deterministic schema description for one JSON payload."""
+    match value:
+        Some(text) => return Ok(Some(_json_schema(_parse_json_value(text)?)))
+        None => return Ok(None)
+
+
+def _json_array_length(value: Option[str]) -> Result[Option[int], DataFusionError]:
+    """Return the length of a JSON array payload."""
+    match value:
+        Some(text) =>
+            parsed = _parse_json_value(text)?
+            match parsed.as_array():
+                Some(values) => return Ok(Some(len(values)))
+                None => return Ok(None)
+        None => return Ok(None)
+
+
+def _json_object_keys(value: Option[str]) -> Result[Option[str], DataFusionError]:
+    """Return JSON object keys as a JSON array string."""
+    match value:
+        Some(text) =>
+            parsed = _parse_json_value(text)?
+            mut keys: list[JsonValue] = []
+            for key in parsed.keys():
+                keys.append(JsonValue.string(key))
+            return Ok(Some(_json_text(JsonValue.array(keys))?))
+        None => return Ok(None)
+
+
+def _json_path_value(value: Option[str], path: Option[str], text_mode: bool) -> Result[Option[str], DataFusionError]:
+    """Select one JSON path and return JSON text, with scalar strings unquoted in text mode."""
+    match value:
+        Some(raw_json) =>
+            match path:
+                Some(raw_path) =>
+                    parsed = _parse_json_value(raw_json)?
+                    match _select_json_path(parsed, raw_path)?:
+                        Some(selected) =>
+                            if text_mode:
+                                match selected.as_str():
+                                    Some(text) => return Ok(Some(text))
+                                    None => pass
+                            return Ok(Some(_json_text(selected)?))
+                        None => return Ok(None)
+                None => return Ok(None)
+        None => return Ok(None)
+
+
+def _from_json(value: Option[str], _schema: Option[str]) -> Result[Option[str], DataFusionError]:
+    """Validate and normalize one JSON payload string."""
+    return _parse_json(value)
+
+
+def _try_from_json(value: Option[str], _schema: Option[str]) -> Result[Option[str], DataFusionError]:
+    """Validate JSON, returning null for malformed payloads."""
+    match value:
+        Some(text) =>
+            match _parse_json_value(text):
+                Ok(parsed) => return Ok(Some(_json_text(parsed)?))
+                Err(_) => return Ok(None)
+        None => return Ok(None)
+
+
+def _to_json(value: Option[str]) -> Result[Option[str], DataFusionError]:
+    """Serialize a scalar string as JSON text."""
+    match value:
+        Some(text) => return Ok(Some(_json_text(JsonValue.string(text))?))
+        None => return Ok(None)
+
+
+def _schema_of_csv(value: Option[str]) -> Result[Option[str], DataFusionError]:
+    """Infer a deterministic schema description for one CSV row string."""
+    match value:
+        Some(text) =>
+            fields = _csv_fields(text)?
+            mut specs: list[str] = []
+            for idx, item in enumerate(fields):
+                specs.append(f"_c{idx}: {_scalar_schema(item)}")
+            return Ok(Some(f"STRUCT<{", ".join(specs)}>"))
+        None => return Ok(None)
+
+
+def _from_csv(value: Option[str], schema: Option[str]) -> Result[Option[str], DataFusionError]:
+    """Parse one CSV row string into a JSON array or schema-named object string."""
+    match value:
+        Some(text) =>
+            fields = _csv_fields(text)?
+            names = _csv_schema_field_names(schema.unwrap_or(""))
+            if len(names) == 0:
+                mut values: list[JsonValue] = []
+                for field in fields:
+                    values.append(JsonValue.string(field))
+                return Ok(Some(_json_text(JsonValue.array(values))?))
+
+            mut entries: Dict[str, JsonValue] = {}
+            for idx, name in enumerate(names):
+                if idx < len(fields):
+                    entries[name] = JsonValue.string(fields[idx])
+                else:
+                    entries[name] = JsonValue.string("")
+            return Ok(Some(_json_text(JsonValue.object(entries))?))
+        None => return Ok(None)
+
+
+def _to_csv(value: Option[str]) -> Result[Option[str], DataFusionError]:
+    """Serialize one scalar or JSON array/object payload as a CSV row."""
+    match value:
+        Some(text) =>
+            match JsonValue.parse(text):
+                Ok(parsed) =>
+                    if let Some(values) = parsed.as_array():
+                        return Ok(Some(_csv_line([_json_csv_value(item)? for item in values])))
+                    if let Some(entries) = parsed.as_object():
+                        mut fields: list[str] = []
+                        for key in entries.keys():
+                            fields.append(_json_csv_value(entries[key])?)
+                        return Ok(Some(_csv_line(fields)))
+                    return Ok(Some(_csv_line([_json_csv_value(parsed)?])))
+                Err(_) => return Ok(Some(_csv_line([text])))
+        None => return Ok(None)
+
+
+def _parse_json_value(text: str) -> Result[JsonValue, DataFusionError]:
+    """Parse one JSON payload and convert std.json errors to DataFusion errors."""
+    match JsonValue.parse(text):
+        Ok(value) => return Ok(value)
+        Err(err) => return _json_error(err)
+
+
+def _json_error[T](err: JsonError) -> Result[T, DataFusionError]:
+    """Convert a std.json error to the DataFusion UDF error channel."""
+    return _datafusion_error(err.message())
+
+
+def _json_text(value: JsonValue) -> Result[str, DataFusionError]:
+    """Serialize one JSON value and convert std.json errors to DataFusion errors."""
+    match value.to_json():
+        Ok(text) => return Ok(text)
+        Err(err) => return _json_error(err)
+
+
+def _json_schema(value: JsonValue) -> str:
+    """Infer a compact deterministic schema descriptor for one dynamic JSON value."""
+    match value.kind():
+        JsonKind.Null => return "NULL"
+        JsonKind.Bool => return "BOOLEAN"
+        JsonKind.Int => return "BIGINT"
+        JsonKind.Float => return "DOUBLE"
+        JsonKind.String => return "STRING"
+        JsonKind.Array =>
+            match value.as_array():
+                Some(values) =>
+                    if len(values) == 0:
+                        return "ARRAY<UNKNOWN>"
+                    return f"ARRAY<{_json_schema(values[0])}>"
+                None => return "ARRAY<UNKNOWN>"
+        JsonKind.Object =>
+            mut fields: list[str] = []
+            for item in value.items():
+                key, nested = item
+                fields.append(f"{key}: {_json_schema(nested)}")
+            return f"STRUCT<{", ".join(fields)}>"
+
+
+def _select_json_path(value: JsonValue, path: str) -> Result[Option[JsonValue], DataFusionError]:
+    """Select a small JSONPath subset accepted by the public helper validators."""
+    if path == "$" or path == "":
+        return Ok(Some(value))
+    mut current = value
+    mut remaining = path
+    if remaining.startswith("$."):
+        remaining = remaining[2:]
+    elif remaining.startswith("$["):
+        remaining = remaining[1:]
+    elif remaining.startswith("$"):
+        remaining = remaining[1:]
+    for segment in remaining.split("."):
+        if segment == "":
+            continue
+        match _select_json_segment(current, segment)?:
+            Some(selected) =>
+                current = selected
+            None => return Ok(None)
+    return Ok(Some(current))
+
+
+def _select_json_segment(value: JsonValue, segment: str) -> Result[Option[JsonValue], DataFusionError]:
+    """Select one object field plus optional array index suffixes."""
+    mut current = value
+    mut remaining = segment
+    if not remaining.startswith("["):
+        field = _segment_field_name(remaining)
+        match current.get(field):
+            Some(selected) =>
+                current = selected
+            None => return Ok(None)
+        remaining = remaining[len(field):]
+    while remaining.startswith("["):
+        close_idx = _find_closing_bracket(remaining)?
+        index_text = remaining[1:close_idx]
+        index = _parse_non_negative_int(index_text)?
+        match current.as_array():
+            Some(values) =>
+                if index >= len(values):
+                    return Ok(None)
+                current = values[index]
+            None => return Ok(None)
+        remaining = remaining[close_idx + 1:]
+    if remaining != "":
+        return Ok(None)
+    return Ok(Some(current))
+
+
+def _segment_field_name(segment: str) -> str:
+    """Return the object-field prefix before any array index suffix."""
+    mut idx = 0
+    while idx < len(segment):
+        if segment[idx:idx + 1] == "[":
+            return segment[0:idx]
+        idx += 1
+    return segment
+
+
+def _find_closing_bracket(value: str) -> Result[int, DataFusionError]:
+    """Find the first closing bracket in one path segment."""
+    for idx, ch in enumerate(value):
+        if ch == "]":
+            return Ok(idx)
+    return _datafusion_error(f"invalid JSON path segment `{value}`")
+
+
+def _parse_non_negative_int(value: str) -> Result[int, DataFusionError]:
+    """Parse a non-negative integer used as a JSON array index."""
+    if value == "":
+        return _datafusion_error("empty JSON array index")
+    mut out = 0
+    for ch in value:
+        digit = _digit_value(ch)
+        if digit < 0:
+            return _datafusion_error(f"invalid JSON array index `{value}`")
+        out = out * 10 + digit
+    return Ok(out)
+
+
+def _csv_fields(text: str) -> Result[list[str], DataFusionError]:
+    """Parse one CSV row with comma delimiter and double-quote escaping."""
+    mut fields: list[str] = []
+    mut field = ""
+    mut in_quotes = false
+    mut idx = 0
+    while idx < len(text):
+        ch = text[idx:idx + 1]
+        if in_quotes:
+            if ch == "\"":
+                if idx + 1 < len(text) and text[idx + 1:idx + 2] == "\"":
+                    field += "\""
+                    idx += 2
+                else:
+                    in_quotes = false
+                    idx += 1
+            else:
+                field += ch
+                idx += 1
+        elif ch == ",":
+            fields.append(field)
+            field = str("")
+            idx += 1
+        elif ch == "\"" and field == "":
+            in_quotes = true
+            idx += 1
+        else:
+            field += ch
+            idx += 1
+    if in_quotes:
+        return _datafusion_error("unterminated quoted CSV field")
+    fields.append(field)
+    return Ok(fields)
+
+
+def _csv_schema_field_names(schema: str) -> list[str]:
+    """Extract field names from a compact `STRUCT<name: TYPE, ...>` schema string."""
+    mut trimmed = schema.strip()
+    if trimmed.startswith("STRUCT<") and trimmed.endswith(">"):
+        trimmed = trimmed[7:len(trimmed) - 1]
+    mut names: list[str] = []
+    for part in trimmed.split(","):
+        name = part.strip().split(":")[0].strip()
+        if name != "":
+            names.append(name)
+    return names
+
+
+def _scalar_schema(value: str) -> str:
+    """Infer a small scalar schema spelling from one CSV field."""
+    if _is_integer_text(value):
+        return "BIGINT"
+    if _is_float_text(value):
+        return "DOUBLE"
+    lower = value.lower()
+    if lower == "true" or lower == "false":
+        return "BOOLEAN"
+    return "STRING"
+
+
+def _is_integer_text(value: str) -> bool:
+    """Return whether text has an integer spelling."""
+    if value == "":
+        return false
+    mut start = 0
+    if value.startswith("-") or value.startswith("+"):
+        if len(value) == 1:
+            return false
+        start = 1
+    for ch in value[start:]:
+        if _digit_value(ch) < 0:
+            return false
+    return true
+
+
+def _is_float_text(value: str) -> bool:
+    """Return whether text has a simple decimal floating-point spelling."""
+    if not value.contains("."):
+        return false
+    mut digit_count = 0
+    mut start = 0
+    if value.startswith("-") or value.startswith("+"):
+        start = 1
+    for ch in value[start:]:
+        if ch == ".":
+            pass
+        elif _digit_value(ch) >= 0:
+            digit_count += 1
+        else:
+            return false
+    return digit_count > 0
+
+
+def _json_csv_value(value: JsonValue) -> Result[str, DataFusionError]:
+    """Convert one JSON value to its scalar CSV field text."""
+    if value.kind() == JsonKind.Null:
+        return Ok("")
+    match value.as_str():
+        Some(text) => return Ok(text)
+        None => return Ok(_json_text(value)?)
+
+
+def _csv_line(fields: list[str]) -> str:
+    """Serialize one CSV row without a trailing newline."""
+    return ",".join([_escape_csv_field(field) for field in fields])
+
+
+def _escape_csv_field(value: str) -> str:
+    """Escape one CSV field when delimiters, quotes, or newlines require quoting."""
+    if not value.contains(",") and not value.contains("\"") and not value.contains("\n") and not value.contains("\r"):
+        return value
+    return "\"" + value.replace("\"", "\"\"") + "\""
+
+
+def _require_arity(args: list[ColumnarValue], expected: int) -> Result[None, DataFusionError]:
+    """Validate a DataFusion UDF arity."""
+    if len(args) == expected:
+        return Ok(None)
+    return _datafusion_error(f"format UDF expected {expected} arguments, got {len(args)}")
+
+
+def _all_scalar(args: list[ColumnarValue]) -> bool:
+    """Return whether all DataFusion arguments are scalar values."""
+    for arg in args:
+        match arg:
+            ColumnarValue.Array(_) => return false
+            ColumnarValue.Scalar(_) => pass
+    return true
+
+
+def _row_count(args: list[ColumnarValue]) -> Result[int, DataFusionError]:
+    """Return the first array row count, or one for scalar-only arguments."""
+    for arg in args:
+        match arg:
+            ColumnarValue.Array(array) => return _rust_usize_to_int(array.len())
+            ColumnarValue.Scalar(_) => pass
+    return Ok(1)
+
+
+def _string_at(arg: ColumnarValue, idx: int) -> Result[Option[str], DataFusionError]:
+    """Read one optional string value from a scalar or array DataFusion value."""
+    array_result: Result[ArrayRef, DataFusionError] = arg.to_array(_int_to_rust_usize(idx + 1)?)
+    array = array_result?
+    scalar_result: Result[ScalarValue, DataFusionError] = ScalarValue.try_from_array(
+        array.as_ref(),
+        _int_to_rust_usize(idx)?,
+    )
+    scalar = scalar_result?
+    return _scalar_value_string(scalar)
+
+
+def _scalar_value_string(value: ScalarValue) -> Result[Option[str], DataFusionError]:
+    """Convert one DataFusion scalar to optional text for format-function execution."""
+    match value:
+        ScalarValue.Utf8(text) => return Ok(text)
+        ScalarValue.LargeUtf8(text) => return Ok(text)
+        ScalarValue.Utf8View(text) => return Ok(text)
+        ScalarValue.Null => return Ok(None)
+        _ => return Ok(Some(value.to_string()))
+
+
+def _utf8_bytes(value: str) -> bytes:
+    """Encode one Incan string as UTF-8 bytes."""
+    return RustString.from(value).into_bytes()
+
+
+def _sha1_digest(data: bytes) -> bytes:
+    """Return SHA-1 digest bytes."""
+    mut hasher = Sha1.default()
+    Digest.update(hasher, data.as_slice())
+    return hasher.finalize_reset().to_vec()
+
+
+def _xxhash64(data: bytes) -> u64:
+    """Return xxHash64 with the same zero-seed contract as InQL's public helper."""
+    mut hasher = Xxh64.default()
+    hasher.update(data.as_slice())
+    return hasher.digest()
+
+
+def _u32_to_be_bytes(value: u32) -> bytes:
+    """Encode a 32-bit integer as big-endian bytes."""
+    number = int(value)
+    mut out: list[u8] = []
+    _append_byte(out, (number // 16777216) % 256)
+    _append_byte(out, (number // 65536) % 256)
+    _append_byte(out, (number // 256) % 256)
+    _append_byte(out, number % 256)
+    return out
+
+
+def _u64_to_be_bytes(value: u64) -> bytes:
+    """Encode a 64-bit integer as big-endian bytes."""
+    mut out: list[u8] = []
+    _append_byte(out, int((value // 72057594037927936) % 256))
+    _append_byte(out, int((value // 281474976710656) % 256))
+    _append_byte(out, int((value // 1099511627776) % 256))
+    _append_byte(out, int((value // 4294967296) % 256))
+    _append_byte(out, int((value // 16777216) % 256))
+    _append_byte(out, int((value // 65536) % 256))
+    _append_byte(out, int((value // 256) % 256))
+    _append_byte(out, int(value % 256))
+    return out
+
+
+def _append_byte(mut out: list[u8], value: int) -> None:
+    """Append one wrapped byte to a byte list."""
+    byte: u8 = value.wrapping_resize()
+    out.append(byte)
+
+
+def _hex_byte(value: int) -> str:
+    """Return a two-character lowercase hex byte."""
+    as_int = value
+    high = as_int // 16
+    low = as_int - (high * 16)
+    return _hex_digit(high) + _hex_digit(low)
+
+
+def _hex_digit(value: int) -> str:
+    """Return one lowercase hex digit."""
+    digits = "0123456789abcdef"
+    return digits[value:value + 1]
+
+
+def _url_byte_needs_encoding(value: int) -> bool:
+    """Return whether a byte belongs to the RFC 022 URL component encode set."""
+    as_int = value
+    if as_int < 32 or as_int > 126:
+        return true
+    ch = _byte_to_ascii_text(value)
+    return ch == " " or ch == "\"" or ch == "#" or ch == "%" or ch == "<" or ch == ">" or ch == "?" or ch == "`" or ch == "{" or ch == "}"
+
+
+def _byte_to_ascii_text(value: int) -> str:
+    """Convert a printable ASCII byte to one-character text."""
+    as_int = value
+    if as_int < 32 or as_int > 126:
+        return ""
+    printable = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
+    return printable[as_int - 32:as_int - 31]
+
+
+def _hex_value(ch: str) -> int:
+    """Return a hex digit value, or -1 for non-hex input."""
+    if ch >= "0" and ch <= "9":
+        return int(ch)
+    lower = ch.lower()
+    if lower == "a":
+        return 10
+    if lower == "b":
+        return 11
+    if lower == "c":
+        return 12
+    if lower == "d":
+        return 13
+    if lower == "e":
+        return 14
+    if lower == "f":
+        return 15
+    return -1
+
+
+def _digit_value(ch: str) -> int:
+    """Return a decimal digit value, or -1 for non-digits."""
+    if ch >= "0" and ch <= "9":
+        return int(ch)
+    return -1
+
+
+def _rust_usize_to_int(value: RustUsize) -> Result[int, DataFusionError]:
+    """Convert Rust usize to Incan int through a checked i64 boundary."""
+    match RustI64.try_from(value):
+        Ok(converted) => return Ok(converted.into())
+        Err(_) => return _datafusion_error("row count does not fit Incan int")
+
+
+def _int_to_rust_usize(value: int) -> Result[RustUsize, DataFusionError]:
+    """Convert an Incan int to Rust usize through a checked boundary."""
+    match RustUsize.try_from(value):
+        Ok(converted) => return Ok(converted)
+        Err(_) => return _datafusion_error(f"index {value} does not fit Rust usize")
+
+
+def _int_to_rust_i64(value: int) -> Result[RustI64, DataFusionError]:
+    """Convert an Incan int to Rust i64 through a checked boundary."""
+    match RustI64.try_from(value):
+        Ok(converted) => return Ok(converted)
+        Err(_) => return _datafusion_error(f"value {value} does not fit Rust i64")
+
+
+def _datafusion_error[T](message: str) -> Result[T, DataFusionError]:
+    """Build one DataFusion execution error."""
+    return Err(DataFusionError.Execution(f"{message}"))

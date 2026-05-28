@@ -18,40 +18,40 @@ from functions import (
     desc,
     div,
     floor,
+    from_csv,
+    from_json,
+    get_json_object,
     gt,
+    json_array_length,
+    json_extract_path_text,
+    json_object_keys,
     lit,
     md5,
     modulo,
     mul,
     neg,
     nullif,
+    parse_json,
+    parse_url,
     round,
+    schema_of_csv,
+    schema_of_json,
     sha1,
     sha2,
     sha224,
     sha384,
     sha512,
     sub,
-    xxhash64,
-    try_cast,
-    cardinality,
-    element_at,
-    from_csv,
-    from_json,
-    get_json_object,
-    json_array_length,
-    json_extract_path_text,
-    json_object_keys,
-    parse_json,
-    parse_url,
-    schema_of_csv,
-    schema_of_json,
     to_csv,
     to_json,
     try_from_json,
     try_url_decode,
+    try_cast,
     url_decode,
     url_encode,
+    xxhash64,
+    cardinality,
+    element_at,
 )
 from dataset import DataFrame, LazyFrame
 from session import Session, SessionErrorKind
@@ -274,7 +274,7 @@ def test_session_projection__collect_executes_format_hashing_projection_function
 
 
 def test_session_projection__collect_executes_json_url_and_csv_format_functions() -> None:
-    """collect should execute RFC 022 scalar format helpers through adapter-owned DataFusion UDFs."""
+    """collect should execute RFC 022 scalar format helpers through Incan-authored DataFusion callbacks."""
     # -- Arrange --
     mut session = Session.default()
 
