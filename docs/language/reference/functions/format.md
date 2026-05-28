@@ -51,5 +51,4 @@ Hash helpers operate on UTF-8 string bytes and return lowercase hexadecimal stri
 `384`, and `512`; other digest lengths are rejected during expression construction.
 
 JSON and CSV helpers validate, normalize, and project payload text. They do not read external files or introduce a
-dynamic variant value type. Predicates such as `typeof(...)`, `is_array(...)`, `is_object(...)`, `is_integer(...)`,
-`is_timestamp(...)`, and `is_null_value(...)` are reserved for a future typed variant value model.
+dynamic variant value type.

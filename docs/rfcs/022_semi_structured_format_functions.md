@@ -10,6 +10,7 @@
   - InQL RFC 013 (function catalog program)
   - InQL RFC 014 (function registry and catalog governance)
   - InQL RFC 020 (nested data functions)
+  - InQL RFC 026 (semi-structured variant logical values)
 - **Issue:** [InQL #39](https://github.com/dannys-code-corner/InQL/issues/39)
 - **RFC PR:** [InQL #49](https://github.com/dannys-code-corner/InQL/pull/49)
 - **Written against:** Incan v0.3-era InQL
@@ -17,7 +18,7 @@
 
 ## Summary
 
-This RFC defines InQL's semi-structured and format-oriented function families: JSON value functions, CSV value functions, schema inference helpers, type predicates for dynamic values, URL helpers, and hashing functions. These functions are practical data-engineering tools, but they should live in explicit format families rather than the core scalar catalog.
+This RFC defines InQL's semi-structured and format-oriented function families: JSON value functions, CSV value functions, schema inference helpers, URL helpers, and hashing functions. These functions are practical data-engineering tools, but they should live in explicit format families rather than the core scalar catalog. Semi-structured variant values and their type predicates are defined separately by InQL RFC 026.
 
 ## Motivation
 
@@ -29,7 +30,7 @@ Without a separate RFC, format helpers risk leaking ingestion policy into the sc
 
 - Define JSON scalar and schema helper functions.
 - Define CSV scalar and schema helper functions.
-- Define dynamic-value type predicates where InQL supports variant-like values.
+- Keep string-backed format helpers compatible with the variant value model defined by InQL RFC 026.
 - Define URL parse/encode/decode helpers.
 - Define deterministic hash functions for data engineering.
 - Keep format functions separate from source reading and writing contracts.
@@ -37,7 +38,8 @@ Without a separate RFC, format helpers risk leaking ingestion policy into the sc
 ## Non-Goals
 
 - Defining source discovery, file scanning, or format handler registration.
-- Defining XML, variant, geospatial, crypto, or sketch functions.
+- Defining XML, geospatial, crypto, or sketch functions.
+- Defining semi-structured variant logical values or variant predicates; see InQL RFC 026.
 - Defining nested array/map/struct functions except as return values of parsing functions.
 - Defining physical input-file metadata functions.
 
@@ -69,9 +71,7 @@ InQL should define URL functions including `parse_url`, `url_encode`, `url_decod
 
 InQL should define hash functions including `crc32`, `md5`, `sha1`, `sha2`, and `xxhash64`, with input encoding and output representation specified.
 
-Where InQL supports variant-like dynamic values, it should define type inspection and predicate functions such as `typeof`, `is_array`, `is_object`, `is_integer`, `is_timestamp`, and `is_null_value`. These functions must not be accepted before the value model they inspect is defined.
-
-This RFC does not introduce a dynamic variant value model. Parser helpers that pass semi-structured payloads through the current scalar expression model return validated, normalized payload text. A later variant/value-model RFC may add typed semi-structured return values, but it must not silently change the meaning of the RFC 022 string-backed payload helpers.
+InQL RFC 026 defines semi-structured variant logical values and their type inspection predicates. Parser helpers in this RFC return validated, normalized payload text. RFC 026 must not silently change the meaning of the RFC 022 string-backed payload helpers.
 
 Schema inference helper functions must be deterministic for the same input values and options. They must not inspect external files or session state unless explicitly defined as source-discovery functions outside this RFC.
 
@@ -99,7 +99,7 @@ This RFC is additive. It should not change existing CSV ingestion behavior.
 
 - **Place all format helpers in the common scalar catalog.** Rejected because format parsing has option, schema, and I/O-adjacent concerns that deserve a separate boundary.
 - **Make JSON and CSV functions source-only.** Rejected because scalar payload parsing is common inside already-loaded datasets.
-- **Add full XML and variant support in the same RFC.** Rejected because those need their own type and compatibility discussion, even though this RFC may reserve JSON parsing and dynamic-value predicate names.
+- **Add full XML and variant support in the same RFC.** Rejected because XML and semi-structured variant values need their own type and compatibility discussion. InQL RFC 026 owns the variant value model.
 
 ## Drawbacks
 
@@ -125,7 +125,7 @@ This RFC is additive. It should not change existing CSV ingestion behavior.
 - URL helpers accept scalar URL or component strings. `url_decode(...)` is strict and fails malformed percent escapes; `try_url_decode(...)` returns null for malformed percent escapes.
 - JSON helpers accept scalar JSON payload strings. Strict helpers fail invalid JSON; `try_from_json(...)` returns null for invalid JSON; schema and path helpers are deterministic over the provided payload and literal schema/path arguments.
 - CSV helpers accept scalar row strings and explicit schema-description strings. They operate on payload values only and do not replace the session CSV read/write contract.
-- Dynamic-value predicate names such as `typeof`, `is_array`, `is_object`, `is_integer`, `is_timestamp`, and `is_null_value` are reserved by this RFC but intentionally not accepted until InQL defines a variant-like value model. This follows the reference rule above rather than creating fake string predicates.
+- Semi-structured variant predicates such as `typeof`, `is_array`, `is_object`, `is_integer`, `is_timestamp`, and `is_null_value` belong to InQL RFC 026. RFC 022 does not accept them as JSON-text parser helpers.
 
 ## Implementation Plan
 
@@ -135,7 +135,7 @@ This RFC is additive. It should not change existing CSV ingestion behavior.
 4. Keep `sha2(...)` as a compatibility rewrite over concrete helpers rather than a second mapping.
 5. Add focused helper, registry, Substrait lowering, and DataFusion session tests with concrete output values.
 6. Add user-facing format-function docs and release notes.
-7. Reserve dynamic-value predicate names until a variant-like value model exists.
+7. Record semi-structured variant values as InQL RFC 026 rather than accepting fake JSON-text predicates in RFC 022.
 
 ## Progress Checklist
 
@@ -146,4 +146,4 @@ This RFC is additive. It should not change existing CSV ingestion behavior.
 - [x] `sha2(...)` implemented as a literal-bit-length rewrite with invalid-input diagnostics.
 - [x] Focused helper, registry, Substrait lowering, and DataFusion-backed session tests added.
 - [x] User-facing format-function docs and release notes added.
-- [x] Dynamic-value predicate names reserved and rejected until a variant-like value model exists.
+- [x] Semi-structured variant predicates delegated to InQL RFC 026 instead of being accepted as JSON-text parser helpers.
