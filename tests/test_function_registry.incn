@@ -444,7 +444,7 @@ def _exercise_current_public_helpers() -> None:
     sha1(status)
     crc32(status)
     xxhash64(status)
-    parse_url(status, "host")
+    parse_url(status, "page")
     url_encode(status)
     url_decode(status)
     try_url_decode(status)
@@ -941,7 +941,7 @@ def test_function_registry__public_helpers_preserve_existing_behavior() -> None:
     hash_exprs = [md5(status), sha2(status, 256), sha224(status), sha256(status), sha384(status), sha512(status), sha1(
         status,
     ), crc32(status), xxhash64(status)]
-    format_exprs = [parse_url(status, "host"), url_encode(status), url_decode(status), try_url_decode(status), parse_json(
+    format_exprs = [parse_url(status, "page"), url_encode(status), url_decode(status), try_url_decode(status), parse_json(
         status,
     ), check_json(status), schema_of_json(status), get_json_object(status, "$.type"), json_extract_path_text(
         status,

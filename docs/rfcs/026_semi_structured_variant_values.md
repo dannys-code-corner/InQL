@@ -10,7 +10,7 @@
   - InQL RFC 022 (semi-structured and format functions)
   - InQL RFC 024 (function extension policy)
 - **Issue:** [InQL #52](https://github.com/dannys-code-corner/InQL/issues/52)
-- **RFC PR:** [InQL #49](https://github.com/dannys-code-corner/InQL/pull/49)
+- **RFC PR:** —
 - **Written against:** Incan v0.3-era InQL
 - **Shipped in:** —
 

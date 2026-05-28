@@ -489,7 +489,7 @@ def test_plan__core_scalar_extension_mappings_lower_to_substrait() -> None:
     _assert_scalar_expr_lowers(sha1(col("status")))
     _assert_scalar_expr_lowers(crc32(col("status")))
     _assert_scalar_expr_lowers(xxhash64(col("status")))
-    _assert_scalar_expr_lowers(parse_url(col("status"), "host"))
+    _assert_scalar_expr_lowers(parse_url(col("status"), "page"))
     _assert_scalar_expr_lowers(url_encode(col("status")))
     _assert_scalar_expr_lowers(url_decode(col("status")))
     _assert_scalar_expr_lowers(try_url_decode(col("status")))

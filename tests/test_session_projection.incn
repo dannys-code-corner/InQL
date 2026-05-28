@@ -298,13 +298,13 @@ def test_session_projection__collect_executes_json_url_and_csv_format_functions(
         "json_try_invalid",
         try_from_json(lit("{"), "STRUCT<type: STRING>"),
     ).with_column("json_string", to_json(lit("paid"))).with_column(
-        "url_host",
-        parse_url(lit("https://example.com/orders?id=7#top"), "host"),
+        "url_page",
+        parse_url(lit("https://example.com/orders?page=2&id=7#top"), "page"),
     ).with_column("url_encoded", url_encode(lit("a b"))).with_column("url_decoded", url_decode(lit("a%20b"))).with_column(
         "url_try_invalid",
         try_url_decode(lit("%zz")),
     ).with_column("csv_schema", schema_of_csv(csv_payload)).with_column(
-        "csv_json",
+        "csv_map",
         from_csv(csv_payload, "STRUCT<id: STRING, status: STRING>"),
     ).with_column("csv_line", to_csv(lit("[\"42\",\"paid\"]")))
     df = _collect_or_fail(session, projected)
@@ -316,11 +316,12 @@ def test_session_projection__collect_executes_json_url_and_csv_format_functions(
     assert len(resolved) == 19, "projection should expose all appended format outputs"
     assert payload.contains("click"), "JSON path extraction should return scalar text"
     assert payload.contains("{\"id\":7}"), "get_json_object should return nested JSON text"
-    assert payload.contains("example.com"), "parse_url should extract the host"
+    assert payload.contains("2"), "parse_url should extract arbitrary query parameter keys"
     assert payload.contains("a%20b"), "url_encode should percent-encode spaces"
     assert payload.contains("a b"), "url_decode should decode valid percent escapes"
     assert payload.contains("STRUCT<"), "schema helpers should emit deterministic schema text"
-    assert payload.contains("{\"id\":\"42\",\"status\":\"paid\"}"), "from_csv should use schema field names"
+    assert payload.contains("id: 42"), "from_csv should use schema field names in a logical map value"
+    assert payload.contains("status: paid"), "from_csv should retain CSV field values in a logical map value"
     assert payload.contains("42,paid"), "to_csv should serialize JSON arrays as CSV rows"
 
 

@@ -23,13 +23,28 @@ from substrait.function_extensions import FROM_CSV_FUNCTION_ANCHOR
 ))
 pub def from_csv(expr: ColumnExpr, schema: str) -> ColumnExpr:
     """
-    Parse one CSV row string into a JSON payload using an optional schema description for field names.
+    Parse one CSV row string into a logical map keyed by schema field names.
 
     Examples:
         row = from_csv(col("line"), "STRUCT<id: STRING, status: STRING>")
 
     Parameters:
         expr: String expression containing one CSV row.
-        schema: Explicit schema description used for output field names.
+        schema: Explicit schema description used for output keys, or an empty string for `_cN` positional keys.
     """
     return registered_application("from_csv", [expr, str_expr(schema)])
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        col,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+    )
+    def test_from_csv_builds_registered_application() -> None:
+        expr = from_csv(col("line"), "STRUCT<id: STRING, status: STRING>")
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "from_csv"
+        assert column_expr_argument_count(expr) == 2

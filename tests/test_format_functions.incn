@@ -4,9 +4,9 @@ from std.testing import assert_raises
 from functions import col, get_json_object, json_extract_path_text, parse_url
 
 
-def _call_parse_url_with_unknown_part() -> None:
-    """Call parse_url with an unsupported literal part for ValueError assertions."""
-    parse_url(col("landing_page"), "authority")
+def _call_parse_url_with_empty_part() -> None:
+    """Call parse_url with an empty literal key for ValueError assertions."""
+    parse_url(col("landing_page"), "")
     return
 
 
@@ -24,6 +24,6 @@ def _call_json_extract_path_text_with_invalid_path() -> None:
 
 def test_format_functions__literal_parse_options_are_validated_early() -> None:
     # -- Arrange / Act / Assert --
-    assert_raises[ValueError](_call_parse_url_with_unknown_part)
+    assert_raises[ValueError](_call_parse_url_with_empty_part)
     assert_raises[ValueError](_call_get_json_object_with_invalid_path)
     assert_raises[ValueError](_call_json_extract_path_text_with_invalid_path)

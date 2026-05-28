@@ -30,3 +30,18 @@ pub def to_json(expr: ColumnExpr) -> ColumnExpr:
         expr: String-backed scalar expression to serialize as JSON text.
     """
     return registered_application("to_json", [expr])
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        col,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+    )
+    def test_to_json_builds_registered_application() -> None:
+        expr = to_json(col("event_type"))
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "to_json"
+        assert column_expr_argument_count(expr) == 1

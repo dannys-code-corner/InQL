@@ -65,9 +65,9 @@ Reading a JSON file into a dataset remains a session/source operation, not a sca
 
 InQL should define JSON functions including `from_json`, `to_json`, `get_json_object`, `json_array_length`, `json_object_keys`, `schema_of_json`, `parse_json`, `check_json`, `json_extract_path_text`, and `try_from_json` where recoverable parse behavior is desired.
 
-InQL should define CSV value functions including `from_csv`, `to_csv`, and `schema_of_csv` only insofar as they operate on scalar values or schema descriptions. These functions must not replace the session CSV read/write contract.
+InQL should define CSV value functions including `from_csv`, `to_csv`, and `schema_of_csv` only insofar as they operate on scalar values or schema descriptions. `from_csv` returns a logical map keyed by schema field names, or `_cN` positional keys when no schema is supplied. These functions must not replace the session CSV read/write contract.
 
-InQL should define URL functions including `parse_url`, `url_encode`, `url_decode`, and `try_url_decode`, with exact invalid-input behavior recorded in the registry.
+InQL should define URL functions including `parse_url`, `url_encode`, `url_decode`, and `try_url_decode`, with exact invalid-input behavior recorded in the registry. `parse_url` extracts query parameter values by key.
 
 InQL should define hash functions including `crc32`, `md5`, `sha1`, `sha2`, and `xxhash64`, with input encoding and output representation specified.
 
@@ -122,9 +122,9 @@ This RFC is additive. It should not change existing CSV ingestion behavior.
 - Hash helpers operate on UTF-8 string bytes and return lowercase hexadecimal strings.
 - Portable concrete hash helpers are `md5`, `sha1`, `sha224`, `sha256`, `sha384`, `sha512`, `crc32`, and `xxhash64`, each with an honest Substrait extension mapping. The DataFusion adapter validates materialized execution for the full helper set, using native DataFusion functions where available and Incan-authored adapter callbacks where DataFusion has no built-in implementation.
 - `sha2(expr, bit_length)` is a compatibility helper, not a separate backend mapping. It rewrites to `sha224`, `sha256`, `sha384`, or `sha512` for supported literal bit lengths and rejects unsupported values.
-- URL helpers accept scalar URL or component strings. `url_decode(...)` is strict and fails malformed percent escapes; `try_url_decode(...)` returns null for malformed percent escapes.
+- URL helpers accept scalar URL or component strings. `parse_url(...)` returns the first query parameter value for a literal key. `url_decode(...)` is strict and fails malformed percent escapes; `try_url_decode(...)` returns null for malformed percent escapes.
 - JSON helpers accept scalar JSON payload strings. Strict helpers fail invalid JSON; `try_from_json(...)` returns null for invalid JSON; schema and path helpers are deterministic over the provided payload and literal schema/path arguments.
-- CSV helpers accept scalar row strings and explicit schema-description strings. They operate on payload values only and do not replace the session CSV read/write contract.
+- CSV helpers accept scalar row strings and explicit schema-description strings. Parsed CSV rows are logical maps rather than JSON text. They operate on payload values only and do not replace the session CSV read/write contract.
 - Semi-structured variant predicates such as `typeof`, `is_array`, `is_object`, `is_integer`, `is_timestamp`, and `is_null_value` belong to InQL RFC 026. RFC 022 does not accept them as JSON-text parser helpers.
 
 ## Implementation Plan

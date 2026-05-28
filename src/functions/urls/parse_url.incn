@@ -1,4 +1,4 @@
-"""URL component parsing helper."""
+"""URL query parameter parsing helper."""
 
 from function_registry import (
     FunctionClass,
@@ -22,19 +22,32 @@ from substrait.function_extensions import PARSE_URL_FUNCTION_ANCHOR
     error_behavior=FunctionErrorBehavior.InvalidInputDiagnostic,
     substrait=extension_mapping("parse_url", PARSE_URL_FUNCTION_ANCHOR),
 ))
-pub def parse_url(expr: ColumnExpr, part: str) -> ColumnExpr:
+pub def parse_url(expr: ColumnExpr, key: str) -> ColumnExpr:
     """
-    Extract one URL component such as `scheme`, `host`, `path`, `query`, `fragment`, `port`, `username`, or `password`.
+    Extract the first query parameter value for a key.
 
     Examples:
-        host = parse_url(col("landing_page"), "host")
+        page = parse_url(col("landing_page"), "page")
 
     Parameters:
         expr: String expression containing one absolute URL.
-        part: URL component to extract.
+        key: Query parameter key to extract.
     """
-    if part == "scheme" or part == "host" or part == "path" or part == "query" or part == "fragment" or part == "port" or part == "username" or part == "password":
-        return registered_application("parse_url", [expr, str_expr(part)])
-    return raise_value_error(
-        "parse_url part must be one of scheme, host, path, query, fragment, port, username, or password",
+    if key == "":
+        return raise_value_error("parse_url key must not be empty")
+    return registered_application("parse_url", [expr, str_expr(key)])
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        col,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
     )
+    def test_parse_url_builds_registered_application_for_query_parameter() -> None:
+        expr = parse_url(col("landing_page"), "page")
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "parse_url"
+        assert column_expr_argument_count(expr) == 2

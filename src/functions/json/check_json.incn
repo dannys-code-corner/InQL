@@ -30,3 +30,18 @@ pub def check_json(expr: ColumnExpr) -> ColumnExpr:
         expr: String expression containing a JSON payload.
     """
     return registered_application("check_json", [expr])
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        col,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+    )
+    def test_check_json_builds_registered_application() -> None:
+        expr = check_json(col("payload"))
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "check_json"
+        assert column_expr_argument_count(expr) == 1

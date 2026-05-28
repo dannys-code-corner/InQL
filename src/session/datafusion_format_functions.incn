@@ -1,19 +1,19 @@
 """DataFusion execution bridge for InQL-owned scalar format functions."""
 
 from rust::crc32fast import Hasher as Crc32Hasher
-from rust::datafusion::arrow::array import ArrayRef, BooleanArray, Int64Array, StringArray
+from rust::datafusion::arrow::array import Array, ArrayRef, BooleanArray, Int64Array, MapArray, StringArray
+from rust::datafusion::arrow::array::builder import MapBuilder, StringBuilder
 from rust::datafusion::arrow::datatypes import DataType
+from rust::datafusion::arrow::error import ArrowError
 from rust::datafusion::execution::context import SessionContext
 from rust::datafusion_common import DataFusionError, ScalarValue
 from rust::datafusion_expr import ColumnarValue, ScalarFunctionImplementation, ScalarUDF, Volatility, create_udf
-from rust::sha1 import Sha1
-from rust::sha2 import Digest
 from rust::std::primitive import i64 as RustI64, usize as RustUsize
 from rust::std::string import String as RustString
 from rust::std::sync import Arc
 from rust::url import Url
-from rust::xxhash_rust::xxh64 import Xxh64
 from std.encoding.hex import hexlify
+from std.hash import sha1 as std_sha1, xxh64 as std_xxh64
 from std.json import JsonError, JsonKind, JsonValue
 
 
@@ -68,7 +68,7 @@ pub def register_format_udfs(ctx: SessionContext) -> None:
     ctx.register_udf(
         _unary_string_udf("schema_of_csv", Arc.from((args) => _apply_unary_string("schema_of_csv", args.to_vec()))),
     )
-    ctx.register_udf(_binary_string_udf("from_csv", Arc.from((args) => _apply_binary_string("from_csv", args.to_vec()))))
+    ctx.register_udf(_binary_csv_map_udf("from_csv", Arc.from((args) => _apply_from_csv(args.to_vec()))))
     ctx.register_udf(_unary_string_udf("to_csv", Arc.from((args) => _apply_unary_string("to_csv", args.to_vec()))))
 
 
@@ -90,6 +90,17 @@ def _unary_int_udf(name: str, implementation: ScalarFunctionImplementation) -> S
 def _binary_string_udf(name: str, implementation: ScalarFunctionImplementation) -> ScalarUDF:
     """Create one binary string-to-string DataFusion UDF backed by Incan source."""
     return create_udf(name, [DataType.Utf8, DataType.Utf8], DataType.Utf8, Volatility.Immutable, implementation)
+
+
+def _binary_csv_map_udf(name: str, implementation: ScalarFunctionImplementation) -> ScalarUDF:
+    """Create one binary string-to-map DataFusion UDF for CSV row parsing."""
+    return create_udf(name, [DataType.Utf8, DataType.Utf8], _csv_map_data_type(), Volatility.Immutable, implementation)
+
+
+def _csv_map_data_type() -> DataType:
+    """Return the Arrow map type emitted by the CSV parser UDF."""
+    mut builder = MapBuilder.new(None, StringBuilder.new(), StringBuilder.new())
+    return builder.finish().data_type().clone()
 
 
 def _apply_unary_string(name: str, args: list[ColumnarValue]) -> Result[ColumnarValue, DataFusionError]:
@@ -157,6 +168,28 @@ def _apply_binary_string(name: str, args: list[ColumnarValue]) -> Result[Columna
     return Ok(ColumnarValue.Array(array_ref))
 
 
+def _apply_from_csv(args: list[ColumnarValue]) -> Result[ColumnarValue, DataFusionError]:
+    """Apply the CSV row parser as an Arrow map-returning DataFusion UDF."""
+    _require_arity(args, 2)?
+    if _all_scalar(args):
+        return Ok(
+            ColumnarValue.Scalar(
+                ScalarValue.Map(
+                    Arc.from(_csv_map_array([_string_at(args[0].clone(), 0)?], [_string_at(args[1].clone(), 0)?])?),
+                ),
+            ),
+        )
+
+    row_count = _row_count(args)?
+    mut values: list[Option[str]] = []
+    mut schemas: list[Option[str]] = []
+    for idx in range(row_count):
+        values.append(_string_at(args[0].clone(), idx)?)
+        schemas.append(_string_at(args[1].clone(), idx)?)
+    array_ref: ArrayRef = Arc.from(_csv_map_array(values, schemas)?)
+    return Ok(ColumnarValue.Array(array_ref))
+
+
 def _eval_unary_string(name: str, value: Option[str]) -> Result[Option[str], DataFusionError]:
     """Dispatch unary string-returning format functions."""
     match name:
@@ -197,14 +230,13 @@ def _eval_binary_string(name: str, left: Option[str], right: Option[str]) -> Res
         "json_extract_path_text" => return _json_path_value(left, right, true)
         "from_json" => return _from_json(left, right)
         "try_from_json" => return _try_from_json(left, right)
-        "from_csv" => return _from_csv(left, right)
         _ => return _datafusion_error(f"unknown binary format function `{name}`")
 
 
 def _hash_sha1(value: Option[str]) -> Result[Option[str], DataFusionError]:
-    """Hash one optional string with SHA-1."""
+    """Hash one optional string with std.hash SHA-1."""
     match value:
-        Some(text) => return Ok(Some(hexlify(_sha1_digest(_utf8_bytes(text)))))
+        Some(text) => return Ok(Some(hexlify(std_sha1.digest(_utf8_bytes(text)))))
         None => return Ok(None)
 
 
@@ -219,9 +251,9 @@ def _hash_crc32(value: Option[str]) -> Result[Option[str], DataFusionError]:
 
 
 def _hash_xxhash64(value: Option[str]) -> Result[Option[str], DataFusionError]:
-    """Hash one optional string with xxHash64."""
+    """Hash one optional string with std.hash xxHash64."""
     match value:
-        Some(text) => return Ok(Some(hexlify(_u64_to_be_bytes(_xxhash64(_utf8_bytes(text))))))
+        Some(text) => return Ok(Some(hexlify(_u64_to_be_bytes(std_xxh64.hash_u64(_utf8_bytes(text))))))
         None => return Ok(None)
 
 
@@ -278,39 +310,18 @@ def _try_url_decode(value: Option[str]) -> Result[Option[str], DataFusionError]:
 
 
 def _parse_url(value: Option[str], part: Option[str]) -> Result[Option[str], DataFusionError]:
-    """Extract one URL part with the Rust URL parser through Incan interop."""
+    """Extract the first query parameter value with the Rust URL parser."""
     match value:
         Some(raw_url) =>
             match part:
                 Some(raw_part) =>
                     match Url.parse(raw_url):
                         Ok(parsed) =>
-                            normalized = raw_part.lower()
-                            match normalized:
-                                "scheme" => return Ok(Some(f"{parsed.scheme()}"))
-                                "host" =>
-                                    match parsed.host_str():
-                                        Some(host) => return Ok(Some(f"{host}"))
-                                        None => return Ok(None)
-                                "path" => return Ok(Some(f"{parsed.path()}"))
-                                "query" =>
-                                    match parsed.query():
-                                        Some(query) => return Ok(Some(f"{query}"))
-                                        None => return Ok(None)
-                                "fragment" =>
-                                    match parsed.fragment():
-                                        Some(fragment) => return Ok(Some(f"{fragment}"))
-                                        None => return Ok(None)
-                                "port" =>
-                                    match parsed.port():
-                                        Some(port) => return Ok(Some(str(port)))
-                                        None => return Ok(None)
-                                "username" => return Ok(Some(f"{parsed.username()}"))
-                                "password" =>
-                                    match parsed.password():
-                                        Some(password) => return Ok(Some(f"{password}"))
-                                        None => return Ok(None)
-                                _ => return _datafusion_error(f"unknown parse_url part `{raw_part}`")
+                            for pair in parsed.query_pairs():
+                                key, query_value = pair
+                                if f"{key}" == raw_part:
+                                    return Ok(Some(f"{query_value}"))
+                            return Ok(None)
                         Err(err) => return _datafusion_error(err.to_string())
                 None => return Ok(None)
         None => return Ok(None)
@@ -418,26 +429,36 @@ def _schema_of_csv(value: Option[str]) -> Result[Option[str], DataFusionError]:
         None => return Ok(None)
 
 
-def _from_csv(value: Option[str], schema: Option[str]) -> Result[Option[str], DataFusionError]:
-    """Parse one CSV row string into a JSON array or schema-named object string."""
-    match value:
-        Some(text) =>
-            fields = _csv_fields(text)?
-            names = _csv_schema_field_names(schema.unwrap_or(""))
-            if len(names) == 0:
-                mut values: list[JsonValue] = []
-                for field in fields:
-                    values.append(JsonValue.string(field))
-                return Ok(Some(_json_text(JsonValue.array(values))?))
-
-            mut entries: Dict[str, JsonValue] = {}
-            for idx, name in enumerate(names):
-                if idx < len(fields):
-                    entries[name] = JsonValue.string(fields[idx])
+def _csv_map_array(values: list[Option[str]], schemas: list[Option[str]]) -> Result[MapArray, DataFusionError]:
+    """Parse CSV rows into Arrow maps keyed by schema names or positional `_cN` names."""
+    mut builder = MapBuilder.new(None, StringBuilder.new(), StringBuilder.new())
+    for row_idx, value in enumerate(values):
+        match value:
+            Some(text) =>
+                fields = _csv_fields(text)?
+                names = _csv_schema_field_names(schemas[row_idx].unwrap_or(""))
+                if len(names) == 0:
+                    for idx, field in enumerate(fields):
+                        builder.keys().append_value(f"_c{idx}")
+                        builder.values().append_value(field)
                 else:
-                    entries[name] = JsonValue.string("")
-            return Ok(Some(_json_text(JsonValue.object(entries))?))
-        None => return Ok(None)
+                    for idx, name in enumerate(names):
+                        builder.keys().append_value(name)
+                        if idx < len(fields):
+                            builder.values().append_value(fields[idx])
+                        else:
+                            empty_value = str("")
+                            builder.values().append_value(empty_value)
+                _append_csv_map_slot(builder.append(true))?
+            None => _append_csv_map_slot(builder.append(false))?
+    return Ok(builder.finish())
+
+
+def _append_csv_map_slot(result: Result[None, ArrowError]) -> Result[None, DataFusionError]:
+    """Convert Arrow map-builder append errors into the DataFusion UDF error channel."""
+    match result:
+        Ok(_) => return Ok(None)
+        Err(err) => return _datafusion_error(err.to_string())
 
 
 def _to_csv(value: Option[str]) -> Result[Option[str], DataFusionError]:
@@ -744,20 +765,6 @@ def _scalar_value_string(value: ScalarValue) -> Result[Option[str], DataFusionEr
 def _utf8_bytes(value: str) -> bytes:
     """Encode one Incan string as UTF-8 bytes."""
     return RustString.from(value).into_bytes()
-
-
-def _sha1_digest(data: bytes) -> bytes:
-    """Return SHA-1 digest bytes."""
-    mut hasher = Sha1.default()
-    Digest.update(hasher, data.as_slice())
-    return hasher.finalize_reset().to_vec()
-
-
-def _xxhash64(data: bytes) -> u64:
-    """Return xxHash64 with the same zero-seed contract as InQL's public helper."""
-    mut hasher = Xxh64.default()
-    hasher.update(data.as_slice())
-    return hasher.digest()
 
 
 def _u32_to_be_bytes(value: u32) -> bytes:

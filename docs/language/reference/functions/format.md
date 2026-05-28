@@ -16,7 +16,7 @@ The format catalog includes deterministic hashes, URL helpers, JSON helpers, and
 | `sha2(expr, bit_length)` | Compatibility helper that rewrites to `sha224`, `sha256`, `sha384`, or `sha512` for supported literal bit lengths. |
 | `crc32(expr)` | Return the lowercase eight-character hexadecimal CRC-32 digest for a string expression. |
 | `xxhash64(expr)` | Return the lowercase sixteen-character hexadecimal xxHash64 digest for a string expression. |
-| `parse_url(expr, part)` | Extract `scheme`, `host`, `path`, `query`, `fragment`, `port`, `username`, or `password` from a URL string. |
+| `parse_url(expr, key)` | Extract the first query parameter value for `key` from a URL string, returning null when the key is absent. |
 | `url_encode(expr)` | Percent-encode a URL component string. |
 | `url_decode(expr)` | Decode a percent-encoded URL component string and fail on malformed escapes. |
 | `try_url_decode(expr)` | Decode a percent-encoded URL component string, returning null on malformed escapes. |
@@ -31,18 +31,19 @@ The format catalog includes deterministic hashes, URL helpers, JSON helpers, and
 | `try_from_json(expr, schema)` | Validate JSON with an explicit schema description and return null when the payload is invalid. |
 | `to_json(expr)` | Serialize a scalar expression as JSON text. |
 | `schema_of_csv(expr)` | Infer a deterministic schema description from a CSV row string. |
-| `from_csv(expr, schema)` | Parse a CSV row string into a JSON payload string, using schema field names when provided. |
+| `from_csv(expr, schema)` | Parse a CSV row string into a logical map keyed by schema field names, or `_cN` positional keys when no schema is provided. |
 | `to_csv(expr)` | Serialize a scalar or JSON array/object payload as a CSV row string. |
 
 ```incan
-from pub::inql.functions import col, from_json, get_json_object, parse_url, sha2, to_json
+from pub::inql.functions import col, from_csv, from_json, get_json_object, parse_url, sha2, to_json
 
 projected = (
     events
         .with_column("user_hash", sha2(col("user_id"), 256))
-        .with_column("host", parse_url(col("landing_page"), "host"))
+        .with_column("campaign", parse_url(col("landing_page"), "utm_campaign"))
         .with_column("event_type", get_json_object(col("payload"), "$.type"))
         .with_column("payload_obj", from_json(col("payload"), "STRUCT<type: STRING>"))
+        .with_column("row_fields", from_csv(col("csv_line"), "STRUCT<id: STRING, status: STRING>"))
         .with_column("payload_out", to_json(col("event_type")))
 )
 ```
@@ -50,8 +51,8 @@ projected = (
 Hash helpers operate on UTF-8 string bytes and return lowercase hexadecimal strings. `sha2(...)` accepts `224`, `256`,
 `384`, and `512`; other digest lengths are rejected during expression construction.
 
-JSON and CSV helpers validate, normalize, and project payload text. They do not read external files or introduce a
-dynamic variant value type.
+JSON helpers validate, normalize, and project payload text. CSV parsing returns logical map values instead of JSON text.
+These helpers do not read external files or introduce a dynamic variant value type.
 
 The DataFusion adapter executes the full RFC 022 catalog with native DataFusion functions where available and
 Incan-authored adapter callbacks for helpers that DataFusion does not expose natively.

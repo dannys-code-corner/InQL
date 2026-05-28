@@ -14,7 +14,4 @@ datafusion_common = { package = "datafusion-common", version = "53" }
 datafusion_expr = { package = "datafusion-expr", version = "53" }
 datafusion-substrait = { version = "53", features = ["protoc"] }
 crc32fast = "1.5"
-sha1 = "0.10"
-sha2 = "0.10.9"
 url = "2.5"
-xxhash_rust = { package = "xxhash-rust", version = "0.8", features = ["xxh64"] }

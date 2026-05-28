@@ -11,3 +11,17 @@ pub def json_path_expr(path: str) -> ColumnExpr:
     if len(path) >= 2 and path[0] == "$" and (path[1] == "." or path[1] == "["):
         return str_expr(path)
     return raise_value_error("JSON path must be `$`, start with `$.`, or start with `$[`")
+
+
+module tests:
+    from std.testing import assert_raises
+    from projection_builders import ColumnExprKind, column_expr_kind
+    def _invalid_json_path_expr() -> None:
+        json_path_expr("type")
+        return
+    def test_json_path_expr_accepts_json_path_prefixes() -> None:
+        assert column_expr_kind(json_path_expr("$")) == ColumnExprKind.StringLiteral
+        assert column_expr_kind(json_path_expr("$.type")) == ColumnExprKind.StringLiteral
+        assert column_expr_kind(json_path_expr("$[0]")) == ColumnExprKind.StringLiteral
+    def test_json_path_expr_rejects_relative_paths() -> None:
+        assert_raises[ValueError](_invalid_json_path_expr)

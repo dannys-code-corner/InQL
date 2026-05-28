@@ -3,8 +3,8 @@
 
 [incan]
 format = 1
-incan-version = "0.3.0-rc23"
-deps-fingerprint = "sha256:825926ed0a97c47f458cb9e9ed6c142473cb37e7f047d3de1a32263f1cef5097"
+incan-version = "0.3.0-rc24"
+deps-fingerprint = "sha256:c857db33615865c432fa4c9b3947975ccb4255249143ecc1676c26e85981aafb"
 cargo-features = []
 cargo-no-default-features = false
 cargo-all-features = false
@@ -1824,14 +1824,14 @@ dependencies = [
 
 [[package]]
 name = "incan_core"
-version = "0.3.0-rc23"
+version = "0.3.0-rc24"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "incan_derive"
-version = "0.3.0-rc23"
+version = "0.3.0-rc24"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1840,7 +1840,7 @@ dependencies = [
 
 [[package]]
 name = "incan_stdlib"
-version = "0.3.0-rc23"
+version = "0.3.0-rc24"
 dependencies = [
  "incan_core",
  "incan_derive",
@@ -1864,8 +1864,10 @@ dependencies = [
 
 [[package]]
 name = "inql"
-version = "0.3.0-rc23"
+version = "0.3.0-rc24"
 dependencies = [
+ "blake2",
+ "blake3",
  "byteorder",
  "crc32fast",
  "datafusion",
@@ -1875,12 +1877,14 @@ dependencies = [
  "encoding_rs",
  "incan_derive",
  "incan_stdlib",
+ "md-5",
  "prost",
  "prost-types",
  "rustix",
  "serde",
  "sha1",
  "sha2",
+ "sha3",
  "substrait 0.63.0",
  "url",
  "xxhash-rust",
@@ -1927,6 +1931,15 @@ dependencies = [
  "futures-util",
  "once_cell",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "keccak"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb26cec98cce3a3d96cbb7bced3c4b16e3d13f27ec56dbd62cbc8f39cfb9d653"
+dependencies = [
+ "cpufeatures 0.2.17",
 ]
 
 [[package]]
@@ -2094,9 +2107,9 @@ dependencies = [
 
 [[package]]
 name = "mio"
-version = "1.2.0"
+version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "50b7e5b27aa02a74bac8c3f23f448f8d87ff11f92d3aac1a6ed369ee08cc56c1"
+checksum = "02bd0af71c67b473010cbbc60715ee815645a4dc942899111f494b4b737d6fda"
 dependencies = [
  "libc",
  "wasi",
@@ -2764,6 +2777,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "sha3"
+version = "0.10.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77fd7028345d415a4034cf8777cd4f8ab1851274233b45f84e3d955502d93874"
+dependencies = [
+ "digest",
+ "keccak",
+]
+
+[[package]]
 name = "shlex"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2807,9 +2830,9 @@ checksum = "1b6b67fb9a61334225b5b790716f609cd58395f895b3fe8b328786812a40bc3b"
 
 [[package]]
 name = "socket2"
-version = "0.6.3"
+version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a766e1110788c36f4fa1c2b71b387a7815aa65f88ce0229841826633d93723e"
+checksum = "52d1cfed4120b4d927bf7c0f86d2087a4a7d6027c906d9f9d525a80573b9be51"
 dependencies = [
  "libc",
  "windows-sys",
