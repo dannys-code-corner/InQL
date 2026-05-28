@@ -21,10 +21,10 @@ summary = (
 
 `approx_count_distinct` is registered as an approximate aggregate with HyperLogLog-family metadata. The portable author
 contract is an approximate non-null distinct-count estimate; the first slice does not expose a user-tunable relative
-error parameter because the standard Substrait mapping for this function is unary. Backend adapters must keep this
+error parameter because the registered InQL Substrait extension mapping for this function is unary. Backend adapters must keep this
 approximation visible in capability/error handling rather than redefining exact `count_distinct` semantics.
 
-The helper lowers through the standard Substrait `approx_count_distinct` aggregate extension name. The DataFusion
+The helper lowers through the registered InQL Substrait `approx_count_distinct` aggregate extension name. The DataFusion
 adapter maps that declaration to DataFusion's `approx_distinct` implementation name at the backend boundary.
 
 Approximate percentile functions, sketch-state values, sketch serialization, and sketch merge/estimate helpers remain

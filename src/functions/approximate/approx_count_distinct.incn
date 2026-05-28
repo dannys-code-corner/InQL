@@ -12,12 +12,12 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import function_registry
+from functions.registry import register_function
 from projection_builders import ColumnExpr, col, column_expr_name
 from substrait.function_extensions import APPROX_COUNT_DISTINCT_FUNCTION_ANCHOR
 
 
-@function_registry.add("approx_count_distinct", approx_count_distinct_spec(
+@register_function(approx_count_distinct_spec(
     FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
     FunctionNullBehavior.NullSkippingAggregate,
     extension_mapping("approx_count_distinct", APPROX_COUNT_DISTINCT_FUNCTION_ANCHOR),

@@ -120,14 +120,14 @@ This RFC is additive. Existing exact aggregates must not change semantics when a
   and its helper name makes approximate execution an explicit author choice.
 - `approx_count_distinct` is registered as approximate metadata with HyperLogLog-family semantics, mergeability, and an
   approximate cardinality-result interpretation.
-- The first slice follows the standard Substrait unary `approx_count_distinct` aggregate mapping. It does not expose a
-  user-tunable relative-error parameter because the validated standard mapping does not carry one.
-- DataFusion's implementation is named `approx_distinct`; InQL keeps the standard Substrait function name in emitted
+- The first slice follows InQL's registered unary Substrait extension mapping for `approx_count_distinct`. It does not
+  expose a user-tunable relative-error parameter because the validated mapping does not carry one.
+- DataFusion's implementation is named `approx_distinct`; InQL keeps the InQL Substrait function name in emitted
   function metadata and rewrites only the DataFusion consumer declaration at the backend adapter boundary.
 - `approx_count_distinct` allows aggregate-local filters and rejects an extra `distinct()` modifier because distinct
   estimation is already the helper's semantics.
-- `approx_percentile` is not implemented in this slice because the local Substrait aggregate-approx extension has a
-  standard `approx_count_distinct` mapping but no matching standard approximate percentile contract to preserve.
+- `approx_percentile` is not implemented in this slice because InQL has a registered `approx_count_distinct` mapping
+  but no matching approximate percentile contract to preserve.
 - Sketch-state construction, merge, estimate, serialization, and deserialization helpers remain future work until InQL
   has explicit sketch logical types and compatibility rules.
 
@@ -145,7 +145,7 @@ This RFC is additive. Existing exact aggregates must not change semantics when a
 
 1. Add registry approximation metadata with exact-helper defaults.
 2. Add `approx_count_distinct(expr)` under a logical approximate function family.
-3. Add a stable Substrait anchor and keep emitted function metadata on the standard `approx_count_distinct` name.
+3. Add a stable Substrait anchor and keep emitted function metadata on the InQL `approx_count_distinct` extension name.
 4. Add a DataFusion adapter-local rewrite to `approx_distinct` for the first backend.
 5. Add focused helper, registry, Substrait lowering, Prism, and DataFusion-backed session tests with materialized output.
 6. Add user-facing approximate-function docs, aggregate-builder docs, and release notes.

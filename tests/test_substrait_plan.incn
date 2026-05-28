@@ -642,7 +642,7 @@ def test_plan__aggregate_rel_lowers_approx_count_distinct() -> None:
     assert relation_kind_name(aggregated) == "AggregateRel", "approximate aggregate lowering should emit AggregateRel"
     assert plan_has_extension_urn(plan, registered_substrait_extension_uris()[0]), "approximate aggregate plans should register aggregate extensions"
     assert output_columns == ["id", "approx_count_distinct_id"], "approximate aggregate output names should remain stable"
-    assert aggregate_functions == ["approx_count_distinct"], "approx_count_distinct should keep its standard Substrait function name"
+    assert aggregate_functions == ["approx_count_distinct"], "approx_count_distinct should keep its InQL Substrait extension name"
     assert aggregate_invocations == ["All"], "approx_count_distinct should not lower as an exact DISTINCT invocation"
 
 
