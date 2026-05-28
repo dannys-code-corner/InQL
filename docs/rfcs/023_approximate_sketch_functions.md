@@ -1,6 +1,6 @@
 # InQL RFC 023: Approximate and sketch functions
 
-- **Status:** In Progress
+- **Status:** Implemented
 - **Created:** 2026-04-27
 - **Author(s):** Danny Meijer (@dannymeijer)
 - **Related:**
@@ -13,7 +13,7 @@
 - **Issue:** [InQL #40](https://github.com/dannys-code-corner/InQL/issues/40)
 - **RFC PR:** [InQL #50](https://github.com/dannys-code-corner/InQL/pull/50)
 - **Written against:** Incan v0.3-era InQL
-- **Shipped in:** —
+- **Shipped in:** v0.1
 
 ## Summary
 
