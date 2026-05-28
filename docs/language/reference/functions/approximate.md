@@ -37,6 +37,6 @@ Both helpers lower through registered InQL Substrait aggregate extension names. 
 `approx_percentile_cont` at the backend boundary.
 
 Sketch-state construction, merge, estimate, serialization, and deserialization helpers are not exposed as lowerable
-portable functions in RFC 023. InQL does not yet have a logical sketch value type that can encode sketch family, value
-domain, merge compatibility, and serialized format version, so exposing those helpers as strings or binary payloads
-would violate the RFC's type-safety requirement. The names remain reserved for a future typed sketch-value RFC.
+portable functions in RFC 023. They are delegated to InQL RFC 025, which defines typed sketch logical values with sketch
+family, value domain, merge compatibility, and serialized format identity. Exposing those helpers as strings or binary
+payloads would violate the RFC 023 type-safety requirement.

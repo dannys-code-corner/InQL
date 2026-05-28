@@ -9,6 +9,7 @@
   - InQL RFC 016 (core aggregate functions)
   - InQL RFC 017 (aggregate modifiers)
   - InQL RFC 024 (function extension policy)
+  - InQL RFC 025 (typed sketch logical values)
 - **Issue:** [InQL #40](https://github.com/dannys-code-corner/InQL/issues/40)
 - **RFC PR:** [InQL #50](https://github.com/dannys-code-corner/InQL/pull/50)
 - **Written against:** Incan v0.3-era InQL
@@ -16,7 +17,7 @@
 
 ## Summary
 
-This RFC defines the portable approximate aggregate boundary for InQL and records the sketch-state policy decision. InQL exposes explicit approximate aggregates for distinct counts and percentiles. It does not expose sketch-state construction, merge, estimate, serialization, or deserialization helpers as portable functions until the language has typed sketch values; those names are reserved rather than implemented as ordinary string or binary functions.
+This RFC defines the portable approximate aggregate boundary for InQL and records the sketch-state policy decision. InQL exposes explicit approximate aggregates for distinct counts and percentiles. It delegates sketch-state construction, merge, estimate, serialization, and deserialization helpers to InQL RFC 025 because those helpers require typed sketch logical values rather than ordinary string or binary payloads.
 
 ## Motivation
 
@@ -30,12 +31,12 @@ If sketches are added as ordinary functions returning untyped bytes, InQL will n
 - Implement portable `approx_count_distinct` and `approx_percentile` aggregate helpers.
 - Require accuracy/error parameters to be part of function signatures when a portable helper supports them.
 - Preserve InQL-owned Substrait extension names and keep backend implementation names at the adapter boundary.
-- Reserve sketch-state function names until sketch state can be modeled as an explicit typed value family.
+- Reserve sketch-state function names for InQL RFC 025, where sketch state is modeled as an explicit typed value family.
 
 ## Non-Goals
 
 - Making approximate functions part of the exact core aggregate contract.
-- Exposing sketch state as string or binary payloads before InQL has sketch logical types.
+- Exposing sketch state as string or binary payloads instead of the typed sketch logical values defined by InQL RFC 025.
 - Guaranteeing bit-for-bit compatibility with Spark or any other engine.
 - Defining geospatial, cryptographic, or physical execution metadata functions.
 
@@ -66,7 +67,7 @@ Approximate aggregate functions must be registered as approximate. Their registr
 
 `approx_percentile(expr, percentile, accuracy=10000)` returns an approximate percentile estimate over numeric non-null expression values. `percentile` is a literal fraction in the inclusive range `[0.0, 1.0]`. `accuracy` is a positive integer approximation hint carried as a normal aggregate argument. The portable contract is an approximate percentile estimate, not a bit-for-bit promise of one backend's interpolation or sketch representation.
 
-Sketch-construction functions are reserved and not lowerable in this RFC. When they are introduced, they must return typed sketch values, not untyped binary blobs. Sketch values may have opaque runtime representation, but their logical type must identify the sketch family and value domain.
+Sketch-construction functions are reserved for InQL RFC 025 and are not lowerable in this RFC. When they are introduced, they must return typed sketch values, not untyped binary blobs. Sketch values may have opaque runtime representation, but their logical type must identify the sketch family and value domain.
 
 Sketch union, intersection, estimation, serialization, and deserialization functions are likewise reserved until InQL can accept only compatible sketch types and reject incompatible sketch-family or value-domain combinations before execution.
 
@@ -76,7 +77,7 @@ If serialized sketch formats are exposed, format versioning and cross-version co
 
 ### Syntax
 
-This RFC permits ordinary function-call syntax for approximate aggregate functions. Reserved sketch helpers will use the same call style if a later typed sketch-value RFC admits them. RFC 023 does not require special query syntax.
+This RFC permits ordinary function-call syntax for approximate aggregate functions. Reserved sketch helpers will use the same call style if InQL RFC 025 admits them. RFC 023 does not require special query syntax.
 
 ### Semantics
 
@@ -132,14 +133,14 @@ This RFC is additive. Existing exact aggregates must not change semantics when a
   estimation is already the helper's semantics.
 - `approx_percentile` allows aggregate-local filters and rejects `distinct()` and ordered input because those modifiers
   are not part of the portable percentile aggregate contract.
-- Sketch-state construction, merge, estimate, serialization, and deserialization helpers are reserved but not exposed as
-  lowerable functions. InQL currently has no sketch logical value type, and exposing those helpers as ordinary strings or
-  binary values would violate the compatibility rules this RFC is meant to protect.
+- Sketch-state construction, merge, estimate, serialization, and deserialization helpers are delegated to InQL RFC 025.
+  They are not exposed as lowerable RFC 023 functions because exposing those helpers as ordinary strings or binary values
+  would violate the compatibility rules this RFC is meant to protect.
 
 ### Remaining
 
-- A future sketch-value RFC may define typed sketch state, portable serialization formats, and named merge/estimate
-  helpers. That work must not retrofit RFC 023 by treating untyped binary payloads as sketch values.
+- InQL RFC 025 defines the follow-up design space for typed sketch state, portable serialization formats, and named
+  merge/estimate helpers. That work must not retrofit RFC 023 by treating untyped binary payloads as sketch values.
 - A future backend-capability layer may expose backend-specific approximation knobs as engine-specific functions or
   options when they cannot be represented by the portable helper signatures.
 
@@ -152,7 +153,7 @@ This RFC is additive. Existing exact aggregates must not change semantics when a
 4. Add DataFusion adapter-local declaration rewrites to the first backend's implementation names.
 5. Add focused helper, registry, Substrait lowering, Prism, and DataFusion-backed session tests with materialized output.
 6. Add user-facing approximate-function docs, aggregate-builder docs, and release notes.
-7. Record sketch-state helper names as reserved/rejected until typed sketch logical values exist.
+7. Record sketch-state helper names as reserved for InQL RFC 025.
 
 ## Progress Checklist
 
@@ -164,5 +165,5 @@ This RFC is additive. Existing exact aggregates must not change semantics when a
 - [x] DataFusion adapter-local approximate aggregate mappings added.
 - [x] Focused helper, registry, Substrait lowering, Prism, and DataFusion-backed session tests added.
 - [x] User-facing approximate-function docs, aggregate-builder docs, and release notes added.
-- [x] Sketch-state logical types and sketch merge/estimate/serialization helpers reserved rather than exposed as untyped
-      lowerable functions.
+- [x] Sketch-state logical types and sketch merge/estimate/serialization helpers delegated to InQL RFC 025 rather than
+      exposed as untyped lowerable functions.
