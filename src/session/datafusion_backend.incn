@@ -56,6 +56,7 @@ from rust::datafusion::logical_expr::expr import (
     Between as DataFusionBetween,
     BinaryExpr as DataFusionBinaryExpr,
     NullTreatment as DataFusionNullTreatment,
+    ScalarFunction as DataFusionScalarFunction,
     Sort as DataFusionSort,
     WindowFunction as DataFusionWindowFunction,
     WindowFunctionParams as DataFusionWindowFunctionParams,
@@ -1370,6 +1371,9 @@ def _datafusion_scalar_function_expr(
         return _datafusion_common_math_expr("floor", rendered_args)
     if function_name == "round":
         return _datafusion_common_math_expr("round", rendered_args)
+    match ctx.state().udf(function_name):
+        Ok(udf) => return Ok(DataFusionExpr.ScalarFunction(DataFusionScalarFunction.new_udf(udf, rendered_args)))
+        Err(_) => pass
     return Err(
         _unsupported_window_expr(f"window expression bridge does not yet translate scalar function `{function_name}`"),
     )
