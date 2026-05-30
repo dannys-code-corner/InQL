@@ -11,7 +11,7 @@
   - InQL RFC 024 (function extension policy)
   - InQL RFC 025 (typed sketch logical values)
 - **Issue:** [InQL #40](https://github.com/dannys-code-corner/InQL/issues/40)
-- **RFC PR:** —
+- **RFC PR:** [InQL #53](https://github.com/dannys-code-corner/InQL/pull/53)
 - **Written against:** Incan v0.3-era InQL
 - **Shipped in:** v0.1
 
