@@ -7,7 +7,7 @@ from rust::datafusion::arrow::datatypes import DataType
 from rust::datafusion::arrow::error import ArrowError
 from rust::datafusion::execution::context import SessionContext
 from rust::datafusion_common import DataFusionError, ScalarValue
-from rust::datafusion_expr import ColumnarValue, ScalarFunctionImplementation, ScalarUDF, Volatility, create_udf
+from rust::datafusion_expr import ColumnarValue, ScalarUDF, Volatility, create_udf
 from rust::std::primitive import i64 as RustI64, usize as RustUsize
 from rust::std::string import String as RustString
 from rust::std::sync import Arc
@@ -17,84 +17,235 @@ from std.hash import sha1 as std_sha1, xxh64 as std_xxh64
 from std.json import JsonError, JsonKind, JsonValue
 
 
+@derive(Clone)
+enum DataFusionFormatFunction(str):
+    """Format UDFs that InQL must provide to DataFusion itself."""
+
+    Sha1 = "sha1"
+    Crc32 = "crc32"
+    Xxhash64 = "xxhash64"
+    UrlEncode = "url_encode"
+    UrlDecode = "url_decode"
+    TryUrlDecode = "try_url_decode"
+    ParseUrl = "parse_url"
+    ParseJson = "parse_json"
+    CheckJson = "check_json"
+    SchemaOfJson = "schema_of_json"
+    JsonArrayLength = "json_array_length"
+    JsonObjectKeys = "json_object_keys"
+    GetJsonObject = "get_json_object"
+    JsonExtractPathText = "json_extract_path_text"
+    FromJson = "from_json"
+    TryFromJson = "try_from_json"
+    ToJson = "to_json"
+    SchemaOfCsv = "schema_of_csv"
+    FromCsv = "from_csv"
+    ToCsv = "to_csv"
+
+
 pub def register_format_udfs(ctx: SessionContext) -> None:
     """Register RFC 022 scalar format functions that DataFusion does not expose natively."""
-    # DataFusion stores UDF callbacks as 'static Rust closures. Keep the captured function identity as a literal inside
-    # each callback instead of borrowing a constructor-local name.
-    ctx.register_udf(_unary_string_udf("sha1", Arc.from((args) => _apply_unary_string("sha1", args.to_vec()))))
-    ctx.register_udf(_unary_string_udf("crc32", Arc.from((args) => _apply_unary_string("crc32", args.to_vec()))))
-    ctx.register_udf(_unary_string_udf("xxhash64", Arc.from((args) => _apply_unary_string("xxhash64", args.to_vec()))))
-    ctx.register_udf(
-        _unary_string_udf("url_encode", Arc.from((args) => _apply_unary_string("url_encode", args.to_vec()))),
-    )
-    ctx.register_udf(
-        _unary_string_udf("url_decode", Arc.from((args) => _apply_unary_string("url_decode", args.to_vec()))),
-    )
-    ctx.register_udf(
-        _unary_string_udf("try_url_decode", Arc.from((args) => _apply_unary_string("try_url_decode", args.to_vec()))),
-    )
-    ctx.register_udf(
-        _binary_string_udf("parse_url", Arc.from((args) => _apply_binary_string("parse_url", args.to_vec()))),
-    )
-    ctx.register_udf(
-        _unary_string_udf("parse_json", Arc.from((args) => _apply_unary_string("parse_json", args.to_vec()))),
-    )
-    ctx.register_udf(_unary_bool_udf("check_json", Arc.from((args) => _apply_unary_bool("check_json", args.to_vec()))))
-    ctx.register_udf(
-        _unary_string_udf("schema_of_json", Arc.from((args) => _apply_unary_string("schema_of_json", args.to_vec()))),
-    )
-    ctx.register_udf(
-        _unary_int_udf("json_array_length", Arc.from((args) => _apply_unary_int("json_array_length", args.to_vec()))),
-    )
-    ctx.register_udf(
-        _unary_string_udf("json_object_keys", Arc.from((args) => _apply_unary_string("json_object_keys", args.to_vec()))),
-    )
-    ctx.register_udf(
-        _binary_string_udf("get_json_object", Arc.from((args) => _apply_binary_string("get_json_object", args.to_vec()))),
-    )
-    ctx.register_udf(
-        _binary_string_udf(
-            "json_extract_path_text",
-            Arc.from((args) => _apply_binary_string("json_extract_path_text", args.to_vec())),
-        ),
-    )
-    ctx.register_udf(
-        _binary_string_udf("from_json", Arc.from((args) => _apply_binary_string("from_json", args.to_vec()))),
-    )
-    ctx.register_udf(
-        _binary_string_udf("try_from_json", Arc.from((args) => _apply_binary_string("try_from_json", args.to_vec()))),
-    )
-    ctx.register_udf(_unary_string_udf("to_json", Arc.from((args) => _apply_unary_string("to_json", args.to_vec()))))
-    ctx.register_udf(
-        _unary_string_udf("schema_of_csv", Arc.from((args) => _apply_unary_string("schema_of_csv", args.to_vec()))),
-    )
-    ctx.register_udf(_binary_csv_map_udf("from_csv", Arc.from((args) => _apply_from_csv(args.to_vec()))))
-    ctx.register_udf(_unary_string_udf("to_csv", Arc.from((args) => _apply_unary_string("to_csv", args.to_vec()))))
+    for function in _format_udf_catalog():
+        ctx.register_udf(_format_udf(function))
 
 
-def _unary_string_udf(name: str, implementation: ScalarFunctionImplementation) -> ScalarUDF:
-    """Create one unary string-to-string DataFusion UDF backed by Incan source."""
-    return create_udf(name, [DataType.Utf8], DataType.Utf8, Volatility.Immutable, implementation)
+def _format_udf_catalog() -> list[DataFusionFormatFunction]:
+    """Return the complete adapter-owned RFC 022 DataFusion UDF catalog."""
+    mut functions: list[DataFusionFormatFunction] = []
+
+    # Keep this grouped by public function family so it can be compared against the RFC 022 catalog quickly.
+    functions.append(DataFusionFormatFunction.Sha1)
+    functions.append(DataFusionFormatFunction.Crc32)
+    functions.append(DataFusionFormatFunction.Xxhash64)
+
+    # URL helpers are string-valued except parse_url, which accepts a selector key.
+    functions.append(DataFusionFormatFunction.UrlEncode)
+    functions.append(DataFusionFormatFunction.UrlDecode)
+    functions.append(DataFusionFormatFunction.TryUrlDecode)
+    functions.append(DataFusionFormatFunction.ParseUrl)
+
+    # JSON helpers share text input, but return strings, booleans, ints, or selector-based strings.
+    functions.append(DataFusionFormatFunction.ParseJson)
+    functions.append(DataFusionFormatFunction.CheckJson)
+    functions.append(DataFusionFormatFunction.SchemaOfJson)
+    functions.append(DataFusionFormatFunction.JsonArrayLength)
+    functions.append(DataFusionFormatFunction.JsonObjectKeys)
+    functions.append(DataFusionFormatFunction.GetJsonObject)
+    functions.append(DataFusionFormatFunction.JsonExtractPathText)
+    functions.append(DataFusionFormatFunction.FromJson)
+    functions.append(DataFusionFormatFunction.TryFromJson)
+    functions.append(DataFusionFormatFunction.ToJson)
+
+    # CSV parsing returns an Arrow map so callers can inspect typed field names in materialized results.
+    functions.append(DataFusionFormatFunction.SchemaOfCsv)
+    functions.append(DataFusionFormatFunction.FromCsv)
+    functions.append(DataFusionFormatFunction.ToCsv)
+    return functions
 
 
-def _unary_bool_udf(name: str, implementation: ScalarFunctionImplementation) -> ScalarUDF:
-    """Create one unary string-to-boolean DataFusion UDF backed by Incan source."""
-    return create_udf(name, [DataType.Utf8], DataType.Boolean, Volatility.Immutable, implementation)
-
-
-def _unary_int_udf(name: str, implementation: ScalarFunctionImplementation) -> ScalarUDF:
-    """Create one unary string-to-int DataFusion UDF backed by Incan source."""
-    return create_udf(name, [DataType.Utf8], DataType.Int64, Volatility.Immutable, implementation)
-
-
-def _binary_string_udf(name: str, implementation: ScalarFunctionImplementation) -> ScalarUDF:
-    """Create one binary string-to-string DataFusion UDF backed by Incan source."""
-    return create_udf(name, [DataType.Utf8, DataType.Utf8], DataType.Utf8, Volatility.Immutable, implementation)
-
-
-def _binary_csv_map_udf(name: str, implementation: ScalarFunctionImplementation) -> ScalarUDF:
-    """Create one binary string-to-map DataFusion UDF for CSV row parsing."""
-    return create_udf(name, [DataType.Utf8, DataType.Utf8], _csv_map_data_type(), Volatility.Immutable, implementation)
+def _format_udf(function: DataFusionFormatFunction) -> ScalarUDF:
+    """Create the DataFusion UDF for one adapter-owned format function."""
+    match function:
+        DataFusionFormatFunction.Sha1 =>
+            return create_udf(
+                function.value(),
+                [DataType.Utf8],
+                DataType.Utf8,
+                Volatility.Immutable,
+                Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.Sha1, args.to_vec())),
+            )
+        DataFusionFormatFunction.Crc32 =>
+            return create_udf(
+                function.value(),
+                [DataType.Utf8],
+                DataType.Utf8,
+                Volatility.Immutable,
+                Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.Crc32, args.to_vec())),
+            )
+        DataFusionFormatFunction.Xxhash64 =>
+            return create_udf(
+                function.value(),
+                [DataType.Utf8],
+                DataType.Utf8,
+                Volatility.Immutable,
+                Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.Xxhash64, args.to_vec())),
+            )
+        DataFusionFormatFunction.UrlEncode =>
+            return create_udf(
+                function.value(),
+                [DataType.Utf8],
+                DataType.Utf8,
+                Volatility.Immutable,
+                Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.UrlEncode, args.to_vec())),
+            )
+        DataFusionFormatFunction.UrlDecode =>
+            return create_udf(
+                function.value(),
+                [DataType.Utf8],
+                DataType.Utf8,
+                Volatility.Immutable,
+                Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.UrlDecode, args.to_vec())),
+            )
+        DataFusionFormatFunction.TryUrlDecode =>
+            return create_udf(
+                function.value(),
+                [DataType.Utf8],
+                DataType.Utf8,
+                Volatility.Immutable,
+                Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.TryUrlDecode, args.to_vec())),
+            )
+        DataFusionFormatFunction.ParseUrl =>
+            return create_udf(
+                function.value(),
+                [DataType.Utf8, DataType.Utf8],
+                DataType.Utf8,
+                Volatility.Immutable,
+                Arc.from((args) => _apply_binary_string(DataFusionFormatFunction.ParseUrl, args.to_vec())),
+            )
+        DataFusionFormatFunction.ParseJson =>
+            return create_udf(
+                function.value(),
+                [DataType.Utf8],
+                DataType.Utf8,
+                Volatility.Immutable,
+                Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.ParseJson, args.to_vec())),
+            )
+        DataFusionFormatFunction.CheckJson =>
+            return create_udf(
+                function.value(),
+                [DataType.Utf8],
+                DataType.Boolean,
+                Volatility.Immutable,
+                Arc.from((args) => _apply_unary_bool(DataFusionFormatFunction.CheckJson, args.to_vec())),
+            )
+        DataFusionFormatFunction.SchemaOfJson =>
+            return create_udf(
+                function.value(),
+                [DataType.Utf8],
+                DataType.Utf8,
+                Volatility.Immutable,
+                Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.SchemaOfJson, args.to_vec())),
+            )
+        DataFusionFormatFunction.JsonArrayLength =>
+            return create_udf(
+                function.value(),
+                [DataType.Utf8],
+                DataType.Int64,
+                Volatility.Immutable,
+                Arc.from((args) => _apply_unary_int(DataFusionFormatFunction.JsonArrayLength, args.to_vec())),
+            )
+        DataFusionFormatFunction.JsonObjectKeys =>
+            return create_udf(
+                function.value(),
+                [DataType.Utf8],
+                DataType.Utf8,
+                Volatility.Immutable,
+                Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.JsonObjectKeys, args.to_vec())),
+            )
+        DataFusionFormatFunction.GetJsonObject =>
+            return create_udf(
+                function.value(),
+                [DataType.Utf8, DataType.Utf8],
+                DataType.Utf8,
+                Volatility.Immutable,
+                Arc.from((args) => _apply_binary_string(DataFusionFormatFunction.GetJsonObject, args.to_vec())),
+            )
+        DataFusionFormatFunction.JsonExtractPathText =>
+            return create_udf(
+                function.value(),
+                [DataType.Utf8, DataType.Utf8],
+                DataType.Utf8,
+                Volatility.Immutable,
+                Arc.from((args) => _apply_binary_string(DataFusionFormatFunction.JsonExtractPathText, args.to_vec())),
+            )
+        DataFusionFormatFunction.FromJson =>
+            return create_udf(
+                function.value(),
+                [DataType.Utf8, DataType.Utf8],
+                DataType.Utf8,
+                Volatility.Immutable,
+                Arc.from((args) => _apply_binary_string(DataFusionFormatFunction.FromJson, args.to_vec())),
+            )
+        DataFusionFormatFunction.TryFromJson =>
+            return create_udf(
+                function.value(),
+                [DataType.Utf8, DataType.Utf8],
+                DataType.Utf8,
+                Volatility.Immutable,
+                Arc.from((args) => _apply_binary_string(DataFusionFormatFunction.TryFromJson, args.to_vec())),
+            )
+        DataFusionFormatFunction.ToJson =>
+            return create_udf(
+                function.value(),
+                [DataType.Utf8],
+                DataType.Utf8,
+                Volatility.Immutable,
+                Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.ToJson, args.to_vec())),
+            )
+        DataFusionFormatFunction.SchemaOfCsv =>
+            return create_udf(
+                function.value(),
+                [DataType.Utf8],
+                DataType.Utf8,
+                Volatility.Immutable,
+                Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.SchemaOfCsv, args.to_vec())),
+            )
+        DataFusionFormatFunction.FromCsv =>
+            return create_udf(
+                function.value(),
+                [DataType.Utf8, DataType.Utf8],
+                _csv_map_data_type(),
+                Volatility.Immutable,
+                Arc.from((args) => _apply_from_csv(args.to_vec())),
+            )
+        DataFusionFormatFunction.ToCsv =>
+            return create_udf(
+                function.value(),
+                [DataType.Utf8],
+                DataType.Utf8,
+                Volatility.Immutable,
+                Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.ToCsv, args.to_vec())),
+            )
 
 
 def _csv_map_data_type() -> DataType:
@@ -103,39 +254,50 @@ def _csv_map_data_type() -> DataType:
     return builder.finish().data_type().clone()
 
 
-def _apply_unary_string(name: str, args: list[ColumnarValue]) -> Result[ColumnarValue, DataFusionError]:
+def _apply_unary_string(
+    function: DataFusionFormatFunction,
+    args: list[ColumnarValue],
+) -> Result[ColumnarValue, DataFusionError]:
     """Apply one unary string function across scalar and array DataFusion inputs."""
     _require_arity(args, 1)?
     if _all_scalar(args):
-        return Ok(ColumnarValue.Scalar(ScalarValue.Utf8(_eval_unary_string(name, _string_at(args[0].clone(), 0)?)?)))
+        return Ok(ColumnarValue.Scalar(ScalarValue.Utf8(_eval_unary_string(function, _string_at(args[0].clone(), 0)?)?)))
 
     row_count = _row_count(args)?
     mut values: list[Option[str]] = []
     for idx in range(row_count):
-        values.append(_eval_unary_string(name, _string_at(args[0].clone(), idx)?)?)
+        values.append(_eval_unary_string(function, _string_at(args[0].clone(), idx)?)?)
     array_ref: ArrayRef = Arc.from(StringArray.from(values))
     return Ok(ColumnarValue.Array(array_ref))
 
 
-def _apply_unary_bool(name: str, args: list[ColumnarValue]) -> Result[ColumnarValue, DataFusionError]:
+def _apply_unary_bool(
+    function: DataFusionFormatFunction,
+    args: list[ColumnarValue],
+) -> Result[ColumnarValue, DataFusionError]:
     """Apply one unary string-to-bool function across scalar and array DataFusion inputs."""
     _require_arity(args, 1)?
     if _all_scalar(args):
-        return Ok(ColumnarValue.Scalar(ScalarValue.Boolean(_eval_unary_bool(name, _string_at(args[0].clone(), 0)?)?)))
+        return Ok(
+            ColumnarValue.Scalar(ScalarValue.Boolean(_eval_unary_bool(function, _string_at(args[0].clone(), 0)?)?)),
+        )
 
     row_count = _row_count(args)?
     mut values: list[Option[bool]] = []
     for idx in range(row_count):
-        values.append(_eval_unary_bool(name, _string_at(args[0].clone(), idx)?)?)
+        values.append(_eval_unary_bool(function, _string_at(args[0].clone(), idx)?)?)
     array_ref: ArrayRef = Arc.from(BooleanArray.from(values))
     return Ok(ColumnarValue.Array(array_ref))
 
 
-def _apply_unary_int(name: str, args: list[ColumnarValue]) -> Result[ColumnarValue, DataFusionError]:
+def _apply_unary_int(
+    function: DataFusionFormatFunction,
+    args: list[ColumnarValue],
+) -> Result[ColumnarValue, DataFusionError]:
     """Apply one unary string-to-int function across scalar and array DataFusion inputs."""
     _require_arity(args, 1)?
     if _all_scalar(args):
-        value = _eval_unary_int(name, _string_at(args[0].clone(), 0)?)?
+        value = _eval_unary_int(function, _string_at(args[0].clone(), 0)?)?
         match value:
             Some(number) => return Ok(ColumnarValue.Scalar(ScalarValue.Int64(Some(_int_to_rust_i64(number)?))))
             None => return Ok(ColumnarValue.Scalar(ScalarValue.Int64(None)))
@@ -143,19 +305,22 @@ def _apply_unary_int(name: str, args: list[ColumnarValue]) -> Result[ColumnarVal
     row_count = _row_count(args)?
     mut values: list[Option[int]] = []
     for idx in range(row_count):
-        values.append(_eval_unary_int(name, _string_at(args[0].clone(), idx)?)?)
+        values.append(_eval_unary_int(function, _string_at(args[0].clone(), idx)?)?)
     array_ref: ArrayRef = Arc.from(Int64Array.from(values))
     return Ok(ColumnarValue.Array(array_ref))
 
 
-def _apply_binary_string(name: str, args: list[ColumnarValue]) -> Result[ColumnarValue, DataFusionError]:
+def _apply_binary_string(
+    function: DataFusionFormatFunction,
+    args: list[ColumnarValue],
+) -> Result[ColumnarValue, DataFusionError]:
     """Apply one binary string function across scalar and array DataFusion inputs."""
     _require_arity(args, 2)?
     if _all_scalar(args):
         return Ok(
             ColumnarValue.Scalar(
                 ScalarValue.Utf8(
-                    _eval_binary_string(name, _string_at(args[0].clone(), 0)?, _string_at(args[1].clone(), 0)?)?,
+                    _eval_binary_string(function, _string_at(args[0].clone(), 0)?, _string_at(args[1].clone(), 0)?)?,
                 ),
             ),
         )
@@ -163,7 +328,9 @@ def _apply_binary_string(name: str, args: list[ColumnarValue]) -> Result[Columna
     row_count = _row_count(args)?
     mut values: list[Option[str]] = []
     for idx in range(row_count):
-        values.append(_eval_binary_string(name, _string_at(args[0].clone(), idx)?, _string_at(args[1].clone(), idx)?)?)
+        values.append(
+            _eval_binary_string(function, _string_at(args[0].clone(), idx)?, _string_at(args[1].clone(), idx)?)?,
+        )
     array_ref: ArrayRef = Arc.from(StringArray.from(values))
     return Ok(ColumnarValue.Array(array_ref))
 
@@ -190,47 +357,51 @@ def _apply_from_csv(args: list[ColumnarValue]) -> Result[ColumnarValue, DataFusi
     return Ok(ColumnarValue.Array(array_ref))
 
 
-def _eval_unary_string(name: str, value: Option[str]) -> Result[Option[str], DataFusionError]:
+def _eval_unary_string(function: DataFusionFormatFunction, value: Option[str]) -> Result[Option[str], DataFusionError]:
     """Dispatch unary string-returning format functions."""
-    match name:
-        "sha1" => return _hash_sha1(value)
-        "crc32" => return _hash_crc32(value)
-        "xxhash64" => return _hash_xxhash64(value)
-        "url_encode" => return _url_encode(value)
-        "url_decode" => return _url_decode(value)
-        "try_url_decode" => return _try_url_decode(value)
-        "parse_json" => return _parse_json(value)
-        "schema_of_json" => return _schema_of_json(value)
-        "json_object_keys" => return _json_object_keys(value)
-        "to_json" => return _to_json(value)
-        "schema_of_csv" => return _schema_of_csv(value)
-        "to_csv" => return _to_csv(value)
-        _ => return _datafusion_error(f"unknown unary format function `{name}`")
+    match function:
+        DataFusionFormatFunction.Sha1 => return _hash_sha1(value)
+        DataFusionFormatFunction.Crc32 => return _hash_crc32(value)
+        DataFusionFormatFunction.Xxhash64 => return _hash_xxhash64(value)
+        DataFusionFormatFunction.UrlEncode => return _url_encode(value)
+        DataFusionFormatFunction.UrlDecode => return _url_decode(value)
+        DataFusionFormatFunction.TryUrlDecode => return _try_url_decode(value)
+        DataFusionFormatFunction.ParseJson => return _parse_json(value)
+        DataFusionFormatFunction.SchemaOfJson => return _schema_of_json(value)
+        DataFusionFormatFunction.JsonObjectKeys => return _json_object_keys(value)
+        DataFusionFormatFunction.ToJson => return _to_json(value)
+        DataFusionFormatFunction.SchemaOfCsv => return _schema_of_csv(value)
+        DataFusionFormatFunction.ToCsv => return _to_csv(value)
+        _ => return _datafusion_error(f"invalid unary string UDF `{function.value()}`")
 
 
-def _eval_unary_bool(name: str, value: Option[str]) -> Result[Option[bool], DataFusionError]:
+def _eval_unary_bool(function: DataFusionFormatFunction, value: Option[str]) -> Result[Option[bool], DataFusionError]:
     """Dispatch unary boolean-returning format functions."""
-    match name:
-        "check_json" => return _check_json(value)
-        _ => return _datafusion_error(f"unknown boolean format function `{name}`")
+    match function:
+        DataFusionFormatFunction.CheckJson => return _check_json(value)
+        _ => return _datafusion_error(f"invalid unary boolean UDF `{function.value()}`")
 
 
-def _eval_unary_int(name: str, value: Option[str]) -> Result[Option[int], DataFusionError]:
+def _eval_unary_int(function: DataFusionFormatFunction, value: Option[str]) -> Result[Option[int], DataFusionError]:
     """Dispatch unary integer-returning format functions."""
-    match name:
-        "json_array_length" => return _json_array_length(value)
-        _ => return _datafusion_error(f"unknown integer format function `{name}`")
+    match function:
+        DataFusionFormatFunction.JsonArrayLength => return _json_array_length(value)
+        _ => return _datafusion_error(f"invalid unary integer UDF `{function.value()}`")
 
 
-def _eval_binary_string(name: str, left: Option[str], right: Option[str]) -> Result[Option[str], DataFusionError]:
+def _eval_binary_string(
+    function: DataFusionFormatFunction,
+    left: Option[str],
+    right: Option[str],
+) -> Result[Option[str], DataFusionError]:
     """Dispatch binary string-returning format functions."""
-    match name:
-        "parse_url" => return _parse_url(left, right)
-        "get_json_object" => return _json_path_value(left, right, false)
-        "json_extract_path_text" => return _json_path_value(left, right, true)
-        "from_json" => return _from_json(left, right)
-        "try_from_json" => return _try_from_json(left, right)
-        _ => return _datafusion_error(f"unknown binary format function `{name}`")
+    match function:
+        DataFusionFormatFunction.ParseUrl => return _parse_url(left, right)
+        DataFusionFormatFunction.GetJsonObject => return _json_path_value(left, right, false)
+        DataFusionFormatFunction.JsonExtractPathText => return _json_path_value(left, right, true)
+        DataFusionFormatFunction.FromJson => return _from_json(left, right)
+        DataFusionFormatFunction.TryFromJson => return _try_from_json(left, right)
+        _ => return _datafusion_error(f"invalid binary string UDF `{function.value()}`")
 
 
 def _hash_sha1(value: Option[str]) -> Result[Option[str], DataFusionError]:
@@ -876,8 +1047,14 @@ def _int_to_rust_i64(value: int) -> Result[RustI64, DataFusionError]:
     match RustI64.try_from(value):
         Ok(converted) => return Ok(converted)
         Err(_) => return _datafusion_error(f"value {value} does not fit Rust i64")
+        # Hashing helpers.
+        # URL helpers.
+        # JSON helpers.
+        # CSV helpers.
 
 
 def _datafusion_error[T](message: str) -> Result[T, DataFusionError]:
     """Build one DataFusion execution error."""
     return Err(DataFusionError.Execution(f"{message}"))
+    # DataFusion stores UDF callbacks as 'static Rust closures. Keep the enum identity as a literal inside each callback
+    # instead of capturing the loop-local catalog item by reference.
