@@ -1,0 +1,45 @@
+"""HyperLogLog sketch construction aggregate helper."""
+
+from aggregate_builders import AggregateKind, AggregateMeasure, hll_sketch as hll_sketch_builder
+from function_registry import FunctionLifecycle, FunctionNullBehavior, extension_mapping, hll_sketch_spec, v0_1
+from functions.registry import register_function
+from projection_builders import ColumnExpr, col, column_expr_name
+from sketch_types import SketchValueDomain
+from substrait.function_extensions import HLL_SKETCH_FUNCTION_ANCHOR
+
+
+@register_function(hll_sketch_spec(
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.NullSkippingAggregate,
+    substrait=extension_mapping("hll_sketch", HLL_SKETCH_FUNCTION_ANCHOR),
+))
+pub def hll_sketch(
+    expr: ColumnExpr,
+    value_domain: SketchValueDomain = SketchValueDomain.StringIdentifier,
+    precision: int = 14,
+) -> AggregateMeasure:
+    """
+    Build a typed HyperLogLog sketch aggregate.
+
+    Examples:
+        users_hll = hll_sketch(col("user_id"), precision=14)
+
+    Parameters:
+        expr: Expression whose non-null values should be summarized.
+        value_domain: Domain of values summarized by the sketch.
+        precision: Positive HyperLogLog precision parameter used for merge compatibility.
+    """
+    return hll_sketch_builder(expr, value_domain=value_domain, precision=precision)
+
+
+module tests:
+    def test_hll_sketch_builds_typed_sketch_measure() -> None:
+        measure = hll_sketch(col("user_id"), precision=12)
+        assert measure.kind == AggregateKind.HllSketch
+        assert measure.has_expr
+        assert column_expr_name(measure.expr) == "user_id"
+        match measure.sketch_type:
+            Some(sketch_type) =>
+                assert sketch_type.precision == 12
+            None =>
+                assert false, "hll_sketch should expose sketch output metadata"

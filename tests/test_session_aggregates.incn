@@ -9,6 +9,7 @@ from functions import (
     count_distinct,
     count_if,
     eq,
+    hll_sketch,
     max,
     min,
     nullif,
@@ -16,8 +17,8 @@ from functions import (
     sum,
 )
 from dataset import DataFrame, LazyFrame
-from session import Session
-from std.testing import assert_is_ok, fail_t
+from session import Session, SessionErrorKind
+from std.testing import assert_is_err, assert_is_ok, fail_t
 
 
 @derive(Clone)
@@ -123,6 +124,27 @@ def test_session_aggregates__grouped_collect_executes_core_aggregates() -> None:
     assert payload.contains("7"), "customer B aggregate values should be materialized"
     assert payload.contains("2"), "customer A count and expression count should be materialized"
     assert payload.contains("1"), "customer B count and expression count should be materialized"
+
+
+def test_session_aggregates__datafusion_reports_typed_sketch_runtime_boundary() -> None:
+    # -- Arrange --
+    mut session = Session.default()
+    lazy: LazyFrame[AggregateOrder] = assert_is_ok(
+        session.read_csv("aggregate_orders", AGGREGATE_ORDERS_CSV_FIXTURE),
+        "aggregate orders fixture should load",
+    )
+
+    # -- Act --
+    grouped = lazy.group_by([col("customer_id")]).agg([hll_sketch(col("customer_id"))])
+    err = assert_is_err(
+        session.collect(grouped),
+        "DataFusion should reject typed sketch execution until it has an implementation",
+    )
+
+    # -- Assert --
+    assert err.kind == SessionErrorKind.BackendPlanningError, "adapter inability should surface as a backend planning error"
+    assert err.message.contains("typed sketch execution"), "diagnostic should name typed sketch execution"
+    assert err.message.contains("hll_sketch"), "diagnostic should name the unsupported sketch function"
 
 
 def test_session_aggregates__grouped_collect_executes_distinct_and_filter_modifiers() -> None:

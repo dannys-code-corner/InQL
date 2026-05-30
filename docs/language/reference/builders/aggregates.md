@@ -18,6 +18,8 @@ Current aggregate authoring is explicit and scalar-expression-based.
 | `max`   | `def max(expr: ColumnExpr) -> AggregateMeasure`             | Return the maximum non-null value for one orderable scalar expression.  |
 | `approx_count_distinct` | `def approx_count_distinct(expr: ColumnExpr) -> AggregateMeasure` | Estimate distinct non-null expression values. |
 | `approx_percentile` | `def approx_percentile(expr: ColumnExpr, percentile: float, accuracy: int = 10000) -> AggregateMeasure` | Estimate one percentile over numeric non-null values. |
+| `hll_sketch` | `def hll_sketch(expr: ColumnExpr, value_domain: SketchValueDomain = SketchValueDomain.StringIdentifier, precision: int = 14) -> AggregateMeasure` | Aggregate source values into typed HyperLogLog sketch state. |
+| `hll_merge` | `def hll_merge(sketch: SketchExpr) -> AggregateMeasure` | Merge compatible typed HyperLogLog sketch values. |
 
 ## Modifiers
 
@@ -32,7 +34,7 @@ Aggregate measures support method-style modifiers:
 ## Example
 
 ```incan
-from pub::inql.functions import add, approx_count_distinct, approx_percentile, avg, col, count, count_distinct, count_if, eq, lit, max, min, str_lit, sum
+from pub::inql.functions import add, approx_count_distinct, approx_percentile, avg, col, count, count_distinct, count_if, eq, hll_sketch, lit, max, min, str_lit, sum
 
 grouped = orders.group_by([col("customer_id")]).agg([
     sum(add(col("amount"), lit(5))),
@@ -46,6 +48,7 @@ grouped = orders.group_by([col("customer_id")]).agg([
     max(col("created_at")),
     approx_count_distinct(col("user_id")),
     approx_percentile(col("latency_ms"), 0.95),
+    hll_sketch(col("user_id"), precision=14),
 ])
 ```
 
@@ -63,5 +66,7 @@ grouped = orders.group_by([col("customer_id")]).agg([
   but reject extra `DISTINCT` and ordered input in the portable contract.
 - `approx_percentile` output names include percentile and accuracy parameters so two percentile estimates over the same
   expression do not collapse into the same output column name.
+- `hll_sketch` and `hll_merge` are aggregate-shaped typed sketch helpers. They produce typed sketch state and preserve
+  sketch family, value domain, precision, and format metadata through the registry and Substrait boundary.
 - Unsupported aggregate modifiers fail at lowering or backend planning; they are not ignored.
 - Future `.column` sugar and scoped aggregate symbols should lower to this same surface rather than replacing its semantics.

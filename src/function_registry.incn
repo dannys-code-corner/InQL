@@ -178,6 +178,96 @@ pub const APPROX_PERCENTILE_POLICY: FunctionApproximationPolicy = FunctionApprox
     mergeable=true,
     result_interpretation="approximate percentile estimate for numeric non-null values",
 )
+pub const HLL_SKETCH_APPROXIMATION_POLICY: FunctionApproximationPolicy = FunctionApproximationPolicy(
+    is_approximate=true,
+    algorithm="HyperLogLog",
+    default_error="controlled by the explicit precision argument",
+    mergeable=true,
+    result_interpretation="typed HyperLogLog sketch state",
+)
+
+
+@derive(Clone)
+pub model FunctionSketchPolicy:
+    """Typed sketch logical-value contract metadata for RFC 025 helpers."""
+
+    pub is_sketch_aware: bool
+    pub family: FrozenStr
+    pub role: FrozenStr
+    pub default_domain: FrozenStr
+    pub default_precision: int
+    pub format: FrozenStr
+    pub returns_sketch: bool
+    pub accepts_sketch: bool
+    pub result_interpretation: FrozenStr
+
+
+pub const NO_SKETCH_POLICY: FunctionSketchPolicy = FunctionSketchPolicy(
+    is_sketch_aware=false,
+    family="",
+    role="none",
+    default_domain="",
+    default_precision=0,
+    format="",
+    returns_sketch=false,
+    accepts_sketch=false,
+    result_interpretation="",
+)
+pub const HLL_SKETCH_CONSTRUCT_POLICY: FunctionSketchPolicy = FunctionSketchPolicy(
+    is_sketch_aware=true,
+    family="hyperloglog",
+    role="construct",
+    default_domain="string_identifier",
+    default_precision=14,
+    format="inql_hll_v1",
+    returns_sketch=true,
+    accepts_sketch=false,
+    result_interpretation="typed HyperLogLog sketch state",
+)
+pub const HLL_SKETCH_MERGE_POLICY: FunctionSketchPolicy = FunctionSketchPolicy(
+    is_sketch_aware=true,
+    family="hyperloglog",
+    role="merge",
+    default_domain="string_identifier",
+    default_precision=14,
+    format="inql_hll_v1",
+    returns_sketch=true,
+    accepts_sketch=true,
+    result_interpretation="merged typed HyperLogLog sketch state",
+)
+pub const HLL_SKETCH_ESTIMATE_POLICY: FunctionSketchPolicy = FunctionSketchPolicy(
+    is_sketch_aware=true,
+    family="hyperloglog",
+    role="estimate",
+    default_domain="string_identifier",
+    default_precision=14,
+    format="inql_hll_v1",
+    returns_sketch=false,
+    accepts_sketch=true,
+    result_interpretation="approximate distinct-count estimate from typed HyperLogLog sketch state",
+)
+pub const HLL_SKETCH_SERIALIZE_POLICY: FunctionSketchPolicy = FunctionSketchPolicy(
+    is_sketch_aware=true,
+    family="hyperloglog",
+    role="serialize",
+    default_domain="string_identifier",
+    default_precision=14,
+    format="inql_hll_v1",
+    returns_sketch=false,
+    accepts_sketch=true,
+    result_interpretation="explicit serialized HyperLogLog sketch payload",
+)
+pub const HLL_SKETCH_DESERIALIZE_POLICY: FunctionSketchPolicy = FunctionSketchPolicy(
+    is_sketch_aware=true,
+    family="hyperloglog",
+    role="deserialize",
+    default_domain="string_identifier",
+    default_precision=14,
+    format="inql_hll_v1",
+    returns_sketch=true,
+    accepts_sketch=false,
+    result_interpretation="typed HyperLogLog sketch state decoded from explicit serialized payload",
+)
 
 
 @derive(Clone)
@@ -208,6 +298,7 @@ pub model FunctionSpec:
     pub error_behavior: FunctionErrorBehavior
     pub aggregate_modifiers: AggregateModifierPolicy
     pub approximation: FunctionApproximationPolicy
+    pub sketch: FunctionSketchPolicy
     pub substrait: SubstraitMapping
 
 
@@ -228,6 +319,7 @@ pub model FunctionRegistryEntry:
     pub error_behavior: FunctionErrorBehavior
     pub aggregate_modifiers: AggregateModifierPolicy
     pub approximation: FunctionApproximationPolicy
+    pub sketch: FunctionSketchPolicy
     pub substrait: SubstraitMapping
 
 
@@ -279,6 +371,7 @@ pub class FunctionRegistry:
                 error_behavior=spec.error_behavior,
                 aggregate_modifiers=spec.aggregate_modifiers,
                 approximation=spec.approximation,
+                sketch=spec.sketch,
                 substrait=spec.substrait,
             ),
         )
@@ -375,6 +468,21 @@ def _same_approximation_policy(left: FunctionApproximationPolicy, right: Functio
     )
 
 
+def _same_sketch_policy(left: FunctionSketchPolicy, right: FunctionSketchPolicy) -> bool:
+    """Return whether two sketch policy records are identical."""
+    return (
+        left.is_sketch_aware == right.is_sketch_aware
+        and left.family == right.family
+        and left.role == right.role
+        and left.default_domain == right.default_domain
+        and left.default_precision == right.default_precision
+        and left.format == right.format
+        and left.returns_sketch == right.returns_sketch
+        and left.accepts_sketch == right.accepts_sketch
+        and left.result_interpretation == right.result_interpretation
+    )
+
+
 def _same_substrait_mapping(left: SubstraitMapping, right: SubstraitMapping) -> bool:
     """Return whether two Substrait mapping records are identical."""
     return (
@@ -395,10 +503,10 @@ def _entry_matches_spec(entry: FunctionRegistryEntry, canonical_name: str, spec:
     ) and entry.alias_policy == spec.alias_policy and _same_lifecycle(entry.lifecycle, spec.lifecycle) and entry.determinism == spec.determinism and entry.null_behavior == spec.null_behavior and entry.error_behavior == spec.error_behavior and _same_aggregate_modifiers(
         entry.aggregate_modifiers,
         spec.aggregate_modifiers,
-    ) and _same_approximation_policy(entry.approximation, spec.approximation) and _same_substrait_mapping(
-        entry.substrait,
-        spec.substrait,
-    ))
+    ) and _same_approximation_policy(entry.approximation, spec.approximation) and _same_sketch_policy(
+        entry.sketch,
+        spec.sketch,
+    ) and _same_substrait_mapping(entry.substrait, spec.substrait))
 
 
 pub def function_ref_for(canonical_name: str) -> str:
@@ -487,27 +595,39 @@ pub def sort_field_mapping(direction: str) -> SubstraitMapping:
 
 """Build one deterministic core-import function spec."""
 
-pub deterministic_spec = partial FunctionSpec(canonical_name=None, namespace=CORE_FUNCTION_NAMESPACE, policy_category=FunctionPolicyCategory.PortableCore, aliases=[], alias_policy=FunctionAliasPolicy.CoreImport, determinism=FunctionDeterminism.Deterministic, error_behavior=FunctionErrorBehavior.Typechecked, aggregate_modifiers=NO_AGGREGATE_MODIFIERS, approximation=NO_APPROXIMATION)
+pub deterministic_spec = partial FunctionSpec(canonical_name=None, namespace=CORE_FUNCTION_NAMESPACE, policy_category=FunctionPolicyCategory.PortableCore, aliases=[], alias_policy=FunctionAliasPolicy.CoreImport, determinism=FunctionDeterminism.Deterministic, error_behavior=FunctionErrorBehavior.Typechecked, aggregate_modifiers=NO_AGGREGATE_MODIFIERS, approximation=NO_APPROXIMATION, sketch=NO_SKETCH_POLICY)
 
 """Build one approximate distinct-count aggregate function spec."""
 
-pub approx_count_distinct_spec = partial FunctionSpec(canonical_name=None, namespace=CORE_FUNCTION_NAMESPACE, policy_category=FunctionPolicyCategory.PortableCore, function_class=FunctionClass.Aggregate, aliases=[], alias_policy=FunctionAliasPolicy.CoreImport, determinism=FunctionDeterminism.Deterministic, error_behavior=FunctionErrorBehavior.Typechecked, aggregate_modifiers=APPROXIMATE_AGGREGATE_MODIFIERS, approximation=APPROX_COUNT_DISTINCT_POLICY)
+pub approx_count_distinct_spec = partial FunctionSpec(canonical_name=None, namespace=CORE_FUNCTION_NAMESPACE, policy_category=FunctionPolicyCategory.PortableCore, function_class=FunctionClass.Aggregate, aliases=[], alias_policy=FunctionAliasPolicy.CoreImport, determinism=FunctionDeterminism.Deterministic, error_behavior=FunctionErrorBehavior.Typechecked, aggregate_modifiers=APPROXIMATE_AGGREGATE_MODIFIERS, approximation=APPROX_COUNT_DISTINCT_POLICY, sketch=NO_SKETCH_POLICY)
 
 """Build one approximate percentile aggregate function spec."""
 
-pub approx_percentile_spec = partial FunctionSpec(canonical_name=None, namespace=CORE_FUNCTION_NAMESPACE, policy_category=FunctionPolicyCategory.PortableCore, function_class=FunctionClass.Aggregate, aliases=[], alias_policy=FunctionAliasPolicy.CoreImport, determinism=FunctionDeterminism.Deterministic, error_behavior=FunctionErrorBehavior.InvalidInputDiagnostic, aggregate_modifiers=APPROXIMATE_AGGREGATE_MODIFIERS, approximation=APPROX_PERCENTILE_POLICY)
+pub approx_percentile_spec = partial FunctionSpec(canonical_name=None, namespace=CORE_FUNCTION_NAMESPACE, policy_category=FunctionPolicyCategory.PortableCore, function_class=FunctionClass.Aggregate, aliases=[], alias_policy=FunctionAliasPolicy.CoreImport, determinism=FunctionDeterminism.Deterministic, error_behavior=FunctionErrorBehavior.InvalidInputDiagnostic, aggregate_modifiers=APPROXIMATE_AGGREGATE_MODIFIERS, approximation=APPROX_PERCENTILE_POLICY, sketch=NO_SKETCH_POLICY)
+
+"""Build one HyperLogLog sketch-construction aggregate function spec."""
+
+pub hll_sketch_spec = partial FunctionSpec(canonical_name=None, namespace=CORE_FUNCTION_NAMESPACE, policy_category=FunctionPolicyCategory.PortableCore, function_class=FunctionClass.Aggregate, aliases=[], alias_policy=FunctionAliasPolicy.CoreImport, determinism=FunctionDeterminism.Deterministic, error_behavior=FunctionErrorBehavior.InvalidInputDiagnostic, aggregate_modifiers=APPROXIMATE_AGGREGATE_MODIFIERS, approximation=HLL_SKETCH_APPROXIMATION_POLICY, sketch=HLL_SKETCH_CONSTRUCT_POLICY)
+
+"""Build one HyperLogLog sketch-merge aggregate function spec."""
+
+pub hll_merge_spec = partial FunctionSpec(canonical_name=None, namespace=CORE_FUNCTION_NAMESPACE, policy_category=FunctionPolicyCategory.PortableCore, function_class=FunctionClass.Aggregate, aliases=[], alias_policy=FunctionAliasPolicy.CoreImport, determinism=FunctionDeterminism.Deterministic, error_behavior=FunctionErrorBehavior.InvalidInputDiagnostic, aggregate_modifiers=APPROXIMATE_AGGREGATE_MODIFIERS, approximation=HLL_SKETCH_APPROXIMATION_POLICY, sketch=HLL_SKETCH_MERGE_POLICY)
+
+"""Build one HyperLogLog scalar sketch helper spec."""
+
+pub hll_scalar_spec = partial FunctionSpec(canonical_name=None, namespace=CORE_FUNCTION_NAMESPACE, policy_category=FunctionPolicyCategory.PortableCore, function_class=FunctionClass.Scalar, aliases=[], alias_policy=FunctionAliasPolicy.CoreImport, determinism=FunctionDeterminism.Deterministic, error_behavior=FunctionErrorBehavior.InvalidInputDiagnostic, aggregate_modifiers=NO_AGGREGATE_MODIFIERS, approximation=NO_APPROXIMATION)
 
 """Build one explicitly namespaced extension-only function spec."""
 
-pub extension_only_spec = partial FunctionSpec(canonical_name=None, policy_category=FunctionPolicyCategory.ExtensionOnly, aliases=[], alias_policy=FunctionAliasPolicy.OptInCompatibility, aggregate_modifiers=NO_AGGREGATE_MODIFIERS, approximation=NO_APPROXIMATION)
+pub extension_only_spec = partial FunctionSpec(canonical_name=None, policy_category=FunctionPolicyCategory.ExtensionOnly, aliases=[], alias_policy=FunctionAliasPolicy.OptInCompatibility, aggregate_modifiers=NO_AGGREGATE_MODIFIERS, approximation=NO_APPROXIMATION, sketch=NO_SKETCH_POLICY)
 
 """Build one opt-in compatibility alias spec for semantics that remain typeable by InQL."""
 
-pub compatibility_alias_spec = partial FunctionSpec(canonical_name=None, policy_category=FunctionPolicyCategory.CompatibilityAlias, alias_policy=FunctionAliasPolicy.OptInCompatibility, aggregate_modifiers=NO_AGGREGATE_MODIFIERS, approximation=NO_APPROXIMATION)
+pub compatibility_alias_spec = partial FunctionSpec(canonical_name=None, policy_category=FunctionPolicyCategory.CompatibilityAlias, alias_policy=FunctionAliasPolicy.OptInCompatibility, aggregate_modifiers=NO_AGGREGATE_MODIFIERS, approximation=NO_APPROXIMATION, sketch=NO_SKETCH_POLICY)
 
 """Build one explicitly namespaced engine-specific function spec."""
 
-pub engine_specific_spec = partial FunctionSpec(canonical_name=None, policy_category=FunctionPolicyCategory.EngineSpecific, aliases=[], alias_policy=FunctionAliasPolicy.OptInCompatibility, aggregate_modifiers=NO_AGGREGATE_MODIFIERS, approximation=NO_APPROXIMATION)
+pub engine_specific_spec = partial FunctionSpec(canonical_name=None, policy_category=FunctionPolicyCategory.EngineSpecific, aliases=[], alias_policy=FunctionAliasPolicy.OptInCompatibility, aggregate_modifiers=NO_AGGREGATE_MODIFIERS, approximation=NO_APPROXIMATION, sketch=NO_SKETCH_POLICY)
 
 
 pub def rejected_function_policy(requested_name: str, reason: str, alternative: str) -> RejectedFunctionPolicy:

@@ -18,9 +18,10 @@ from projection_builders import (
     IntLiteralExpr,
     ProjectionAssignment,
     ScalarFunctionApplicationExpr,
+    ScalarFunctionOption,
     StringLiteralExpr,
 )
-from rust::substrait::proto import Expression, FunctionArgument, ProjectRel, Type
+from rust::substrait::proto import Expression, FunctionArgument, FunctionOption, ProjectRel, Type
 from rust::substrait::proto::expression import (
     Cast,
     FieldReference,
@@ -123,6 +124,15 @@ pub def field_ref_expr(index: int) -> Expression:
 
 pub def scalar_function_expr(function_reference: u32, arguments: list[Expression]) -> Expression:
     """Build one scalar-function expression over positional value arguments."""
+    return scalar_function_expr_with_options(function_reference, arguments, [])
+
+
+pub def scalar_function_expr_with_options(
+    function_reference: u32,
+    arguments: list[Expression],
+    options: list[FunctionOption],
+) -> Expression:
+    """Build one scalar-function expression over positional value arguments and string options."""
     lowered_arguments = [FunctionArgument(arg_type=Some(ArgType.Value(argument))) for argument in arguments]
     return Expression(
         rex_type=Some(
@@ -132,7 +142,7 @@ pub def scalar_function_expr(function_reference: u32, arguments: list[Expression
                     arguments=lowered_arguments,
                     output_type=None,
                     args=[],
-                    options=[],
+                    options=options,
                 ),
             ),
         ),
@@ -274,7 +284,13 @@ def _resolved_scalar_function_application_expr(
     match entry.substrait.kind:
         SubstraitMappingKind.ExtensionFunction =>
             lowered_arguments = [_resolved_projection_expr(bindings, argument)? for argument in application.arguments]
-            return Ok(scalar_function_expr(entry.substrait.anchor, lowered_arguments))
+            return Ok(
+                scalar_function_expr_with_options(
+                    entry.substrait.anchor,
+                    lowered_arguments,
+                    _function_options(application.options),
+                ),
+            )
         SubstraitMappingKind.StructuralFunction =>
             return Err(
                 invalid_scalar_expression(
@@ -303,6 +319,11 @@ def _application_option_value(application: ScalarFunctionApplicationExpr, option
         if option.name == option_name:
             return option.value
     return ""
+
+
+def _function_options(options: list[ScalarFunctionOption]) -> list[FunctionOption]:
+    """Lower scalar application options into Substrait string function options."""
+    return [FunctionOption(name=option.name, preference=[option.value]) for option in options]
 
 
 def _resolved_cast_application_expr(

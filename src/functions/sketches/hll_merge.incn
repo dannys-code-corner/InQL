@@ -1,0 +1,38 @@
+"""HyperLogLog sketch merge aggregate helper."""
+
+from aggregate_builders import AggregateKind, AggregateMeasure, hll_merge as hll_merge_builder
+from function_registry import FunctionLifecycle, FunctionNullBehavior, extension_mapping, hll_merge_spec, v0_1
+from functions.registry import register_function
+from projection_builders import col, column_expr_name
+from sketch_types import SketchExpr, hll_type, sketch_col
+from substrait.function_extensions import HLL_MERGE_FUNCTION_ANCHOR
+
+
+@register_function(hll_merge_spec(
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.NullSkippingAggregate,
+    substrait=extension_mapping("hll_merge", HLL_MERGE_FUNCTION_ANCHOR),
+))
+pub def hll_merge(sketch: SketchExpr) -> AggregateMeasure:
+    """
+    Merge compatible typed HyperLogLog sketch values.
+
+    Examples:
+        monthly_hll = hll_merge(sketch_col("daily_users_hll", hll_type()))
+
+    Parameters:
+        sketch: Typed HyperLogLog sketch expression to merge.
+    """
+    return hll_merge_builder(sketch)
+
+
+module tests:
+    def test_hll_merge_builds_typed_sketch_measure() -> None:
+        measure = hll_merge(sketch_col("daily_users_hll", hll_type(precision=12)))
+        assert measure.kind == AggregateKind.HllMerge
+        assert column_expr_name(measure.expr) == "daily_users_hll"
+        match measure.sketch_type:
+            Some(sketch_type) =>
+                assert sketch_type.precision == 12
+            None =>
+                assert false, "hll_merge should preserve sketch output metadata"

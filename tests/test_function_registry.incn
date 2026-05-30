@@ -70,6 +70,11 @@ from functions import (
     gt,
     gte,
     get_json_object,
+    hll_deserialize,
+    hll_estimate,
+    hll_merge,
+    hll_serialize,
+    hll_sketch,
     in_,
     int_expr,
     int_lit,
@@ -153,6 +158,12 @@ from function_registry import (
     FunctionErrorBehavior,
     FunctionLifecycle,
     FunctionApproximationPolicy,
+    HLL_SKETCH_CONSTRUCT_POLICY,
+    HLL_SKETCH_DESERIALIZE_POLICY,
+    HLL_SKETCH_ESTIMATE_POLICY,
+    HLL_SKETCH_MERGE_POLICY,
+    HLL_SKETCH_SERIALIZE_POLICY,
+    HLL_SKETCH_APPROXIMATION_POLICY,
     FunctionPolicyCategory,
     FunctionRegistry,
     FunctionRegistryEntry,
@@ -206,6 +217,11 @@ from substrait.function_extensions import (
     GET_JSON_OBJECT_FUNCTION_ANCHOR,
     GT_FUNCTION_ANCHOR,
     GTE_FUNCTION_ANCHOR,
+    HLL_DESERIALIZE_FUNCTION_ANCHOR,
+    HLL_ESTIMATE_FUNCTION_ANCHOR,
+    HLL_MERGE_FUNCTION_ANCHOR,
+    HLL_SERIALIZE_FUNCTION_ANCHOR,
+    HLL_SKETCH_FUNCTION_ANCHOR,
     IS_NAN_FUNCTION_ANCHOR,
     IS_NOT_DISTINCT_FROM_FUNCTION_ANCHOR,
     IS_NOT_NULL_FUNCTION_ANCHOR,
@@ -270,6 +286,7 @@ from substrait.function_extensions import (
     POSEXPLODE_OUTER_EXTENSION_URI,
     RANGE_FUNCTION_ANCHOR,
 )
+from sketch_types import hll_type, sketch_col
 
 
 @derive(Clone)
@@ -333,12 +350,12 @@ def _local_entry_by_namespace_and_name_or_fail(
 
 def _expected_registry_names() -> list[str]:
     """Return the expected registered public helper names."""
-    return ["col", "lit", "sum", "count", "count_expr", "count_distinct", "count_if", "avg", "min", "max", "approx_count_distinct", "approx_percentile", "int_expr", "float_expr", "str_expr", "bool_expr", "add", "mul", "int_lit", "str_lit", "bool_lit", "always_true", "always_false", "eq", "gt", "cast", "try_cast", "ne", "lt", "lte", "gte", "equal_null", "and_", "or_", "not_", "is_null", "is_not_null", "is_nan", "is_not_nan", "sub", "div", "mod", "neg", "coalesce", "nullif", "case_when", "in_", "between", "asc", "desc", "asc_nulls_first", "asc_nulls_last", "desc_nulls_first", "desc_nulls_last", "abs", "ceil", "floor", "round", "array", "array_contains", "array_distinct", "array_except", "array_flatten", "array_intersect", "array_join", "array_position", "range", "array_reverse", "array_slice", "array_sort", "array_union", "arrays_overlap", "cardinality", "element_at", "map_contains_key", "map_entries", "map_extract", "map_from_arrays", "map_keys", "map_values", "named_struct", "explode", "explode_outer", "posexplode", "posexplode_outer", "inline", "inline_outer", "flatten", "stack", "window", "unbounded_preceding", "preceding", "current_row", "following", "unbounded_following", "row_number", "rank", "dense_rank", "percent_rank", "cume_dist", "ntile", "lag", "lead", "first_value", "last_value", "nth_value", "sha224", "sha256", "sha384", "sha512", "sha2", "md5", "sha1", "crc32", "xxhash64", "parse_url", "try_url_decode", "url_decode", "url_encode", "check_json", "from_json", "get_json_object", "json_array_length", "json_extract_path_text", "json_object_keys", "parse_json", "schema_of_json", "to_json", "try_from_json", "from_csv", "schema_of_csv", "to_csv"]
+    return ["col", "lit", "sum", "count", "count_expr", "count_distinct", "count_if", "avg", "min", "max", "approx_count_distinct", "approx_percentile", "hll_sketch", "hll_merge", "hll_estimate", "hll_serialize", "hll_deserialize", "int_expr", "float_expr", "str_expr", "bool_expr", "add", "mul", "int_lit", "str_lit", "bool_lit", "always_true", "always_false", "eq", "gt", "cast", "try_cast", "ne", "lt", "lte", "gte", "equal_null", "and_", "or_", "not_", "is_null", "is_not_null", "is_nan", "is_not_nan", "sub", "div", "mod", "neg", "coalesce", "nullif", "case_when", "in_", "between", "asc", "desc", "asc_nulls_first", "asc_nulls_last", "desc_nulls_first", "desc_nulls_last", "abs", "ceil", "floor", "round", "array", "array_contains", "array_distinct", "array_except", "array_flatten", "array_intersect", "array_join", "array_position", "range", "array_reverse", "array_slice", "array_sort", "array_union", "arrays_overlap", "cardinality", "element_at", "map_contains_key", "map_entries", "map_extract", "map_from_arrays", "map_keys", "map_values", "named_struct", "explode", "explode_outer", "posexplode", "posexplode_outer", "inline", "inline_outer", "flatten", "stack", "window", "unbounded_preceding", "preceding", "current_row", "following", "unbounded_following", "row_number", "rank", "dense_rank", "percent_rank", "cume_dist", "ntile", "lag", "lead", "first_value", "last_value", "nth_value", "sha224", "sha256", "sha384", "sha512", "sha2", "md5", "sha1", "crc32", "xxhash64", "parse_url", "try_url_decode", "url_decode", "url_encode", "check_json", "from_json", "get_json_object", "json_array_length", "json_extract_path_text", "json_object_keys", "parse_json", "schema_of_json", "to_json", "try_from_json", "from_csv", "schema_of_csv", "to_csv"]
 
 
 def _expected_substrait_mapped_names() -> list[str]:
     """Return helpers with concrete Substrait extension-function mappings."""
-    return ["sum", "count", "avg", "min", "max", "approx_count_distinct", "approx_percentile", "add", "mul", "eq", "gt", "ne", "lt", "lte", "gte", "equal_null", "and_", "or_", "not_", "is_null", "is_not_null", "is_nan", "sub", "div", "mod", "neg", "coalesce", "nullif", "between", "abs", "ceil", "floor", "round", "array", "array_contains", "array_distinct", "array_except", "array_flatten", "array_intersect", "array_join", "array_position", "range", "array_reverse", "array_slice", "array_sort", "array_union", "arrays_overlap", "cardinality", "element_at", "map_entries", "map_extract", "map_from_arrays", "map_keys", "map_values", "named_struct", "row_number", "rank", "dense_rank", "percent_rank", "cume_dist", "ntile", "lag", "lead", "first_value", "last_value", "nth_value", "sha224", "sha256", "sha384", "sha512", "md5", "sha1", "crc32", "xxhash64", "parse_url", "try_url_decode", "url_decode", "url_encode", "check_json", "from_json", "get_json_object", "json_array_length", "json_extract_path_text", "json_object_keys", "parse_json", "schema_of_json", "to_json", "try_from_json", "from_csv", "schema_of_csv", "to_csv"]
+    return ["sum", "count", "avg", "min", "max", "approx_count_distinct", "approx_percentile", "hll_sketch", "hll_merge", "hll_estimate", "hll_serialize", "hll_deserialize", "add", "mul", "eq", "gt", "ne", "lt", "lte", "gte", "equal_null", "and_", "or_", "not_", "is_null", "is_not_null", "is_nan", "sub", "div", "mod", "neg", "coalesce", "nullif", "between", "abs", "ceil", "floor", "round", "array", "array_contains", "array_distinct", "array_except", "array_flatten", "array_intersect", "array_join", "array_position", "range", "array_reverse", "array_slice", "array_sort", "array_union", "arrays_overlap", "cardinality", "element_at", "map_entries", "map_extract", "map_from_arrays", "map_keys", "map_values", "named_struct", "row_number", "rank", "dense_rank", "percent_rank", "cume_dist", "ntile", "lag", "lead", "first_value", "last_value", "nth_value", "sha224", "sha256", "sha384", "sha512", "md5", "sha1", "crc32", "xxhash64", "parse_url", "try_url_decode", "url_decode", "url_encode", "check_json", "from_json", "get_json_object", "json_array_length", "json_extract_path_text", "json_object_keys", "parse_json", "schema_of_json", "to_json", "try_from_json", "from_csv", "schema_of_csv", "to_csv"]
 
 
 def _exercise_current_public_helpers() -> None:
@@ -369,6 +386,12 @@ def _exercise_current_public_helpers() -> None:
     max(amount)
     approx_count_distinct(status)
     approx_percentile(amount, 0.5)
+    users_hll = sketch_col("users_hll", hll_type())
+    hll_sketch(status)
+    hll_merge(users_hll)
+    hll_estimate(users_hll)
+    hll_serialize(users_hll)
+    hll_deserialize(status)
     add(amount, lit(1))
     mul(amount, int_lit(2))
     eq(status, str_lit("paid"))
@@ -670,6 +693,37 @@ def test_function_registry__approximate_helpers_expose_approximation_policy() ->
     assert not count_entry.approximation.is_approximate, "exact count should not inherit approximation metadata"
 
 
+def test_function_registry__hll_helpers_expose_typed_sketch_policy() -> None:
+    """Assert RFC 025 sketch helpers carry typed sketch policy metadata."""
+    # -- Arrange --
+    _exercise_current_public_helpers()
+
+    # -- Act --
+    construct_entry = _entry_by_name_or_fail("hll_sketch")
+    merge_entry = _entry_by_name_or_fail("hll_merge")
+    estimate_entry = _entry_by_name_or_fail("hll_estimate")
+    serialize_entry = _entry_by_name_or_fail("hll_serialize")
+    deserialize_entry = _entry_by_name_or_fail("hll_deserialize")
+    count_entry = _entry_by_name_or_fail("count")
+
+    # -- Assert --
+    assert construct_entry.approximation.algorithm == HLL_SKETCH_APPROXIMATION_POLICY.algorithm, "hll_sketch should expose its approximation algorithm"
+    assert construct_entry.sketch.is_sketch_aware, "hll_sketch should be marked as sketch-aware"
+    assert construct_entry.sketch.role == HLL_SKETCH_CONSTRUCT_POLICY.role, "hll_sketch should identify the construct role"
+    assert construct_entry.sketch.returns_sketch, "hll_sketch should produce typed sketch state"
+    assert not construct_entry.sketch.accepts_sketch, "hll_sketch should consume source values, not existing sketches"
+    assert merge_entry.sketch.role == HLL_SKETCH_MERGE_POLICY.role, "hll_merge should identify the merge role"
+    assert merge_entry.sketch.returns_sketch, "hll_merge should return typed sketch state"
+    assert merge_entry.sketch.accepts_sketch, "hll_merge should consume existing typed sketch state"
+    assert estimate_entry.sketch.role == HLL_SKETCH_ESTIMATE_POLICY.role, "hll_estimate should identify the estimate role"
+    assert estimate_entry.sketch.accepts_sketch, "hll_estimate should consume typed sketch state"
+    assert not estimate_entry.sketch.returns_sketch, "hll_estimate should return a scalar estimate"
+    assert serialize_entry.sketch.role == HLL_SKETCH_SERIALIZE_POLICY.role, "hll_serialize should identify the serialize role"
+    assert deserialize_entry.sketch.role == HLL_SKETCH_DESERIALIZE_POLICY.role, "hll_deserialize should identify the deserialize role"
+    assert deserialize_entry.sketch.returns_sketch, "hll_deserialize should produce typed sketch state"
+    assert not count_entry.sketch.is_sketch_aware, "ordinary exact aggregates should not inherit sketch metadata"
+
+
 def test_function_registry__extension_policy_is_separate_from_scalar_class() -> None:
     """Assert extension-only functions can be scalar while remaining explicitly namespaced."""
     # -- Arrange --
@@ -800,6 +854,11 @@ def test_function_registry__substrait_extension_mappings_are_structured() -> Non
     _assert_extension_mapping("max", "max", MAX_FUNCTION_ANCHOR)
     _assert_extension_mapping("approx_count_distinct", "approx_count_distinct", APPROX_COUNT_DISTINCT_FUNCTION_ANCHOR)
     _assert_extension_mapping("approx_percentile", "approx_percentile", APPROX_PERCENTILE_FUNCTION_ANCHOR)
+    _assert_extension_mapping("hll_sketch", "hll_sketch", HLL_SKETCH_FUNCTION_ANCHOR)
+    _assert_extension_mapping("hll_merge", "hll_merge", HLL_MERGE_FUNCTION_ANCHOR)
+    _assert_extension_mapping("hll_estimate", "hll_estimate", HLL_ESTIMATE_FUNCTION_ANCHOR)
+    _assert_extension_mapping("hll_serialize", "hll_serialize", HLL_SERIALIZE_FUNCTION_ANCHOR)
+    _assert_extension_mapping("hll_deserialize", "hll_deserialize", HLL_DESERIALIZE_FUNCTION_ANCHOR)
     _assert_extension_mapping("add", "add", ADD_FUNCTION_ANCHOR)
     _assert_extension_mapping("mul", "multiply", MULTIPLY_FUNCTION_ANCHOR)
     _assert_extension_mapping("eq", "equal", EQUAL_FUNCTION_ANCHOR)

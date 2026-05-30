@@ -60,6 +60,13 @@ from function_registry import FunctionClass, FunctionRegistryEntry, SubstraitMap
 from functions.registry import function_registry_entry
 from generator_builders import GeneratorApplication
 from projection_builders import ColumnExpr, ProjectionAssignment, ScalarFunctionApplicationExpr, col
+from sketch_types import (
+    SKETCH_FAMILY_OPTION,
+    SKETCH_FORMAT_OPTION,
+    SKETCH_PRECISION_OPTION,
+    SKETCH_VALUE_DOMAIN_OPTION,
+    SketchLogicalType,
+)
 from window_builders import (
     WindowBound,
     WindowBoundKind,
@@ -99,6 +106,7 @@ model ResolvedAggregateMeasure:
     filter_expr: Expression
     has_filter: bool
     ordering: list[SortField]
+    sketch_type: Option[SketchLogicalType]
 
 
 @derive(Clone)
@@ -286,12 +294,26 @@ def _resolved_measure_to_substrait(measure: ResolvedAggregateMeasure) -> Result[
                     invocation=invocation,
                     phase=AggregationPhase.Unspecified.into(),
                     args=[],
-                    options=[],
+                    options=_aggregate_function_options(measure.sketch_type),
                 ),
             ),
             filter=measure_filter,
         ),
     )
+
+
+def _aggregate_function_options(sketch_type: Option[SketchLogicalType]) -> list[FunctionOption]:
+    """Return Substrait options that preserve aggregate output sketch metadata."""
+    match sketch_type:
+        Some(value) =>
+            return [FunctionOption(name=SKETCH_FAMILY_OPTION, preference=[value.family.value()]), FunctionOption(
+                name=SKETCH_VALUE_DOMAIN_OPTION,
+                preference=[value.value_domain.value()],
+            ), FunctionOption(name=SKETCH_PRECISION_OPTION, preference=[f"{value.precision}"]), FunctionOption(
+                name=SKETCH_FORMAT_OPTION,
+                preference=[value.format.value()],
+            )]
+        None => return []
 
 
 def _aggregate_registry_entry(
@@ -616,6 +638,7 @@ def _resolved_measure(
                 filter_expr=filter_expr,
                 has_filter=measure.has_filter,
                 ordering=ordering,
+                sketch_type=measure.sketch_type,
             ),
         )
     return Ok(
@@ -630,6 +653,7 @@ def _resolved_measure(
             filter_expr=filter_expr,
             has_filter=measure.has_filter,
             ordering=ordering,
+            sketch_type=measure.sketch_type,
         ),
     )
 

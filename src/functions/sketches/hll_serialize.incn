@@ -1,0 +1,44 @@
+"""Explicit HyperLogLog sketch serialization helper."""
+
+from function_registry import (
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    HLL_SKETCH_SERIALIZE_POLICY,
+    extension_mapping,
+    hll_scalar_spec,
+    v0_1,
+)
+from functions.registry import register_function, registered_application_with_options
+from projection_builders import ColumnExpr, column_expr_function_name
+from sketch_types import SketchExpr, hll_type, require_hll_sketch, sketch_col, sketch_scalar_options
+from substrait.function_extensions import HLL_SERIALIZE_FUNCTION_ANCHOR
+
+
+@register_function(hll_scalar_spec(
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    sketch=HLL_SKETCH_SERIALIZE_POLICY,
+    substrait=extension_mapping("hll_serialize", HLL_SERIALIZE_FUNCTION_ANCHOR),
+))
+pub def hll_serialize(sketch: SketchExpr) -> ColumnExpr:
+    """
+    Serialize a typed HyperLogLog sketch explicitly.
+
+    Examples:
+        payload = hll_serialize(sketch_col("users_hll", hll_type()))
+
+    Parameters:
+        sketch: Typed HyperLogLog sketch expression to serialize.
+    """
+    checked = require_hll_sketch(sketch, "hll_serialize")
+    return registered_application_with_options(
+        "hll_serialize",
+        [checked.expr],
+        sketch_scalar_options(checked.sketch_type),
+    )
+
+
+module tests:
+    def test_hll_serialize_builds_registered_scalar_application() -> None:
+        expr = hll_serialize(sketch_col("users_hll", hll_type()))
+        assert column_expr_function_name(expr) == "hll_serialize"

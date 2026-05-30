@@ -19,6 +19,21 @@ pub from dataset.ops import (
     with_window_column_ds,
 )
 pub from aggregate_builders import AggregateKind, AggregateMeasure
+pub from sketch_types import (
+    SKETCH_FAMILY_OPTION,
+    SKETCH_FORMAT_OPTION,
+    SKETCH_PRECISION_OPTION,
+    SKETCH_VALUE_DOMAIN_OPTION,
+    SketchExpr,
+    SketchFamily,
+    SketchLogicalType,
+    SketchSerializationFormat,
+    SketchValueDomain,
+    hll_type,
+    sketch_col,
+    sketch_types_compatible,
+    sketch_value,
+)
 pub from generator_builders import (
     GeneratorApplication,
     GeneratorKind,
@@ -87,6 +102,11 @@ pub from functions.aggregates.min import min
 pub from functions.aggregates.max import max
 pub from functions.approximate.approx_count_distinct import approx_count_distinct
 pub from functions.approximate.approx_percentile import approx_percentile
+pub from functions.sketches.hll_deserialize import hll_deserialize
+pub from functions.sketches.hll_estimate import hll_estimate
+pub from functions.sketches.hll_merge import hll_merge
+pub from functions.sketches.hll_serialize import hll_serialize
+pub from functions.sketches.hll_sketch import hll_sketch
 pub from functions.math.abs import abs
 pub from functions.math.ceil import ceil
 pub from functions.math.floor import floor
@@ -214,10 +234,18 @@ pub from function_registry import (
     FunctionPolicyCategory,
     FunctionRegistry,
     FunctionRegistryEntry,
+    FunctionSketchPolicy,
     FunctionSpec,
     FunctionVersion,
+    HLL_SKETCH_APPROXIMATION_POLICY,
+    HLL_SKETCH_CONSTRUCT_POLICY,
+    HLL_SKETCH_DESERIALIZE_POLICY,
+    HLL_SKETCH_ESTIMATE_POLICY,
+    HLL_SKETCH_MERGE_POLICY,
+    HLL_SKETCH_SERIALIZE_POLICY,
     NO_AGGREGATE_MODIFIERS,
     NO_APPROXIMATION,
+    NO_SKETCH_POLICY,
     RejectedFunctionPolicy,
     SubstraitMapping,
     SubstraitMappingKind,
@@ -229,6 +257,9 @@ pub from function_registry import (
     extension_only_spec,
     extension_mapping,
     function_ref_for,
+    hll_merge_spec,
+    hll_scalar_spec,
+    hll_sketch_spec,
     namespaced_function_ref,
     rejected_function_policy,
     relation_extension_mapping,

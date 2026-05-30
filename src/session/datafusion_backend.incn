@@ -103,6 +103,11 @@ const SUBSTRAIT_APPROX_COUNT_DISTINCT_FUNCTION_NAME: str = "approx_count_distinc
 const DATAFUSION_APPROX_COUNT_DISTINCT_FUNCTION_NAME: str = "approx_distinct"
 const SUBSTRAIT_APPROX_PERCENTILE_FUNCTION_NAME: str = "approx_percentile"
 const DATAFUSION_APPROX_PERCENTILE_FUNCTION_NAME: str = "approx_percentile_cont"
+const HLL_SKETCH_FUNCTION_NAME: str = "hll_sketch"
+const HLL_MERGE_FUNCTION_NAME: str = "hll_merge"
+const HLL_ESTIMATE_FUNCTION_NAME: str = "hll_estimate"
+const HLL_SERIALIZE_FUNCTION_NAME: str = "hll_serialize"
+const HLL_DESERIALIZE_FUNCTION_NAME: str = "hll_deserialize"
 
 
 @derive(Clone)
@@ -297,6 +302,12 @@ async def _dataframe_from_plan_with_window_materialization(
 
 async def _dataframe_from_standard_plan(ctx: SessionContext, plan: Plan) -> Result[RustDataFrame, BackendError]:
     """Build a DataFusion DataFrame through the stock Substrait consumer."""
+    match _typed_sketch_extension_function_name(plan.clone()):
+        Some(function_name) =>
+            message = f"DataFusion backend does not support typed sketch execution for `{function_name}`; InQL preserved the typed sketch plan, but this adapter has no sketch runtime implementation"
+            return Err(backend_error(BackendErrorKind.BackendPlanningError, message))
+        None => pass
+
     consumer_plan = _consumer_plan_from_current_plan(plan)?
     state = ctx.state()
     match await from_substrait_plan(state, consumer_plan):
@@ -1681,6 +1692,28 @@ def _datafusion_extension_declaration(extension: SimpleExtensionDeclaration) -> 
                 return _renamed_datafusion_extension_function(function, DATAFUSION_APPROX_PERCENTILE_FUNCTION_NAME)
             return SimpleExtensionDeclaration(mapping_type=Some(MappingType.ExtensionFunction(function)))
         _ => return extension
+
+
+def _typed_sketch_extension_function_name(plan: Plan) -> Option[str]:
+    """Return the first typed-sketch extension function declared in a plan, if any."""
+    for extension in plan.extensions:
+        match extension.mapping_type:
+            Some(MappingType.ExtensionFunction(function)) =>
+                if _is_typed_sketch_function_name(function.name):
+                    return Some(function.name)
+            _ => pass
+    return None
+
+
+def _is_typed_sketch_function_name(name: str) -> bool:
+    """Return whether one extension function name belongs to the typed sketch surface."""
+    return (
+        name == HLL_SKETCH_FUNCTION_NAME
+        or name == HLL_MERGE_FUNCTION_NAME
+        or name == HLL_ESTIMATE_FUNCTION_NAME
+        or name == HLL_SERIALIZE_FUNCTION_NAME
+        or name == HLL_DESERIALIZE_FUNCTION_NAME
+    )
 
 
 def _renamed_datafusion_extension_function(

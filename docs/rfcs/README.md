@@ -31,7 +31,7 @@ InQL uses its **own** RFC series (starting at 000), independent of the [Incan la
 | [022][rfc-022] | Implemented | Semi-structured and format functions                                                              |     |
 | [023][rfc-023] | Implemented | Approximate and sketch functions                                                                  |     |
 | [024][rfc-024] | Implemented | Function extension policy                                                                         |     |
-| [025][rfc-025] | Draft       | Typed sketch logical values                                                                       |     |
+| [025][rfc-025] | Implemented | Typed sketch logical values                                                                       |     |
 | [026][rfc-026] | Draft       | Semi-structured variant logical values                                                            |     |
 
 <!-- TODO: #7: auto populate this table (like how we do in incan) -->

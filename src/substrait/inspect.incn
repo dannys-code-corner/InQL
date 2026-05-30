@@ -387,6 +387,29 @@ pub def aggregate_measure_sort_counts(rel: Rel) -> list[int]:
         _ => return []
 
 
+pub def aggregate_measure_option_value(rel: Rel, measure_index: int, option_name: str) -> str:
+    """Return one aggregate function option value from a top-level AggregateRel, or empty when absent."""
+    match rel.rel_type:
+        Some(RelType.Aggregate(aggregate_rel)) =>
+            mut current_index = 0
+            for measure in aggregate_rel.measures:
+                if current_index == measure_index:
+                    if let Some(agg_fn) = measure.measure:
+                        return _function_option_value(agg_fn.options, option_name)
+                    return ""
+                current_index += 1
+            return ""
+        _ => return ""
+
+
+def _function_option_value(options: list[FunctionOption], option_name: str) -> str:
+    """Return one Substrait function option preference value, or empty when absent."""
+    for option in options:
+        if option.name == option_name and len(option.preference) > 0:
+            return option.preference[0]
+    return ""
+
+
 pub def root_rel(plan: Plan) -> Rel:
     """Return the logical root relation from a plan."""
     if len(plan.relations) == 0:

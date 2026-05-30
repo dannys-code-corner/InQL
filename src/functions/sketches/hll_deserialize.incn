@@ -1,0 +1,57 @@
+"""Explicit HyperLogLog sketch deserialization helper."""
+
+from function_registry import (
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    HLL_SKETCH_DESERIALIZE_POLICY,
+    extension_mapping,
+    hll_scalar_spec,
+    v0_1,
+)
+from functions.registry import register_function, registered_application_with_options
+from projection_builders import ColumnExpr, col, column_expr_function_name
+from sketch_types import (
+    SketchExpr,
+    SketchSerializationFormat,
+    SketchValueDomain,
+    hll_type,
+    sketch_scalar_options,
+    sketch_value,
+)
+from substrait.function_extensions import HLL_DESERIALIZE_FUNCTION_ANCHOR
+
+
+@register_function(hll_scalar_spec(
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    sketch=HLL_SKETCH_DESERIALIZE_POLICY,
+    substrait=extension_mapping("hll_deserialize", HLL_DESERIALIZE_FUNCTION_ANCHOR),
+))
+pub def hll_deserialize(
+    payload: ColumnExpr,
+    value_domain: SketchValueDomain = SketchValueDomain.StringIdentifier,
+    precision: int = 14,
+    format: SketchSerializationFormat = SketchSerializationFormat.InqlHllV1,
+) -> SketchExpr:
+    """
+    Deserialize an explicit HyperLogLog payload into typed sketch state.
+
+    Examples:
+        users_hll = hll_deserialize(col("users_hll_payload"), precision=14)
+
+    Parameters:
+        payload: Scalar expression containing the serialized sketch payload.
+        value_domain: Domain of values summarized by the sketch.
+        precision: Positive HyperLogLog precision parameter used for merge compatibility.
+        format: Explicit serialized sketch format identity.
+    """
+    sketch_type = hll_type(value_domain=value_domain, precision=precision, format=format)
+    expr = registered_application_with_options("hll_deserialize", [payload], sketch_scalar_options(sketch_type))
+    return sketch_value(expr, sketch_type)
+
+
+module tests:
+    def test_hll_deserialize_returns_typed_sketch_expr() -> None:
+        sketch = hll_deserialize(col("users_hll_payload"), precision=12)
+        assert column_expr_function_name(sketch.expr) == "hll_deserialize"
+        assert sketch.sketch_type.precision == 12

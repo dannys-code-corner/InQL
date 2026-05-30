@@ -48,6 +48,11 @@ from functions import (
     get_json_object,
     gt,
     gte,
+    hll_deserialize,
+    hll_estimate,
+    hll_merge,
+    hll_serialize,
+    hll_sketch,
     in_,
     is_nan,
     is_not_nan,
@@ -129,6 +134,7 @@ from substrait.inspect import (
     aggregate_measure_filter_flags,
     aggregate_measure_function_names,
     aggregate_measure_invocation_names,
+    aggregate_measure_option_value,
     aggregate_measure_sort_counts,
     plan_extension_urn_anchor_at,
     plan_extension_urn_count,
@@ -149,6 +155,7 @@ from substrait.inspect import (
     window_partition_count,
     window_sort_count,
 )
+from sketch_types import SKETCH_FAMILY_OPTION, SKETCH_PRECISION_OPTION, hll_type, sketch_col
 from substrait.plans import (
     plan_encoded_len,
     plan_from_local_files,
@@ -514,6 +521,10 @@ def test_plan__core_scalar_extension_mappings_lower_to_substrait() -> None:
     _assert_scalar_expr_lowers(schema_of_csv(col("status")))
     _assert_scalar_expr_lowers(from_csv[FormatPlanSchema](col("status")))
     _assert_scalar_expr_lowers(to_csv(col("status")))
+    hll_payload = hll_deserialize(col("status"))
+    _assert_scalar_expr_lowers(hll_payload.expr)
+    _assert_scalar_expr_lowers(hll_estimate(hll_payload))
+    _assert_scalar_expr_lowers(hll_serialize(hll_payload))
 
 
 def test_plan__nested_scalar_extension_mappings_lower_to_substrait() -> None:
@@ -662,6 +673,58 @@ def test_plan__aggregate_rel_lowers_approximate_aggregates() -> None:
     assert output_columns == ["id", "approx_count_distinct_id", "approx_percentile_id_p0_5_a10000", "approx_percentile_id_p0_95_a2500"], "approximate aggregate output names should preserve percentile and accuracy parameters"
     assert aggregate_functions == ["approx_count_distinct", "approx_percentile", "approx_percentile"], "approximate aggregates should keep their InQL Substrait extension names"
     assert aggregate_invocations == ["All", "All", "All"], "approximate aggregates should not lower as exact DISTINCT invocations"
+
+
+def test_plan__aggregate_rel_lowers_typed_hll_sketches() -> None:
+    # -- Arrange --
+    _register_orders_schema()
+    base = read_named_table_rel("orders")
+    aggregated = aggregate_rel(
+        base,
+        [col("id")],
+        [hll_sketch(col("id"), precision=12), hll_merge(sketch_col("id", hll_type(precision=12)))],
+    )
+    plan = plan_from_root_relation(aggregated, ["id", "hll_sketch_id", "hll_merge_id"])
+
+    # -- Act --
+    output_columns = relation_output_columns(aggregated)
+    aggregate_functions = aggregate_measure_function_names(aggregated)
+    extension_functions = plan_extension_function_names(plan)
+
+    # -- Assert --
+    assert relation_kind_name(aggregated) == "AggregateRel", "typed sketch aggregates should still lower through AggregateRel"
+    assert output_columns == ["id", "hll_sketch_id", "hll_merge_id"], "typed sketch aggregate outputs should remain named logical columns"
+    assert aggregate_functions == ["hll_sketch", "hll_merge"], "typed sketch aggregates should keep their InQL extension names"
+    assert aggregate_measure_option_value(aggregated, 0, SKETCH_FAMILY_OPTION) == "hyperloglog", "hll_sketch should carry sketch family metadata"
+    assert aggregate_measure_option_value(aggregated, 0, SKETCH_PRECISION_OPTION) == "12", "hll_sketch should carry sketch precision metadata"
+    assert aggregate_measure_option_value(aggregated, 1, SKETCH_FAMILY_OPTION) == "hyperloglog", "hll_merge should carry sketch family metadata"
+    assert aggregate_measure_option_value(aggregated, 1, SKETCH_PRECISION_OPTION) == "12", "hll_merge should carry sketch precision metadata"
+    assert extension_functions.contains("hll_sketch"), "typed sketch aggregate plans should declare hll_sketch"
+    assert extension_functions.contains("hll_merge"), "typed sketch aggregate plans should declare hll_merge"
+
+
+def test_plan__project_rel_lowers_typed_hll_sketch_scalars() -> None:
+    # -- Arrange --
+    base = read_named_table_rel("orders")
+    sketch = hll_deserialize(col("status"), precision=12)
+    projected = project_rel_of_columns(
+        base,
+        ["id", "amount", "status"],
+        [with_column_assignment("users_estimate", hll_estimate(sketch.clone())), with_column_assignment(
+            "users_payload",
+            hll_serialize(sketch),
+        )],
+    )
+    plan = plan_from_root_relation(projected, ["id", "amount", "status", "users_estimate", "users_payload"])
+
+    # -- Act --
+    extension_functions = plan_extension_function_names(plan)
+
+    # -- Assert --
+    assert relation_kind_name(projected) == "ProjectRel", "typed sketch scalar helpers should lower inside ProjectRel"
+    assert extension_functions.contains("hll_deserialize"), "typed sketch scalar plans should declare hll_deserialize"
+    assert extension_functions.contains("hll_estimate"), "typed sketch scalar plans should declare hll_estimate"
+    assert extension_functions.contains("hll_serialize"), "typed sketch scalar plans should declare hll_serialize"
 
 
 def test_plan__aggregate_rel_rejects_invalid_modifier_shapes() -> None:

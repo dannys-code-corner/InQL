@@ -37,7 +37,7 @@ Both helpers lower through registered InQL Substrait aggregate extension names. 
 `approx_count_distinct` to DataFusion's `approx_distinct` implementation and maps `approx_percentile` to
 `approx_percentile_cont` at the backend boundary.
 
-Sketch-state construction, merge, estimate, serialization, and deserialization helpers are not exposed as lowerable
-portable functions in RFC 023. They are delegated to InQL RFC 025, which defines typed sketch logical values with sketch
-family, value domain, merge compatibility, and serialized format identity. Exposing those helpers as strings or binary
-payloads would violate the RFC 023 type-safety requirement.
+Sketch-state construction, merge, estimate, serialization, and deserialization are implemented by
+[Sketch functions](sketches.md). Those helpers use typed sketch logical values with sketch family, value domain, merge
+compatibility, and serialized format identity. Exposing sketch state as strings or binary payloads would violate the RFC
+023 type-safety requirement.

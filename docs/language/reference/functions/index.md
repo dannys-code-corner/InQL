@@ -12,6 +12,7 @@ Today the concrete shipped surfaces are documented here:
 - [Window functions](windows.md)
 - [Format functions](format.md)
 - [Approximate functions](approximate.md)
+- [Sketch functions](sketches.md)
 
 The canonical scalar literal helper is `lit(...)`. Typed literal helpers construct the same scalar-expression representation.
 
@@ -43,5 +44,6 @@ The registered helper surface currently includes:
 | `asc(...)`, `desc(...)`, `asc_nulls_first(...)`, `asc_nulls_last(...)`, `desc_nulls_first(...)`, `desc_nulls_last(...)` | ordering | structural sort-field helpers consumed by `order_by(...)` and lowered to Substrait `SortRel.sorts` |
 | `sum(...)`, `count(...)`, `count_expr(...)`, `count_distinct(...)`, `count_if(...)`, `avg(...)`, `min(...)`, `max(...)` | aggregate | registered Substrait extension functions for core aggregates plus compatibility rewrites for `count_expr(...)`, `count_distinct(...)`, and `count_if(...)`; core aggregates allow `DISTINCT` and aggregate-local `FILTER` where the aggregate shape is valid |
 | `approx_count_distinct(...)`, `approx_percentile(...)` | aggregate | registered approximate aggregate extension functions; both are explicit approximate choices and keep DataFusion implementation-name rewrites inside the backend adapter |
+| `hll_sketch(...)`, `hll_merge(...)`, `hll_estimate(...)`, `hll_serialize(...)`, `hll_deserialize(...)` | aggregate/scalar | RFC 025 typed HyperLogLog sketch helpers; construction and merge are aggregate measures, estimate/serialization/deserialization are scalar helpers, and all carry explicit sketch metadata through registry and Substrait options |
 
 Future ANSI-style families should grow under this section instead of bloating `dataset_types` or `dataset_methods`.

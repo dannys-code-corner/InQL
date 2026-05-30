@@ -1,0 +1,47 @@
+"""HyperLogLog sketch estimate scalar helper."""
+
+from function_registry import (
+    APPROX_COUNT_DISTINCT_POLICY,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    HLL_SKETCH_ESTIMATE_POLICY,
+    extension_mapping,
+    hll_scalar_spec,
+    v0_1,
+)
+from functions.registry import register_function, registered_application_with_options
+from projection_builders import ColumnExpr, column_expr_argument_count, column_expr_function_name
+from sketch_types import SketchExpr, hll_type, require_hll_sketch, sketch_col, sketch_scalar_options
+from substrait.function_extensions import HLL_ESTIMATE_FUNCTION_ANCHOR
+
+
+@register_function(hll_scalar_spec(
+    approximation=APPROX_COUNT_DISTINCT_POLICY,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    sketch=HLL_SKETCH_ESTIMATE_POLICY,
+    substrait=extension_mapping("hll_estimate", HLL_ESTIMATE_FUNCTION_ANCHOR),
+))
+pub def hll_estimate(sketch: SketchExpr) -> ColumnExpr:
+    """
+    Estimate approximate cardinality from a typed HyperLogLog sketch.
+
+    Examples:
+        users = hll_estimate(sketch_col("users_hll", hll_type()))
+
+    Parameters:
+        sketch: Typed HyperLogLog sketch expression to estimate.
+    """
+    checked = require_hll_sketch(sketch, "hll_estimate")
+    return registered_application_with_options(
+        "hll_estimate",
+        [checked.expr],
+        sketch_scalar_options(checked.sketch_type),
+    )
+
+
+module tests:
+    def test_hll_estimate_builds_registered_scalar_application() -> None:
+        expr = hll_estimate(sketch_col("users_hll", hll_type()))
+        assert column_expr_function_name(expr) == "hll_estimate"
+        assert column_expr_argument_count(expr) == 1

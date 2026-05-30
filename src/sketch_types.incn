@@ -1,0 +1,158 @@
+"""Typed sketch logical values for RFC 025 public helpers."""
+
+from projection_builders import ColumnExpr, ScalarFunctionOption, col, scalar_function_option
+from rust::incan_stdlib::errors import raise_value_error
+
+pub const SKETCH_FAMILY_OPTION: str = "sketch_family"
+pub const SKETCH_VALUE_DOMAIN_OPTION: str = "sketch_value_domain"
+pub const SKETCH_PRECISION_OPTION: str = "sketch_precision"
+pub const SKETCH_FORMAT_OPTION: str = "sketch_format"
+
+
+@derive(Clone)
+pub enum SketchFamily(str):
+    """Portable sketch family identity."""
+
+    HyperLogLog = "hyperloglog"
+    Kll = "kll"
+    Theta = "theta"
+    CountMin = "count_min"
+    Bitmap = "bitmap"
+
+
+@derive(Clone)
+pub enum SketchValueDomain(str):
+    """Value domain summarized by a sketch."""
+
+    StringIdentifier = "string_identifier"
+    IntegerIdentifier = "integer_identifier"
+    NumericValue = "numeric_value"
+    CategoricalValue = "categorical_value"
+
+
+@derive(Clone)
+pub enum SketchSerializationFormat(str):
+    """Explicit serialized sketch format identity."""
+
+    InqlHllV1 = "inql_hll_v1"
+
+
+@derive(Clone)
+pub model SketchLogicalType:
+    """Logical type carried by a typed sketch expression or aggregate output."""
+
+    pub family: SketchFamily
+    pub value_domain: SketchValueDomain
+    pub precision: int
+    pub format: SketchSerializationFormat
+
+
+@derive(Clone)
+pub model SketchExpr:
+    """Scalar expression paired with sketch logical type metadata."""
+
+    pub expr: ColumnExpr
+    pub sketch_type: SketchLogicalType
+
+
+pub def hll_type(
+    value_domain: SketchValueDomain = SketchValueDomain.StringIdentifier,
+    precision: int = 14,
+    format: SketchSerializationFormat = SketchSerializationFormat.InqlHllV1,
+) -> SketchLogicalType:
+    """
+    Build HyperLogLog logical type metadata.
+
+    Examples:
+        user_hll = hll_type(SketchValueDomain.StringIdentifier, precision=14)
+
+    Parameters:
+        value_domain: Domain of values summarized by the sketch.
+        precision: Positive HyperLogLog precision parameter used for merge compatibility.
+        format: Explicit serialized sketch format identity.
+    """
+    if precision <= 0:
+        return raise_value_error("hll_type precision must be positive")
+    return SketchLogicalType(
+        family=SketchFamily.HyperLogLog,
+        value_domain=value_domain,
+        precision=precision,
+        format=format,
+    )
+
+
+pub def sketch_value(expr: ColumnExpr, sketch_type: SketchLogicalType) -> SketchExpr:
+    """
+    Attach sketch logical type metadata to a scalar expression.
+
+    Examples:
+        stored = sketch_value(col("users_hll"), hll_type())
+
+    Parameters:
+        expr: Scalar expression that carries opaque sketch state.
+        sketch_type: Explicit logical sketch type for the expression.
+    """
+    return SketchExpr(expr=expr, sketch_type=sketch_type)
+
+
+pub def sketch_col(name: str, sketch_type: SketchLogicalType) -> SketchExpr:
+    """
+    Reference one sketch-typed column.
+
+    Examples:
+        stored = sketch_col("users_hll", hll_type())
+
+    Parameters:
+        name: Column name containing typed sketch state.
+        sketch_type: Explicit logical sketch type for the column.
+    """
+    return sketch_value(col(name), sketch_type)
+
+
+pub def sketch_types_compatible(left: SketchLogicalType, right: SketchLogicalType) -> bool:
+    """Return whether two sketch logical types can be merged."""
+    return (
+        left.family == right.family
+        and left.value_domain == right.value_domain
+        and left.precision == right.precision
+        and left.format == right.format
+    )
+
+
+pub def require_hll_sketch(sketch: SketchExpr, context: str) -> SketchExpr:
+    """Return one HyperLogLog sketch expression or fail with a clear authoring diagnostic."""
+    if sketch.sketch_type.family == SketchFamily.HyperLogLog:
+        return sketch
+    return raise_value_error(f"{context} requires a HyperLogLog sketch expression")
+
+
+pub def sketch_scalar_options(sketch_type: SketchLogicalType) -> list[ScalarFunctionOption]:
+    """Return Substrait function options that preserve sketch logical type metadata."""
+    return [scalar_function_option(SKETCH_FAMILY_OPTION, sketch_type.family.value()), scalar_function_option(
+        SKETCH_VALUE_DOMAIN_OPTION,
+        sketch_type.value_domain.value(),
+    ), scalar_function_option(SKETCH_PRECISION_OPTION, f"{sketch_type.precision}"), scalar_function_option(
+        SKETCH_FORMAT_OPTION,
+        sketch_type.format.value(),
+    )]
+
+
+module tests:
+    from std.testing import assert_raises
+    from projection_builders import column_expr_name
+    def _invalid_hll_precision() -> None:
+        """Build invalid HLL metadata for ValueError assertions."""
+        hll_type(precision=0)
+        return
+    def test_hll_type_builds_logical_metadata() -> None:
+        sketch_type = hll_type(SketchValueDomain.IntegerIdentifier, precision=12)
+        assert sketch_type.family == SketchFamily.HyperLogLog
+        assert sketch_type.value_domain == SketchValueDomain.IntegerIdentifier
+        assert sketch_type.precision == 12
+        assert sketch_type.format == SketchSerializationFormat.InqlHllV1
+    def test_hll_type_rejects_non_positive_precision() -> None:
+        assert_raises[ValueError](_invalid_hll_precision)
+    def test_sketch_col_preserves_expression_and_type() -> None:
+        sketch = sketch_col("users_hll", hll_type())
+        assert column_expr_name(sketch.expr) == "users_hll"
+        assert sketch.sketch_type.family == SketchFamily.HyperLogLog

@@ -1,6 +1,6 @@
 # InQL RFC 025: Typed sketch logical values
 
-- **Status:** Draft
+- **Status:** Implemented
 - **Created:** 2026-05-28
 - **Author(s):** Danny Meijer (@dannymeijer)
 - **Related:**
@@ -12,7 +12,7 @@
 - **Issue:** [InQL #51](https://github.com/dannys-code-corner/InQL/issues/51)
 - **RFC PR:** —
 - **Written against:** Incan v0.3-era InQL
-- **Shipped in:** —
+- **Shipped in:** v0.1
 
 ## Summary
 
@@ -62,26 +62,29 @@ That would push semantic validation into backend-specific runtime failures and w
 ## Guide-level explanation (how authors think about it)
 
 Authors should think of a sketch as a typed summary value. It can be produced by an aggregate, stored as a column when the
-carrier supports it, merged with compatible sketches, and estimated later. The helper names below are illustrative; the
-exact public names remain an unresolved question for this Draft.
+carrier supports it, merged with compatible sketches, and estimated later. RFC 025 ships the first concrete family:
+HyperLogLog.
 
 ```incan
-from pub::inql.functions import col
-from pub::inql.sketches import hll_estimate, hll_merge, hll_sketch
+from pub::inql.functions import col, hll_sketch
+from pub::inql.sketches import hll_estimate, hll_merge, hll_type, sketch_col
 
 daily = events.group_by([col("event_date")]).agg([
     hll_sketch(col("user_id"), precision=14),
 ])
 
 monthly = daily.group_by([col("month")]).agg([
-    hll_merge(col("hll_sketch_user_id")),
+    hll_merge(sketch_col("hll_sketch_user_id", hll_type(precision=14))),
 ])
 
-reported = monthly.with_column("estimated_users", hll_estimate(col("hll_merge_hll_sketch_user_id")))
+reported = monthly.with_column(
+    "estimated_users",
+    hll_estimate(sketch_col("hll_merge_hll_sketch_user_id", hll_type(precision=14))),
+)
 ```
 
-The important part is not the exact helper names in this Draft. The important part is that `users_hll` is not a `str` or
-`bytes` column. It is a sketch logical value with a family, value domain, and parameter contract.
+The important part is that `users_hll` is not a `str` or `bytes` column. It is a sketch logical value with a family,
+value domain, precision, and serialized format contract.
 
 ## Reference-level explanation (precise rules)
 
@@ -143,10 +146,26 @@ The Substrait boundary must remain between InQL semantics and backend execution.
 the first implementation target, but backend-native sketch names and payload formats do not define the portable InQL
 type.
 
+### Implementation
+
+The implemented first family is HyperLogLog:
+
+- `SketchLogicalType` carries `family`, `value_domain`, `precision`, and `format`.
+- `SketchExpr` pairs a scalar expression with `SketchLogicalType`.
+- `hll_type(...)`, `sketch_value(...)`, and `sketch_col(...)` build typed sketch metadata at the authoring boundary.
+- `hll_sketch(...)` is an aggregate measure that produces typed HyperLogLog state.
+- `hll_merge(...)` is an aggregate measure over existing typed HyperLogLog state.
+- `hll_estimate(...)`, `hll_serialize(...)`, and `hll_deserialize(...)` are scalar helpers over typed sketch state or
+  explicit serialized payloads.
+- Function registry entries expose typed sketch policy metadata and Substrait extension mappings.
+- Substrait lowering carries sketch family, value domain, precision, and format in function options.
+- The DataFusion adapter rejects typed sketch execution with a backend planning diagnostic. This is an adapter
+  capability boundary, not an InQL semantic limitation.
+
 ### Compatibility / migration
 
-This RFC is additive. RFC 023 approximate scalar-result aggregates remain valid. Existing string or binary columns must
-not be retroactively treated as sketch values. If a backend or existing dataset stores sketch bytes, authors must use
+This RFC is additive. RFC 023 approximate scalar-result aggregates remain valid. Existing string or binary columns are
+not retroactively treated as sketch values. If a backend or existing dataset stores sketch bytes, authors must use
 explicit deserialization with the required sketch type metadata.
 
 ## Alternatives considered
@@ -181,15 +200,15 @@ explicit deserialization with the required sketch type metadata.
 - **Documentation** — function references and RFCs must present sketch helpers as typed approximate state, not as
   backend-specific blobs.
 
-## Unresolved questions
+## Design decisions
 
-- What is the minimal public type spelling for sketch values, especially for deserialization where the type cannot be
-  inferred from a payload alone?
-- Which sketch family should be the first implementation target: HyperLogLog, KLL, theta, count-min, or bitmap?
-- Which family parameters are part of merge compatibility, and which are backend execution hints?
-- Should serialized sketch format identity be portable across backends, or should serialization be extension-specific by
-  default?
-- Should sketch values be legal in table schemas before InQL has a broader logical type model beyond primitive row
-  columns?
+### Resolved
 
-<!-- When every question is resolved, rename this section to **Design Decisions**, group answers under ### Resolved, and remove this comment. -->
+- The first public type spelling is explicit library metadata: `SketchLogicalType`, `SketchExpr`, `hll_type(...)`,
+  `sketch_value(...)`, and `sketch_col(...)`.
+- HyperLogLog is the first implemented sketch family because it cleanly extends the distinct-count approximation surface.
+- HyperLogLog merge compatibility is defined by family, value domain, precision, and serialization format.
+- Serialized sketch format identity is explicit and portable at the InQL logical layer. RFC 025 defines
+  `inql_hll_v1` as the first format identity without promising bit-for-bit compatibility with every backend runtime.
+- Sketch values may be represented in authoring expressions today through `SketchExpr`. Broader table-schema logical
+  typing is left to RFC 026 and later schema work rather than hiding sketch state as strings or bytes.
