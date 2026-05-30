@@ -88,163 +88,163 @@ def _format_udf(function: DataFusionFormatFunction) -> ScalarUDF:
     match function:
         DataFusionFormatFunction.Sha1 =>
             return create_udf(
-                function.value(),
-                [DataType.Utf8],
-                DataType.Utf8,
-                Volatility.Immutable,
-                Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.Sha1, args.to_vec())),
+                name=function.value(),
+                input_types=[DataType.Utf8],
+                return_type=DataType.Utf8,
+                volatility=Volatility.Immutable,
+                fun=Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.Sha1, args.to_vec())),
             )
         DataFusionFormatFunction.Crc32 =>
             return create_udf(
-                function.value(),
-                [DataType.Utf8],
-                DataType.Utf8,
-                Volatility.Immutable,
-                Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.Crc32, args.to_vec())),
+                name=function.value(),
+                input_types=[DataType.Utf8],
+                return_type=DataType.Utf8,
+                volatility=Volatility.Immutable,
+                fun=Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.Crc32, args.to_vec())),
             )
         DataFusionFormatFunction.Xxhash64 =>
             return create_udf(
-                function.value(),
-                [DataType.Utf8],
-                DataType.Utf8,
-                Volatility.Immutable,
-                Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.Xxhash64, args.to_vec())),
+                name=function.value(),
+                input_types=[DataType.Utf8],
+                return_type=DataType.Utf8,
+                volatility=Volatility.Immutable,
+                fun=Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.Xxhash64, args.to_vec())),
             )
         DataFusionFormatFunction.UrlEncode =>
             return create_udf(
-                function.value(),
-                [DataType.Utf8],
-                DataType.Utf8,
-                Volatility.Immutable,
-                Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.UrlEncode, args.to_vec())),
+                name=function.value(),
+                input_types=[DataType.Utf8],
+                return_type=DataType.Utf8,
+                volatility=Volatility.Immutable,
+                fun=Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.UrlEncode, args.to_vec())),
             )
         DataFusionFormatFunction.UrlDecode =>
             return create_udf(
-                function.value(),
-                [DataType.Utf8],
-                DataType.Utf8,
-                Volatility.Immutable,
-                Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.UrlDecode, args.to_vec())),
+                name=function.value(),
+                input_types=[DataType.Utf8],
+                return_type=DataType.Utf8,
+                volatility=Volatility.Immutable,
+                fun=Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.UrlDecode, args.to_vec())),
             )
         DataFusionFormatFunction.TryUrlDecode =>
             return create_udf(
-                function.value(),
-                [DataType.Utf8],
-                DataType.Utf8,
-                Volatility.Immutable,
-                Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.TryUrlDecode, args.to_vec())),
+                name=function.value(),
+                input_types=[DataType.Utf8],
+                return_type=DataType.Utf8,
+                volatility=Volatility.Immutable,
+                fun=Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.TryUrlDecode, args.to_vec())),
             )
         DataFusionFormatFunction.ParseUrl =>
             return create_udf(
-                function.value(),
-                [DataType.Utf8, DataType.Utf8],
-                DataType.Utf8,
-                Volatility.Immutable,
-                Arc.from((args) => _apply_binary_string(DataFusionFormatFunction.ParseUrl, args.to_vec())),
+                name=function.value(),
+                input_types=[DataType.Utf8, DataType.Utf8],
+                return_type=DataType.Utf8,
+                volatility=Volatility.Immutable,
+                fun=Arc.from((args) => _apply_binary_string(DataFusionFormatFunction.ParseUrl, args.to_vec())),
             )
         DataFusionFormatFunction.ParseJson =>
             return create_udf(
-                function.value(),
-                [DataType.Utf8],
-                DataType.Utf8,
-                Volatility.Immutable,
-                Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.ParseJson, args.to_vec())),
+                name=function.value(),
+                input_types=[DataType.Utf8],
+                return_type=DataType.Utf8,
+                volatility=Volatility.Immutable,
+                fun=Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.ParseJson, args.to_vec())),
             )
         DataFusionFormatFunction.CheckJson =>
             return create_udf(
-                function.value(),
-                [DataType.Utf8],
-                DataType.Boolean,
-                Volatility.Immutable,
-                Arc.from((args) => _apply_unary_bool(DataFusionFormatFunction.CheckJson, args.to_vec())),
+                name=function.value(),
+                input_types=[DataType.Utf8],
+                return_type=DataType.Boolean,
+                volatility=Volatility.Immutable,
+                fun=Arc.from((args) => _apply_unary_bool(DataFusionFormatFunction.CheckJson, args.to_vec())),
             )
         DataFusionFormatFunction.SchemaOfJson =>
             return create_udf(
-                function.value(),
-                [DataType.Utf8],
-                DataType.Utf8,
-                Volatility.Immutable,
-                Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.SchemaOfJson, args.to_vec())),
+                name=function.value(),
+                input_types=[DataType.Utf8],
+                return_type=DataType.Utf8,
+                volatility=Volatility.Immutable,
+                fun=Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.SchemaOfJson, args.to_vec())),
             )
         DataFusionFormatFunction.JsonArrayLength =>
             return create_udf(
-                function.value(),
-                [DataType.Utf8],
-                DataType.Int64,
-                Volatility.Immutable,
-                Arc.from((args) => _apply_unary_int(DataFusionFormatFunction.JsonArrayLength, args.to_vec())),
+                name=function.value(),
+                input_types=[DataType.Utf8],
+                return_type=DataType.Int64,
+                volatility=Volatility.Immutable,
+                fun=Arc.from((args) => _apply_unary_int(DataFusionFormatFunction.JsonArrayLength, args.to_vec())),
             )
         DataFusionFormatFunction.JsonObjectKeys =>
             return create_udf(
-                function.value(),
-                [DataType.Utf8],
-                DataType.Utf8,
-                Volatility.Immutable,
-                Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.JsonObjectKeys, args.to_vec())),
+                name=function.value(),
+                input_types=[DataType.Utf8],
+                return_type=DataType.Utf8,
+                volatility=Volatility.Immutable,
+                fun=Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.JsonObjectKeys, args.to_vec())),
             )
         DataFusionFormatFunction.GetJsonObject =>
             return create_udf(
-                function.value(),
-                [DataType.Utf8, DataType.Utf8],
-                DataType.Utf8,
-                Volatility.Immutable,
-                Arc.from((args) => _apply_binary_string(DataFusionFormatFunction.GetJsonObject, args.to_vec())),
+                name=function.value(),
+                input_types=[DataType.Utf8, DataType.Utf8],
+                return_type=DataType.Utf8,
+                volatility=Volatility.Immutable,
+                fun=Arc.from((args) => _apply_binary_string(DataFusionFormatFunction.GetJsonObject, args.to_vec())),
             )
         DataFusionFormatFunction.JsonExtractPathText =>
             return create_udf(
-                function.value(),
-                [DataType.Utf8, DataType.Utf8],
-                DataType.Utf8,
-                Volatility.Immutable,
-                Arc.from((args) => _apply_binary_string(DataFusionFormatFunction.JsonExtractPathText, args.to_vec())),
+                name=function.value(),
+                input_types=[DataType.Utf8, DataType.Utf8],
+                return_type=DataType.Utf8,
+                volatility=Volatility.Immutable,
+                fun=Arc.from((args) => _apply_binary_string(DataFusionFormatFunction.JsonExtractPathText, args.to_vec())),
             )
         DataFusionFormatFunction.FromJson =>
             return create_udf(
-                function.value(),
-                [DataType.Utf8, DataType.Utf8],
-                DataType.Utf8,
-                Volatility.Immutable,
-                Arc.from((args) => _apply_binary_string(DataFusionFormatFunction.FromJson, args.to_vec())),
+                name=function.value(),
+                input_types=[DataType.Utf8, DataType.Utf8],
+                return_type=DataType.Utf8,
+                volatility=Volatility.Immutable,
+                fun=Arc.from((args) => _apply_binary_string(DataFusionFormatFunction.FromJson, args.to_vec())),
             )
         DataFusionFormatFunction.TryFromJson =>
             return create_udf(
-                function.value(),
-                [DataType.Utf8, DataType.Utf8],
-                DataType.Utf8,
-                Volatility.Immutable,
-                Arc.from((args) => _apply_binary_string(DataFusionFormatFunction.TryFromJson, args.to_vec())),
+                name=function.value(),
+                input_types=[DataType.Utf8, DataType.Utf8],
+                return_type=DataType.Utf8,
+                volatility=Volatility.Immutable,
+                fun=Arc.from((args) => _apply_binary_string(DataFusionFormatFunction.TryFromJson, args.to_vec())),
             )
         DataFusionFormatFunction.ToJson =>
             return create_udf(
-                function.value(),
-                [DataType.Utf8],
-                DataType.Utf8,
-                Volatility.Immutable,
-                Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.ToJson, args.to_vec())),
+                name=function.value(),
+                input_types=[DataType.Utf8],
+                return_type=DataType.Utf8,
+                volatility=Volatility.Immutable,
+                fun=Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.ToJson, args.to_vec())),
             )
         DataFusionFormatFunction.SchemaOfCsv =>
             return create_udf(
-                function.value(),
-                [DataType.Utf8],
-                DataType.Utf8,
-                Volatility.Immutable,
-                Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.SchemaOfCsv, args.to_vec())),
+                name=function.value(),
+                input_types=[DataType.Utf8],
+                return_type=DataType.Utf8,
+                volatility=Volatility.Immutable,
+                fun=Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.SchemaOfCsv, args.to_vec())),
             )
         DataFusionFormatFunction.FromCsv =>
             return create_udf(
-                function.value(),
-                [DataType.Utf8, DataType.Utf8],
-                _csv_map_data_type(),
-                Volatility.Immutable,
-                Arc.from((args) => _apply_from_csv(args.to_vec())),
+                name=function.value(),
+                input_types=[DataType.Utf8, DataType.Utf8],
+                return_type=_csv_map_data_type(),
+                volatility=Volatility.Immutable,
+                fun=Arc.from((args) => _apply_from_csv(args.to_vec())),
             )
         DataFusionFormatFunction.ToCsv =>
             return create_udf(
-                function.value(),
-                [DataType.Utf8],
-                DataType.Utf8,
-                Volatility.Immutable,
-                Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.ToCsv, args.to_vec())),
+                name=function.value(),
+                input_types=[DataType.Utf8],
+                return_type=DataType.Utf8,
+                volatility=Volatility.Immutable,
+                fun=Arc.from((args) => _apply_unary_string(DataFusionFormatFunction.ToCsv, args.to_vec())),
             )
 
 
