@@ -1,0 +1,122 @@
+"""Tests for RFC 026 semi-structured variant logical-value helpers."""
+
+from std.testing import assert_raises
+from functions import (
+    col,
+    is_array,
+    is_boolean,
+    is_float,
+    is_integer,
+    is_null_value,
+    is_object,
+    is_string,
+    is_timestamp,
+    parse_variant_json,
+    try_parse_variant_json,
+    typeof,
+    variant_get,
+)
+from function_registry import function_ref_for
+from projection_builders import (
+    ColumnExpr,
+    column_expr_argument_count,
+    column_expr_function_name,
+    column_expr_function_ref,
+    column_expr_name,
+    column_expr_option_value,
+)
+from variant_types import (
+    VARIANT_ENCODING_OPTION,
+    VARIANT_KIND_OPTION,
+    VARIANT_PARSE_MODE_OPTION,
+    VariantKind,
+    variant_col,
+    variant_path_expr,
+    variant_type,
+    variant_types_compatible,
+)
+
+
+def _invalid_variant_path_without_root() -> None:
+    variant_path_expr("items")
+    return
+
+
+def _assert_variant_predicate(expr_name: str, predicate_expr: ColumnExpr) -> None:
+    assert column_expr_function_name(predicate_expr) == expr_name, "variant predicate should preserve the canonical function name"
+    assert column_expr_function_ref(predicate_expr) == function_ref_for(expr_name), "variant predicate should preserve the function ref"
+    assert column_expr_argument_count(predicate_expr) == 1, "variant predicate should carry one variant input expression"
+    assert column_expr_option_value(predicate_expr, VARIANT_KIND_OPTION) == "any", "variant predicate should preserve variant kind metadata"
+    assert column_expr_option_value(predicate_expr, VARIANT_ENCODING_OPTION) == "json", "variant predicate should preserve variant encoding metadata"
+
+
+def test_variant_type_and_columns_preserve_logical_metadata() -> None:
+    # -- Arrange / Act --
+    payload_type = variant_type(VariantKind.Object)
+    same_type = variant_type(VariantKind.Object)
+    other_type = variant_type(VariantKind.Array)
+    payload = variant_col("payload_value", payload_type)
+
+    # -- Assert --
+    assert payload_type.kind == VariantKind.Object
+    assert variant_types_compatible(payload_type, same_type), "matching kind and encoding should be compatible"
+    assert not variant_types_compatible(payload_type, other_type), "different variant kinds should not be compatible"
+    assert column_expr_name(payload.expr) == "payload_value", "variant_col should preserve the referenced column"
+    assert payload.variant_type.kind == VariantKind.Object, "variant_col should preserve explicit logical type metadata"
+
+
+def test_variant_parse_helpers_attach_parse_mode_and_type_metadata() -> None:
+    # -- Arrange / Act --
+    strict_payload = parse_variant_json(col("payload"))
+    recoverable_payload = try_parse_variant_json(col("payload"))
+
+    # -- Assert --
+    assert column_expr_function_name(strict_payload.expr) == "parse_variant_json"
+    assert column_expr_function_ref(strict_payload.expr) == function_ref_for("parse_variant_json")
+    assert column_expr_option_value(strict_payload.expr, VARIANT_KIND_OPTION) == "any"
+    assert column_expr_option_value(strict_payload.expr, VARIANT_ENCODING_OPTION) == "json"
+    assert column_expr_option_value(strict_payload.expr, VARIANT_PARSE_MODE_OPTION) == "strict"
+    assert strict_payload.variant_type.kind == VariantKind.Any
+    assert column_expr_function_name(recoverable_payload.expr) == "try_parse_variant_json"
+    assert column_expr_function_ref(recoverable_payload.expr) == function_ref_for("try_parse_variant_json")
+    assert column_expr_option_value(recoverable_payload.expr, VARIANT_PARSE_MODE_OPTION) == "recoverable"
+
+
+def test_variant_get_preserves_explicit_path_and_returns_variant() -> None:
+    # -- Arrange --
+    payload = parse_variant_json(col("payload"))
+
+    # -- Act --
+    item = variant_get(payload, "$.items")
+
+    # -- Assert --
+    assert column_expr_function_name(item.expr) == "variant_get"
+    assert column_expr_function_ref(item.expr) == function_ref_for("variant_get")
+    assert column_expr_argument_count(item.expr) == 2
+    assert column_expr_option_value(item.expr, VARIANT_KIND_OPTION) == "any"
+    assert item.variant_type.kind == VariantKind.Any
+
+
+def test_variant_path_requires_explicit_root_marker() -> None:
+    # -- Arrange / Act / Assert --
+    assert_raises[ValueError](_invalid_variant_path_without_root)
+
+
+def test_variant_inspection_helpers_accept_only_typed_variant_inputs() -> None:
+    # -- Arrange --
+    payload = parse_variant_json(col("payload"))
+    item = variant_get(payload, "$.items")
+
+    # -- Act / Assert --
+    _assert_variant_predicate("is_array", is_array(item))
+    _assert_variant_predicate("is_boolean", is_boolean(payload))
+    _assert_variant_predicate("is_float", is_float(payload))
+    _assert_variant_predicate("is_integer", is_integer(payload))
+    _assert_variant_predicate("is_null_value", is_null_value(payload))
+    _assert_variant_predicate("is_object", is_object(payload))
+    _assert_variant_predicate("is_string", is_string(payload))
+    _assert_variant_predicate("is_timestamp", is_timestamp(payload))
+    kind_expr = typeof(payload)
+    assert column_expr_function_name(kind_expr) == "typeof", "typeof should preserve the canonical function name"
+    assert column_expr_function_ref(kind_expr) == function_ref_for("typeof"), "typeof should preserve the function ref"
+    assert column_expr_argument_count(kind_expr) == 1, "typeof should carry one variant input expression"

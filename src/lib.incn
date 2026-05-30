@@ -34,6 +34,23 @@ pub from sketch_types import (
     sketch_types_compatible,
     sketch_value,
 )
+pub from variant_types import (
+    VARIANT_ENCODING_OPTION,
+    VARIANT_KIND_OPTION,
+    VARIANT_PARSE_MODE_OPTION,
+    VariantEncoding,
+    VariantExpr,
+    VariantKind,
+    VariantLogicalType,
+    VariantParseMode,
+    variant_col,
+    variant_parse_options,
+    variant_path_expr,
+    variant_scalar_options,
+    variant_type,
+    variant_types_compatible,
+    variant_value,
+)
 pub from generator_builders import (
     GeneratorApplication,
     GeneratorKind,
@@ -107,6 +124,18 @@ pub from functions.sketches.hll_estimate import hll_estimate
 pub from functions.sketches.hll_merge import hll_merge
 pub from functions.sketches.hll_serialize import hll_serialize
 pub from functions.sketches.hll_sketch import hll_sketch
+pub from functions.variants.is_array import is_array
+pub from functions.variants.is_boolean import is_boolean
+pub from functions.variants.is_float import is_float
+pub from functions.variants.is_integer import is_integer
+pub from functions.variants.is_null_value import is_null_value
+pub from functions.variants.is_object import is_object
+pub from functions.variants.is_string import is_string
+pub from functions.variants.is_timestamp import is_timestamp
+pub from functions.variants.parse_variant_json import parse_variant_json
+pub from functions.variants.try_parse_variant_json import try_parse_variant_json
+pub from functions.variants.typeof import typeof
+pub from functions.variants.variant_get import variant_get
 pub from functions.math.abs import abs
 pub from functions.math.ceil import ceil
 pub from functions.math.floor import floor
@@ -236,6 +265,7 @@ pub from function_registry import (
     FunctionRegistryEntry,
     FunctionSketchPolicy,
     FunctionSpec,
+    FunctionVariantPolicy,
     FunctionVersion,
     HLL_SKETCH_APPROXIMATION_POLICY,
     HLL_SKETCH_CONSTRUCT_POLICY,
@@ -246,9 +276,22 @@ pub from function_registry import (
     NO_AGGREGATE_MODIFIERS,
     NO_APPROXIMATION,
     NO_SKETCH_POLICY,
+    NO_VARIANT_POLICY,
     RejectedFunctionPolicy,
     SubstraitMapping,
     SubstraitMappingKind,
+    VARIANT_GET_POLICY,
+    VARIANT_IS_ARRAY_POLICY,
+    VARIANT_IS_BOOLEAN_POLICY,
+    VARIANT_IS_FLOAT_POLICY,
+    VARIANT_IS_INTEGER_POLICY,
+    VARIANT_IS_NULL_VALUE_POLICY,
+    VARIANT_IS_OBJECT_POLICY,
+    VARIANT_IS_STRING_POLICY,
+    VARIANT_IS_TIMESTAMP_POLICY,
+    VARIANT_PARSE_JSON_POLICY,
+    VARIANT_TRY_PARSE_JSON_POLICY,
+    VARIANT_TYPEOF_POLICY,
     approx_count_distinct_spec,
     approx_percentile_spec,
     compatibility_alias_spec,
@@ -266,6 +309,7 @@ pub from function_registry import (
     rewrite_mapping,
     sort_field_mapping,
     structural_mapping,
+    variant_scalar_spec,
     v0_1,
     v0_2,
     v0_3,

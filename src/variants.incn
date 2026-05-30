@@ -1,0 +1,33 @@
+"""Public semi-structured variant namespace."""
+
+pub from variant_types import (
+    VARIANT_ENCODING_OPTION,
+    VARIANT_KIND_OPTION,
+    VARIANT_PARSE_MODE_OPTION,
+    VariantEncoding,
+    VariantExpr,
+    VariantKind,
+    VariantLogicalType,
+    VariantParseMode,
+    variant_col,
+    variant_parse_options,
+    variant_path_expr,
+    variant_scalar_options,
+    variant_type,
+    variant_types_compatible,
+    variant_value,
+)
+pub from functions.variants import (
+    is_array,
+    is_boolean,
+    is_float,
+    is_integer,
+    is_null_value,
+    is_object,
+    is_string,
+    is_timestamp,
+    parse_variant_json,
+    try_parse_variant_json,
+    typeof,
+    variant_get,
+)

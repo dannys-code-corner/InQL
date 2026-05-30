@@ -79,7 +79,15 @@ from functions import (
     int_expr,
     int_lit,
     current_row,
+    is_array,
+    is_boolean,
+    is_float,
+    is_integer,
     is_nan,
+    is_null_value,
+    is_object,
+    is_string,
+    is_timestamp,
     is_not_nan,
     is_not_null,
     is_null,
@@ -122,6 +130,7 @@ from functions import (
     round,
     row_number,
     parse_json,
+    parse_variant_json,
     parse_url,
     schema_of_csv,
     schema_of_json,
@@ -138,15 +147,18 @@ from functions import (
     stack,
     try_cast,
     try_from_json,
+    try_parse_variant_json,
     try_url_decode,
     to_csv,
     to_json,
+    typeof,
     url_decode,
     url_encode,
     unbounded_following,
     unbounded_preceding,
     window,
     xxhash64,
+    variant_get,
 )
 from function_registry import (
     APPROX_COUNT_DISTINCT_POLICY,
@@ -176,6 +188,18 @@ from function_registry import (
     namespaced_function_ref,
     rejected_function_policy,
     rewrite_mapping,
+    VARIANT_GET_POLICY,
+    VARIANT_IS_ARRAY_POLICY,
+    VARIANT_IS_BOOLEAN_POLICY,
+    VARIANT_IS_FLOAT_POLICY,
+    VARIANT_IS_INTEGER_POLICY,
+    VARIANT_IS_NULL_VALUE_POLICY,
+    VARIANT_IS_OBJECT_POLICY,
+    VARIANT_IS_STRING_POLICY,
+    VARIANT_IS_TIMESTAMP_POLICY,
+    VARIANT_PARSE_JSON_POLICY,
+    VARIANT_TRY_PARSE_JSON_POLICY,
+    VARIANT_TYPEOF_POLICY,
     v0_1,
 )
 from projection_builders import ColumnExprKind, column_expr_kind
@@ -222,10 +246,18 @@ from substrait.function_extensions import (
     HLL_MERGE_FUNCTION_ANCHOR,
     HLL_SERIALIZE_FUNCTION_ANCHOR,
     HLL_SKETCH_FUNCTION_ANCHOR,
+    IS_ARRAY_FUNCTION_ANCHOR,
+    IS_BOOLEAN_FUNCTION_ANCHOR,
+    IS_FLOAT_FUNCTION_ANCHOR,
+    IS_INTEGER_FUNCTION_ANCHOR,
     IS_NAN_FUNCTION_ANCHOR,
     IS_NOT_DISTINCT_FROM_FUNCTION_ANCHOR,
     IS_NOT_NULL_FUNCTION_ANCHOR,
     IS_NULL_FUNCTION_ANCHOR,
+    IS_NULL_VALUE_FUNCTION_ANCHOR,
+    IS_OBJECT_FUNCTION_ANCHOR,
+    IS_STRING_FUNCTION_ANCHOR,
+    IS_TIMESTAMP_FUNCTION_ANCHOR,
     JSON_ARRAY_LENGTH_FUNCTION_ANCHOR,
     JSON_EXTRACT_PATH_TEXT_FUNCTION_ANCHOR,
     JSON_OBJECT_KEYS_FUNCTION_ANCHOR,
@@ -259,6 +291,7 @@ from substrait.function_extensions import (
     ROUND_FUNCTION_ANCHOR,
     STACK_EXTENSION_URI,
     PARSE_JSON_FUNCTION_ANCHOR,
+    PARSE_VARIANT_JSON_FUNCTION_ANCHOR,
     PARSE_URL_FUNCTION_ANCHOR,
     SCHEMA_OF_CSV_FUNCTION_ANCHOR,
     SCHEMA_OF_JSON_FUNCTION_ANCHOR,
@@ -272,9 +305,12 @@ from substrait.function_extensions import (
     TO_CSV_FUNCTION_ANCHOR,
     TO_JSON_FUNCTION_ANCHOR,
     TRY_FROM_JSON_FUNCTION_ANCHOR,
+    TRY_PARSE_VARIANT_JSON_FUNCTION_ANCHOR,
     TRY_URL_DECODE_FUNCTION_ANCHOR,
+    TYPEOF_FUNCTION_ANCHOR,
     URL_DECODE_FUNCTION_ANCHOR,
     URL_ENCODE_FUNCTION_ANCHOR,
+    VARIANT_GET_FUNCTION_ANCHOR,
     XXHASH64_FUNCTION_ANCHOR,
     EXPLODE_EXTENSION_URI,
     EXPLODE_OUTER_EXTENSION_URI,
@@ -350,12 +386,12 @@ def _local_entry_by_namespace_and_name_or_fail(
 
 def _expected_registry_names() -> list[str]:
     """Return the expected registered public helper names."""
-    return ["col", "lit", "sum", "count", "count_expr", "count_distinct", "count_if", "avg", "min", "max", "approx_count_distinct", "approx_percentile", "hll_sketch", "hll_merge", "hll_estimate", "hll_serialize", "hll_deserialize", "int_expr", "float_expr", "str_expr", "bool_expr", "add", "mul", "int_lit", "str_lit", "bool_lit", "always_true", "always_false", "eq", "gt", "cast", "try_cast", "ne", "lt", "lte", "gte", "equal_null", "and_", "or_", "not_", "is_null", "is_not_null", "is_nan", "is_not_nan", "sub", "div", "mod", "neg", "coalesce", "nullif", "case_when", "in_", "between", "asc", "desc", "asc_nulls_first", "asc_nulls_last", "desc_nulls_first", "desc_nulls_last", "abs", "ceil", "floor", "round", "array", "array_contains", "array_distinct", "array_except", "array_flatten", "array_intersect", "array_join", "array_position", "range", "array_reverse", "array_slice", "array_sort", "array_union", "arrays_overlap", "cardinality", "element_at", "map_contains_key", "map_entries", "map_extract", "map_from_arrays", "map_keys", "map_values", "named_struct", "explode", "explode_outer", "posexplode", "posexplode_outer", "inline", "inline_outer", "flatten", "stack", "window", "unbounded_preceding", "preceding", "current_row", "following", "unbounded_following", "row_number", "rank", "dense_rank", "percent_rank", "cume_dist", "ntile", "lag", "lead", "first_value", "last_value", "nth_value", "sha224", "sha256", "sha384", "sha512", "sha2", "md5", "sha1", "crc32", "xxhash64", "parse_url", "try_url_decode", "url_decode", "url_encode", "check_json", "from_json", "get_json_object", "json_array_length", "json_extract_path_text", "json_object_keys", "parse_json", "schema_of_json", "to_json", "try_from_json", "from_csv", "schema_of_csv", "to_csv"]
+    return ["col", "lit", "sum", "count", "count_expr", "count_distinct", "count_if", "avg", "min", "max", "approx_count_distinct", "approx_percentile", "hll_sketch", "hll_merge", "hll_estimate", "hll_serialize", "hll_deserialize", "parse_variant_json", "try_parse_variant_json", "variant_get", "typeof", "is_null_value", "is_boolean", "is_integer", "is_float", "is_string", "is_timestamp", "is_array", "is_object", "int_expr", "float_expr", "str_expr", "bool_expr", "add", "mul", "int_lit", "str_lit", "bool_lit", "always_true", "always_false", "eq", "gt", "cast", "try_cast", "ne", "lt", "lte", "gte", "equal_null", "and_", "or_", "not_", "is_null", "is_not_null", "is_nan", "is_not_nan", "sub", "div", "mod", "neg", "coalesce", "nullif", "case_when", "in_", "between", "asc", "desc", "asc_nulls_first", "asc_nulls_last", "desc_nulls_first", "desc_nulls_last", "abs", "ceil", "floor", "round", "array", "array_contains", "array_distinct", "array_except", "array_flatten", "array_intersect", "array_join", "array_position", "range", "array_reverse", "array_slice", "array_sort", "array_union", "arrays_overlap", "cardinality", "element_at", "map_contains_key", "map_entries", "map_extract", "map_from_arrays", "map_keys", "map_values", "named_struct", "explode", "explode_outer", "posexplode", "posexplode_outer", "inline", "inline_outer", "flatten", "stack", "window", "unbounded_preceding", "preceding", "current_row", "following", "unbounded_following", "row_number", "rank", "dense_rank", "percent_rank", "cume_dist", "ntile", "lag", "lead", "first_value", "last_value", "nth_value", "sha224", "sha256", "sha384", "sha512", "sha2", "md5", "sha1", "crc32", "xxhash64", "parse_url", "try_url_decode", "url_decode", "url_encode", "check_json", "from_json", "get_json_object", "json_array_length", "json_extract_path_text", "json_object_keys", "parse_json", "schema_of_json", "to_json", "try_from_json", "from_csv", "schema_of_csv", "to_csv"]
 
 
 def _expected_substrait_mapped_names() -> list[str]:
     """Return helpers with concrete Substrait extension-function mappings."""
-    return ["sum", "count", "avg", "min", "max", "approx_count_distinct", "approx_percentile", "hll_sketch", "hll_merge", "hll_estimate", "hll_serialize", "hll_deserialize", "add", "mul", "eq", "gt", "ne", "lt", "lte", "gte", "equal_null", "and_", "or_", "not_", "is_null", "is_not_null", "is_nan", "sub", "div", "mod", "neg", "coalesce", "nullif", "between", "abs", "ceil", "floor", "round", "array", "array_contains", "array_distinct", "array_except", "array_flatten", "array_intersect", "array_join", "array_position", "range", "array_reverse", "array_slice", "array_sort", "array_union", "arrays_overlap", "cardinality", "element_at", "map_entries", "map_extract", "map_from_arrays", "map_keys", "map_values", "named_struct", "row_number", "rank", "dense_rank", "percent_rank", "cume_dist", "ntile", "lag", "lead", "first_value", "last_value", "nth_value", "sha224", "sha256", "sha384", "sha512", "md5", "sha1", "crc32", "xxhash64", "parse_url", "try_url_decode", "url_decode", "url_encode", "check_json", "from_json", "get_json_object", "json_array_length", "json_extract_path_text", "json_object_keys", "parse_json", "schema_of_json", "to_json", "try_from_json", "from_csv", "schema_of_csv", "to_csv"]
+    return ["sum", "count", "avg", "min", "max", "approx_count_distinct", "approx_percentile", "hll_sketch", "hll_merge", "hll_estimate", "hll_serialize", "hll_deserialize", "parse_variant_json", "try_parse_variant_json", "variant_get", "typeof", "is_null_value", "is_boolean", "is_integer", "is_float", "is_string", "is_timestamp", "is_array", "is_object", "add", "mul", "eq", "gt", "ne", "lt", "lte", "gte", "equal_null", "and_", "or_", "not_", "is_null", "is_not_null", "is_nan", "sub", "div", "mod", "neg", "coalesce", "nullif", "between", "abs", "ceil", "floor", "round", "array", "array_contains", "array_distinct", "array_except", "array_flatten", "array_intersect", "array_join", "array_position", "range", "array_reverse", "array_slice", "array_sort", "array_union", "arrays_overlap", "cardinality", "element_at", "map_entries", "map_extract", "map_from_arrays", "map_keys", "map_values", "named_struct", "row_number", "rank", "dense_rank", "percent_rank", "cume_dist", "ntile", "lag", "lead", "first_value", "last_value", "nth_value", "sha224", "sha256", "sha384", "sha512", "md5", "sha1", "crc32", "xxhash64", "parse_url", "try_url_decode", "url_decode", "url_encode", "check_json", "from_json", "get_json_object", "json_array_length", "json_extract_path_text", "json_object_keys", "parse_json", "schema_of_json", "to_json", "try_from_json", "from_csv", "schema_of_csv", "to_csv"]
 
 
 def _exercise_current_public_helpers() -> None:
@@ -392,6 +428,18 @@ def _exercise_current_public_helpers() -> None:
     hll_estimate(users_hll)
     hll_serialize(users_hll)
     hll_deserialize(status)
+    payload_variant = parse_variant_json(status)
+    try_payload_variant = try_parse_variant_json(status)
+    item_variant = variant_get(payload_variant, "$.items")
+    typeof(payload_variant)
+    is_null_value(payload_variant)
+    is_boolean(payload_variant)
+    is_integer(payload_variant)
+    is_float(payload_variant)
+    is_string(payload_variant)
+    is_timestamp(payload_variant)
+    is_array(item_variant)
+    is_object(try_payload_variant)
     add(amount, lit(1))
     mul(amount, int_lit(2))
     eq(status, str_lit("paid"))
@@ -724,6 +772,49 @@ def test_function_registry__hll_helpers_expose_typed_sketch_policy() -> None:
     assert not count_entry.sketch.is_sketch_aware, "ordinary exact aggregates should not inherit sketch metadata"
 
 
+def test_function_registry__variant_helpers_expose_typed_variant_policy() -> None:
+    """Assert RFC 026 helpers carry typed variant policy metadata."""
+    # -- Arrange --
+    _exercise_current_public_helpers()
+
+    # -- Act --
+    parse_entry = _entry_by_name_or_fail("parse_variant_json")
+    try_parse_entry = _entry_by_name_or_fail("try_parse_variant_json")
+    get_entry = _entry_by_name_or_fail("variant_get")
+    typeof_entry = _entry_by_name_or_fail("typeof")
+    null_entry = _entry_by_name_or_fail("is_null_value")
+    boolean_entry = _entry_by_name_or_fail("is_boolean")
+    integer_entry = _entry_by_name_or_fail("is_integer")
+    float_entry = _entry_by_name_or_fail("is_float")
+    string_entry = _entry_by_name_or_fail("is_string")
+    timestamp_entry = _entry_by_name_or_fail("is_timestamp")
+    array_entry = _entry_by_name_or_fail("is_array")
+    object_entry = _entry_by_name_or_fail("is_object")
+    count_entry = _entry_by_name_or_fail("count")
+
+    # -- Assert --
+    assert parse_entry.variant.is_variant_aware, "parse_variant_json should be marked as variant-aware"
+    assert parse_entry.variant.role == VARIANT_PARSE_JSON_POLICY.role, "parse_variant_json should identify the parse role"
+    assert parse_entry.variant.returns_variant, "parse_variant_json should produce typed variant state"
+    assert try_parse_entry.variant.role == VARIANT_TRY_PARSE_JSON_POLICY.role, "try_parse_variant_json should identify the recoverable parse role"
+    assert get_entry.variant.role == VARIANT_GET_POLICY.role, "variant_get should identify the path-access role"
+    assert get_entry.variant.accepts_variant, "variant_get should consume typed variant state"
+    assert get_entry.variant.returns_variant, "variant_get should return typed variant state"
+    assert typeof_entry.variant.role == VARIANT_TYPEOF_POLICY.role, "typeof should identify the inspection role"
+    assert typeof_entry.variant.accepts_variant, "typeof should consume typed variant state"
+    assert not typeof_entry.variant.returns_variant, "typeof should return a scalar kind string"
+    assert null_entry.variant.target_kind == VARIANT_IS_NULL_VALUE_POLICY.target_kind, "is_null_value should record variant null as its target kind"
+    assert boolean_entry.variant.target_kind == VARIANT_IS_BOOLEAN_POLICY.target_kind, "is_boolean should record boolean as its target kind"
+    assert integer_entry.variant.target_kind == VARIANT_IS_INTEGER_POLICY.target_kind, "is_integer should record integer as its target kind"
+    assert float_entry.variant.target_kind == VARIANT_IS_FLOAT_POLICY.target_kind, "is_float should record float as its target kind"
+    assert string_entry.variant.target_kind == VARIANT_IS_STRING_POLICY.target_kind, "is_string should record string as its target kind"
+    assert timestamp_entry.variant.target_kind == VARIANT_IS_TIMESTAMP_POLICY.target_kind, "is_timestamp should record timestamp as its target kind"
+    assert array_entry.variant.target_kind == VARIANT_IS_ARRAY_POLICY.target_kind, "is_array should record array as its target kind"
+    assert object_entry.variant.target_kind == VARIANT_IS_OBJECT_POLICY.target_kind, "is_object should record object as its target kind"
+    assert parse_entry.variant.distinguishes_variant_null, "variant helpers should distinguish variant null from SQL null"
+    assert not count_entry.variant.is_variant_aware, "ordinary exact aggregates should not inherit variant metadata"
+
+
 def test_function_registry__extension_policy_is_separate_from_scalar_class() -> None:
     """Assert extension-only functions can be scalar while remaining explicitly namespaced."""
     # -- Arrange --
@@ -859,6 +950,18 @@ def test_function_registry__substrait_extension_mappings_are_structured() -> Non
     _assert_extension_mapping("hll_estimate", "hll_estimate", HLL_ESTIMATE_FUNCTION_ANCHOR)
     _assert_extension_mapping("hll_serialize", "hll_serialize", HLL_SERIALIZE_FUNCTION_ANCHOR)
     _assert_extension_mapping("hll_deserialize", "hll_deserialize", HLL_DESERIALIZE_FUNCTION_ANCHOR)
+    _assert_extension_mapping("parse_variant_json", "parse_variant_json", PARSE_VARIANT_JSON_FUNCTION_ANCHOR)
+    _assert_extension_mapping("try_parse_variant_json", "try_parse_variant_json", TRY_PARSE_VARIANT_JSON_FUNCTION_ANCHOR)
+    _assert_extension_mapping("variant_get", "variant_get", VARIANT_GET_FUNCTION_ANCHOR)
+    _assert_extension_mapping("typeof", "typeof", TYPEOF_FUNCTION_ANCHOR)
+    _assert_extension_mapping("is_null_value", "is_null_value", IS_NULL_VALUE_FUNCTION_ANCHOR)
+    _assert_extension_mapping("is_boolean", "is_boolean", IS_BOOLEAN_FUNCTION_ANCHOR)
+    _assert_extension_mapping("is_integer", "is_integer", IS_INTEGER_FUNCTION_ANCHOR)
+    _assert_extension_mapping("is_float", "is_float", IS_FLOAT_FUNCTION_ANCHOR)
+    _assert_extension_mapping("is_string", "is_string", IS_STRING_FUNCTION_ANCHOR)
+    _assert_extension_mapping("is_timestamp", "is_timestamp", IS_TIMESTAMP_FUNCTION_ANCHOR)
+    _assert_extension_mapping("is_array", "is_array", IS_ARRAY_FUNCTION_ANCHOR)
+    _assert_extension_mapping("is_object", "is_object", IS_OBJECT_FUNCTION_ANCHOR)
     _assert_extension_mapping("add", "add", ADD_FUNCTION_ANCHOR)
     _assert_extension_mapping("mul", "multiply", MULTIPLY_FUNCTION_ANCHOR)
     _assert_extension_mapping("eq", "equal", EQUAL_FUNCTION_ANCHOR)

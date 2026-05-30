@@ -54,7 +54,15 @@ from functions import (
     hll_serialize,
     hll_sketch,
     in_,
+    is_array,
+    is_boolean,
+    is_float,
+    is_integer,
     is_nan,
+    is_null_value,
+    is_object,
+    is_string,
+    is_timestamp,
     is_not_nan,
     is_not_null,
     is_null,
@@ -87,6 +95,7 @@ from functions import (
     ntile,
     or_,
     parse_json,
+    parse_variant_json,
     parse_url,
     percent_rank,
     rank,
@@ -106,13 +115,16 @@ from functions import (
     to_json,
     try_cast,
     try_from_json,
+    try_parse_variant_json,
     try_url_decode,
+    typeof,
     url_decode,
     url_encode,
     xxhash64,
     cardinality,
     element_at,
     explode,
+    variant_get,
     window,
 )
 from projection_builders import ColumnExpr, with_column_assignment
@@ -525,6 +537,21 @@ def test_plan__core_scalar_extension_mappings_lower_to_substrait() -> None:
     _assert_scalar_expr_lowers(hll_payload.expr)
     _assert_scalar_expr_lowers(hll_estimate(hll_payload))
     _assert_scalar_expr_lowers(hll_serialize(hll_payload))
+    variant_payload = parse_variant_json(col("status"))
+    try_variant_payload = try_parse_variant_json(col("status"))
+    variant_item = variant_get(variant_payload, "$.items")
+    _assert_scalar_expr_lowers(variant_payload.expr)
+    _assert_scalar_expr_lowers(try_variant_payload.expr)
+    _assert_scalar_expr_lowers(variant_item.expr)
+    _assert_scalar_expr_lowers(typeof(variant_payload))
+    _assert_scalar_expr_lowers(is_null_value(variant_payload))
+    _assert_scalar_expr_lowers(is_boolean(variant_payload))
+    _assert_scalar_expr_lowers(is_integer(variant_payload))
+    _assert_scalar_expr_lowers(is_float(variant_payload))
+    _assert_scalar_expr_lowers(is_string(variant_payload))
+    _assert_scalar_expr_lowers(is_timestamp(variant_payload))
+    _assert_scalar_expr_lowers(is_array(variant_item))
+    _assert_scalar_expr_lowers(is_object(try_variant_payload))
 
 
 def test_plan__nested_scalar_extension_mappings_lower_to_substrait() -> None:
@@ -725,6 +752,36 @@ def test_plan__project_rel_lowers_typed_hll_sketch_scalars() -> None:
     assert extension_functions.contains("hll_deserialize"), "typed sketch scalar plans should declare hll_deserialize"
     assert extension_functions.contains("hll_estimate"), "typed sketch scalar plans should declare hll_estimate"
     assert extension_functions.contains("hll_serialize"), "typed sketch scalar plans should declare hll_serialize"
+
+
+def test_plan__project_rel_lowers_typed_variant_scalars() -> None:
+    # -- Arrange --
+    base = read_named_table_rel("orders")
+    payload = parse_variant_json(col("status"))
+    item = variant_get(payload.clone(), "$.items")
+    projected = project_rel_of_columns(
+        base,
+        ["id", "amount", "status"],
+        [with_column_assignment("payload_kind", typeof(payload.clone())), with_column_assignment(
+            "item_is_array",
+            is_array(item),
+        ), with_column_assignment("payload_is_object", is_object(payload))],
+    )
+    plan = plan_from_root_relation(
+        projected,
+        ["id", "amount", "status", "payload_kind", "item_is_array", "payload_is_object"],
+    )
+
+    # -- Act --
+    extension_functions = plan_extension_function_names(plan)
+
+    # -- Assert --
+    assert relation_kind_name(projected) == "ProjectRel", "typed variant scalar helpers should lower inside ProjectRel"
+    assert extension_functions.contains("parse_variant_json"), "typed variant scalar plans should declare parse_variant_json"
+    assert extension_functions.contains("variant_get"), "typed variant scalar plans should declare variant_get"
+    assert extension_functions.contains("typeof"), "typed variant scalar plans should declare typeof"
+    assert extension_functions.contains("is_array"), "typed variant scalar plans should declare is_array"
+    assert extension_functions.contains("is_object"), "typed variant scalar plans should declare is_object"
 
 
 def test_plan__aggregate_rel_rejects_invalid_modifier_shapes() -> None:

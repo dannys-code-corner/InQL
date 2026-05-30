@@ -32,6 +32,7 @@ from functions import (
     neg,
     nullif,
     parse_json,
+    parse_variant_json,
     parse_url,
     round,
     schema_of_csv,
@@ -44,6 +45,7 @@ from functions import (
     sub,
     to_csv,
     to_json,
+    typeof,
     try_from_json,
     try_url_decode,
     try_cast,
@@ -352,6 +354,25 @@ def test_session_projection__collect_reports_strict_format_decode_errors() -> No
     # -- Assert --
     assert err.kind == SessionErrorKind.BackendExecutionError, err.error_message()
     assert err.message.contains("invalid percent-encoded URL component"), err.error_message()
+
+
+def test_session_projection__collect_reports_variant_backend_capability_gap() -> None:
+    """collect should preserve variant semantics and report the current DataFusion adapter gap."""
+    # -- Arrange --
+    mut session = Session.default()
+
+    # -- Act --
+    lazy: LazyFrame[AggregateOrder] = assert_is_ok(
+        session.read_csv("aggregate_orders_variant", AGGREGATE_ORDERS_CSV_FIXTURE),
+        "aggregate orders fixture should load",
+    )
+    projected = lazy.with_column("payload_kind", typeof(parse_variant_json(col("customer_id"))))
+    err = assert_is_err(session.collect(projected), "expected DataFusion variant execution to be rejected")
+
+    # -- Assert --
+    assert err.kind == SessionErrorKind.BackendPlanningError, err.error_message()
+    assert err.message.contains("variant execution"), err.error_message()
+    assert err.message.contains("parse_variant_json"), err.error_message()
 
 
 def test_session_projection__collect_executes_nested_scalar_projection_functions() -> None:

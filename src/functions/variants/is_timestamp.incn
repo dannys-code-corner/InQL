@@ -1,0 +1,45 @@
+"""Variant timestamp predicate helper."""
+
+from function_registry import (
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    VARIANT_IS_TIMESTAMP_POLICY,
+    extension_mapping,
+    v0_1,
+    variant_scalar_spec,
+)
+from functions.registry import register_function, registered_application_with_options
+from projection_builders import ColumnExpr
+from substrait.function_extensions import IS_TIMESTAMP_FUNCTION_ANCHOR
+from variant_types import VariantExpr, variant_scalar_options
+
+
+@register_function(variant_scalar_spec(
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.Predicate,
+    variant=VARIANT_IS_TIMESTAMP_POLICY,
+    substrait=extension_mapping("is_timestamp", IS_TIMESTAMP_FUNCTION_ANCHOR),
+))
+pub def is_timestamp(variant: VariantExpr) -> ColumnExpr:
+    """
+    Return whether one typed variant value is a present timestamp.
+
+    Examples:
+        is_event_time = is_timestamp(event_time_value)
+
+    Parameters:
+        variant: Typed variant expression to inspect.
+    """
+    return registered_application_with_options(
+        "is_timestamp",
+        [variant.expr],
+        variant_scalar_options(variant.variant_type),
+    )
+
+
+module tests:
+    from projection_builders import col, column_expr_function_name
+    from functions.variants.parse_variant_json import parse_variant_json
+    def test_is_timestamp_builds_registered_application() -> None:
+        expr = is_timestamp(parse_variant_json(col("payload")))
+        assert column_expr_function_name(expr) == "is_timestamp"

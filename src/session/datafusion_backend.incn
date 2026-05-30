@@ -108,6 +108,18 @@ const HLL_MERGE_FUNCTION_NAME: str = "hll_merge"
 const HLL_ESTIMATE_FUNCTION_NAME: str = "hll_estimate"
 const HLL_SERIALIZE_FUNCTION_NAME: str = "hll_serialize"
 const HLL_DESERIALIZE_FUNCTION_NAME: str = "hll_deserialize"
+const PARSE_VARIANT_JSON_FUNCTION_NAME: str = "parse_variant_json"
+const TRY_PARSE_VARIANT_JSON_FUNCTION_NAME: str = "try_parse_variant_json"
+const VARIANT_GET_FUNCTION_NAME: str = "variant_get"
+const TYPEOF_FUNCTION_NAME: str = "typeof"
+const IS_NULL_VALUE_FUNCTION_NAME: str = "is_null_value"
+const IS_BOOLEAN_FUNCTION_NAME: str = "is_boolean"
+const IS_INTEGER_FUNCTION_NAME: str = "is_integer"
+const IS_FLOAT_FUNCTION_NAME: str = "is_float"
+const IS_STRING_FUNCTION_NAME: str = "is_string"
+const IS_TIMESTAMP_FUNCTION_NAME: str = "is_timestamp"
+const IS_ARRAY_FUNCTION_NAME: str = "is_array"
+const IS_OBJECT_FUNCTION_NAME: str = "is_object"
 
 
 @derive(Clone)
@@ -305,6 +317,12 @@ async def _dataframe_from_standard_plan(ctx: SessionContext, plan: Plan) -> Resu
     match _typed_sketch_extension_function_name(plan.clone()):
         Some(function_name) =>
             message = f"DataFusion backend does not support typed sketch execution for `{function_name}`; InQL preserved the typed sketch plan, but this adapter has no sketch runtime implementation"
+            return Err(backend_error(BackendErrorKind.BackendPlanningError, message))
+        None => pass
+
+    match _typed_variant_extension_function_name(plan.clone()):
+        Some(function_name) =>
+            message = f"DataFusion backend does not support variant execution for `{function_name}`; InQL preserved the typed variant plan, but this adapter has no variant runtime implementation"
             return Err(backend_error(BackendErrorKind.BackendPlanningError, message))
         None => pass
 
@@ -1713,6 +1731,35 @@ def _is_typed_sketch_function_name(name: str) -> bool:
         or name == HLL_ESTIMATE_FUNCTION_NAME
         or name == HLL_SERIALIZE_FUNCTION_NAME
         or name == HLL_DESERIALIZE_FUNCTION_NAME
+    )
+
+
+def _typed_variant_extension_function_name(plan: Plan) -> Option[str]:
+    """Return the first typed-variant extension function declared in a plan, if any."""
+    for extension in plan.extensions:
+        match extension.mapping_type:
+            Some(MappingType.ExtensionFunction(function)) =>
+                if _is_typed_variant_function_name(function.name):
+                    return Some(function.name)
+            _ => pass
+    return None
+
+
+def _is_typed_variant_function_name(name: str) -> bool:
+    """Return whether one extension function name belongs to the typed variant surface."""
+    return (
+        name == PARSE_VARIANT_JSON_FUNCTION_NAME
+        or name == TRY_PARSE_VARIANT_JSON_FUNCTION_NAME
+        or name == VARIANT_GET_FUNCTION_NAME
+        or name == TYPEOF_FUNCTION_NAME
+        or name == IS_NULL_VALUE_FUNCTION_NAME
+        or name == IS_BOOLEAN_FUNCTION_NAME
+        or name == IS_INTEGER_FUNCTION_NAME
+        or name == IS_FLOAT_FUNCTION_NAME
+        or name == IS_STRING_FUNCTION_NAME
+        or name == IS_TIMESTAMP_FUNCTION_NAME
+        or name == IS_ARRAY_FUNCTION_NAME
+        or name == IS_OBJECT_FUNCTION_NAME
     )
 
 
