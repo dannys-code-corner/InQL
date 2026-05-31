@@ -185,6 +185,13 @@ pub const HLL_SKETCH_APPROXIMATION_POLICY: FunctionApproximationPolicy = Functio
     mergeable=true,
     result_interpretation="typed HyperLogLog sketch state",
 )
+pub const HLL_ESTIMATE_APPROXIMATION_POLICY: FunctionApproximationPolicy = FunctionApproximationPolicy(
+    is_approximate=true,
+    algorithm="HyperLogLog",
+    default_error="controlled by the typed sketch precision metadata",
+    mergeable=false,
+    result_interpretation="approximate distinct-count cardinality estimate from typed HyperLogLog sketch state",
+)
 
 
 @derive(Clone)

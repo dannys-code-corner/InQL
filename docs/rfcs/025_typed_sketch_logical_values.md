@@ -157,6 +157,8 @@ The implemented first family is HyperLogLog:
 - `hll_merge(...)` is an aggregate measure over existing typed HyperLogLog state.
 - `hll_estimate(...)`, `hll_serialize(...)`, and `hll_deserialize(...)` are scalar helpers over typed sketch state or
   explicit serialized payloads.
+- The public `SketchFamily` API exposes HyperLogLog in this implementation; additional families should add their own
+  family-specific type builders, serialization formats, registry policies, and tests rather than sharing HLL metadata.
 - Function registry entries expose typed sketch policy metadata and Substrait extension mappings.
 - Substrait lowering carries sketch family, value domain, precision, and format in function options.
 - The DataFusion adapter rejects typed sketch execution with a backend planning diagnostic. This is an adapter

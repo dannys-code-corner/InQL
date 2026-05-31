@@ -31,6 +31,7 @@ from rust::substrait::proto::rel_common import Direct, EmitKind
 from rust::substrait::proto::set_rel import SetOp
 from rust::substrait::proto::sort_field import SortDirection, SortKind
 from aggregate_builders import AggregateMeasure, aggregate_measure_output_name
+from sketch_types import SKETCH_FAMILY_OPTION, SKETCH_FORMAT_OPTION, SKETCH_PRECISION_OPTION, SKETCH_VALUE_DOMAIN_OPTION
 from substrait.expr_lowering import field_index_from_expression, project_output_columns_with_emit, rust_u32_to_int
 from substrait.extensions import aggregate_function_name_from_anchor, window_function_name_from_anchor
 from substrait.function_extensions import (
@@ -135,6 +136,7 @@ def _aggregate_measure_output_name(input_columns: list[str], measure: Measure) -
                     output_name = output_name + "_" + input_columns[field_index]
         if is_approx_percentile:
             output_name = output_name + _approx_percentile_measure_suffix(agg_fn.arguments)
+        output_name = output_name + _sketch_measure_suffix(agg_fn.options)
         if measure_has_filter:
             output_name = output_name + "_filtered"
         if len(agg_fn.sorts) > 0:
@@ -150,6 +152,24 @@ def _approx_percentile_measure_suffix(arguments: list[FunctionArgument]) -> str:
     percentile = _measure_literal_argument_name(arguments[1])
     accuracy = _measure_literal_argument_name(arguments[2])
     return f"_p{percentile}_a{accuracy}"
+
+
+def _sketch_measure_suffix(options: list[FunctionOption]) -> str:
+    """Return the non-default sketch-compatibility suffix from Substrait function options."""
+    family = _function_option_value(options, SKETCH_FAMILY_OPTION)
+    if family == "":
+        return ""
+    mut suffix = ""
+    value_domain = _function_option_value(options, SKETCH_VALUE_DOMAIN_OPTION)
+    precision = _function_option_value(options, SKETCH_PRECISION_OPTION)
+    format = _function_option_value(options, SKETCH_FORMAT_OPTION)
+    if value_domain != "" and value_domain != "string_identifier":
+        suffix = suffix + "_" + value_domain
+    if precision != "" and precision != "14":
+        suffix = suffix + "_p" + precision
+    if format != "" and format != "inql_hll_v1":
+        suffix = suffix + "_" + format
+    return suffix
 
 
 def _measure_literal_argument_name(argument: FunctionArgument) -> str:

@@ -267,6 +267,7 @@ pub from function_registry import (
     FunctionSpec,
     FunctionVariantPolicy,
     FunctionVersion,
+    HLL_ESTIMATE_APPROXIMATION_POLICY,
     HLL_SKETCH_APPROXIMATION_POLICY,
     HLL_SKETCH_CONSTRUCT_POLICY,
     HLL_SKETCH_DESERIALIZE_POLICY,

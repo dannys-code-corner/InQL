@@ -170,6 +170,7 @@ from function_registry import (
     FunctionErrorBehavior,
     FunctionLifecycle,
     FunctionApproximationPolicy,
+    HLL_ESTIMATE_APPROXIMATION_POLICY,
     HLL_SKETCH_CONSTRUCT_POLICY,
     HLL_SKETCH_DESERIALIZE_POLICY,
     HLL_SKETCH_ESTIMATE_POLICY,
@@ -763,6 +764,7 @@ def test_function_registry__hll_helpers_expose_typed_sketch_policy() -> None:
     assert merge_entry.sketch.role == HLL_SKETCH_MERGE_POLICY.role, "hll_merge should identify the merge role"
     assert merge_entry.sketch.returns_sketch, "hll_merge should return typed sketch state"
     assert merge_entry.sketch.accepts_sketch, "hll_merge should consume existing typed sketch state"
+    assert estimate_entry.approximation.result_interpretation == HLL_ESTIMATE_APPROXIMATION_POLICY.result_interpretation, "hll_estimate should describe its scalar estimate result"
     assert estimate_entry.sketch.role == HLL_SKETCH_ESTIMATE_POLICY.role, "hll_estimate should identify the estimate role"
     assert estimate_entry.sketch.accepts_sketch, "hll_estimate should consume typed sketch state"
     assert not estimate_entry.sketch.returns_sketch, "hll_estimate should return a scalar estimate"
