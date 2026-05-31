@@ -11,13 +11,9 @@ pub const SKETCH_FORMAT_OPTION: str = "sketch_format"
 
 @derive(Clone)
 pub enum SketchFamily(str):
-    """Portable sketch family identity."""
+    """Implemented portable sketch family identity."""
 
     HyperLogLog = "hyperloglog"
-    Kll = "kll"
-    Theta = "theta"
-    CountMin = "count_min"
-    Bitmap = "bitmap"
 
 
 @derive(Clone)

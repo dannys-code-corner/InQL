@@ -1,9 +1,9 @@
 """HyperLogLog sketch estimate scalar helper."""
 
 from function_registry import (
-    APPROX_COUNT_DISTINCT_POLICY,
     FunctionLifecycle,
     FunctionNullBehavior,
+    HLL_ESTIMATE_APPROXIMATION_POLICY,
     HLL_SKETCH_ESTIMATE_POLICY,
     extension_mapping,
     hll_scalar_spec,
@@ -16,7 +16,7 @@ from substrait.function_extensions import HLL_ESTIMATE_FUNCTION_ANCHOR
 
 
 @register_function(hll_scalar_spec(
-    approximation=APPROX_COUNT_DISTINCT_POLICY,
+    approximation=HLL_ESTIMATE_APPROXIMATION_POLICY,
     lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     sketch=HLL_SKETCH_ESTIMATE_POLICY,

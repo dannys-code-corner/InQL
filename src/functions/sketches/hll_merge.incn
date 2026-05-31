@@ -3,7 +3,7 @@
 from aggregate_builders import AggregateKind, AggregateMeasure, hll_merge as hll_merge_builder
 from function_registry import FunctionLifecycle, FunctionNullBehavior, extension_mapping, hll_merge_spec, v0_1
 from functions.registry import register_function
-from projection_builders import col, column_expr_name
+from projection_builders import column_expr_name
 from sketch_types import SketchExpr, hll_type, sketch_col
 from substrait.function_extensions import HLL_MERGE_FUNCTION_ANCHOR
 

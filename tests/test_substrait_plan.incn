@@ -684,7 +684,7 @@ def test_plan__aggregate_rel_lowers_typed_hll_sketches() -> None:
         [col("id")],
         [hll_sketch(col("id"), precision=12), hll_merge(sketch_col("id", hll_type(precision=12)))],
     )
-    plan = plan_from_root_relation(aggregated, ["id", "hll_sketch_id", "hll_merge_id"])
+    plan = plan_from_root_relation(aggregated, ["id", "hll_sketch_id_p12", "hll_merge_id_p12"])
 
     # -- Act --
     output_columns = relation_output_columns(aggregated)
@@ -693,7 +693,7 @@ def test_plan__aggregate_rel_lowers_typed_hll_sketches() -> None:
 
     # -- Assert --
     assert relation_kind_name(aggregated) == "AggregateRel", "typed sketch aggregates should still lower through AggregateRel"
-    assert output_columns == ["id", "hll_sketch_id", "hll_merge_id"], "typed sketch aggregate outputs should remain named logical columns"
+    assert output_columns == ["id", "hll_sketch_id_p12", "hll_merge_id_p12"], "typed sketch aggregate outputs should include non-default sketch compatibility metadata"
     assert aggregate_functions == ["hll_sketch", "hll_merge"], "typed sketch aggregates should keep their InQL extension names"
     assert aggregate_measure_option_value(aggregated, 0, SKETCH_FAMILY_OPTION) == "hyperloglog", "hll_sketch should carry sketch family metadata"
     assert aggregate_measure_option_value(aggregated, 0, SKETCH_PRECISION_OPTION) == "12", "hll_sketch should carry sketch precision metadata"

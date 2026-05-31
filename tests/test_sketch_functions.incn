@@ -11,7 +11,6 @@ from sketch_types import (
     SKETCH_PRECISION_OPTION,
     SKETCH_VALUE_DOMAIN_OPTION,
     SketchFamily,
-    SketchLogicalType,
     SketchSerializationFormat,
     SketchValueDomain,
     hll_type,
@@ -23,18 +22,6 @@ from sketch_types import (
 def _call_hll_type_with_invalid_precision() -> None:
     """Build invalid HLL metadata for ValueError assertions."""
     hll_type(precision=0)
-    return
-
-
-def _call_hll_merge_with_non_hll_sketch() -> None:
-    """Pass a non-HLL sketch to an HLL-only helper for ValueError assertions."""
-    kll_like = SketchLogicalType(
-        family=SketchFamily.Kll,
-        value_domain=SketchValueDomain.NumericValue,
-        precision=12,
-        format=SketchSerializationFormat.InqlHllV1,
-    )
-    hll_merge(sketch_col("metric_sketch", kll_like))
     return
 
 
@@ -68,7 +55,7 @@ def test_sketch_functions__hll_sketch_builds_typed_aggregate_measure() -> None:
     assert measure.canonical_name == "hll_sketch", "hll_sketch should preserve canonical name"
     assert measure.has_expr, "hll_sketch should require an input expression"
     assert column_expr_name(measure.expr) == "user_id", "hll_sketch should preserve the input expression"
-    assert aggregate_measure_output_name(measure) == "hll_sketch_user_id", "hll_sketch should expose a stable output name"
+    assert aggregate_measure_output_name(measure) == "hll_sketch_user_id_integer_identifier_p12", "hll_sketch should expose sketch parameters when they affect compatibility"
     match measure.sketch_type:
         Some(sketch_type) =>
             assert sketch_type.family == SketchFamily.HyperLogLog, "hll_sketch output should be typed as HyperLogLog"
@@ -89,6 +76,7 @@ def test_sketch_functions__hll_merge_preserves_typed_sketch_metadata() -> None:
     assert measure.kind == AggregateKind.HllMerge, "hll_merge should use its own aggregate kind"
     assert measure.function_ref == function_ref_for("hll_merge"), "hll_merge should preserve registry identity"
     assert column_expr_name(measure.expr) == "daily_users_hll", "hll_merge should preserve the input sketch expression"
+    assert aggregate_measure_output_name(measure) == "hll_merge_daily_users_hll_p12", "hll_merge should expose non-default sketch precision in output names"
     match measure.sketch_type:
         Some(sketch_type) =>
             assert sketch_type.precision == 12, "hll_merge should preserve input sketch precision"
@@ -96,9 +84,12 @@ def test_sketch_functions__hll_merge_preserves_typed_sketch_metadata() -> None:
             assert false, "hll_merge should carry sketch output metadata"
 
 
-def test_sketch_functions__hll_merge_rejects_other_sketch_families() -> None:
-    # -- Arrange / Act / Assert --
-    assert_raises[ValueError](_call_hll_merge_with_non_hll_sketch)
+def test_sketch_functions__default_hll_output_name_remains_compact() -> None:
+    # -- Arrange / Act --
+    measure = hll_sketch(col("user_id"))
+
+    # -- Assert --
+    assert aggregate_measure_output_name(measure) == "hll_sketch_user_id", "default HLL metadata should not make noisy column names"
 
 
 def test_sketch_functions__hll_scalar_helpers_preserve_sketch_options() -> None:

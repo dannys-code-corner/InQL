@@ -310,6 +310,7 @@ pub def aggregate_measure_output_name(measure: AggregateMeasure) -> str:
         output_name = output_name + "_" + scalar_expr_output_name(measure.expr, "expr")
     if measure.kind == AggregateKind.ApproxPercentile:
         output_name = output_name + _approx_percentile_output_suffix(measure)
+    output_name = output_name + _sketch_output_suffix(measure)
     if measure.has_filter:
         output_name = output_name + "_filtered"
     if len(measure.ordering) > 0:
@@ -324,6 +325,21 @@ def _approx_percentile_output_suffix(measure: AggregateMeasure) -> str:
     percentile = _aggregate_literal_name(measure.arguments[1])
     accuracy = _aggregate_literal_name(measure.arguments[2])
     return f"_p{percentile}_a{accuracy}"
+
+
+def _sketch_output_suffix(measure: AggregateMeasure) -> str:
+    """Return the non-default sketch-compatibility suffix for output names."""
+    match measure.sketch_type:
+        Some(sketch_type) =>
+            mut suffix = ""
+            if sketch_type.value_domain != SketchValueDomain.StringIdentifier:
+                suffix = suffix + "_" + sketch_type.value_domain.value()
+            if sketch_type.precision != 14:
+                suffix = suffix + f"_p{sketch_type.precision}"
+            if sketch_type.format.value() != "inql_hll_v1":
+                suffix = suffix + "_" + sketch_type.format.value()
+            return suffix
+        None => return ""
 
 
 def _aggregate_literal_name(expr: ColumnExpr) -> str:
