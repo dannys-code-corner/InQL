@@ -8,7 +8,7 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import register_function, registered_application
+from functions.registry import register_function, register_function_alias, registered_application
 from projection_builders import ColumnExpr
 from substrait.function_extensions import DATE_DIFF_FUNCTION_ANCHOR
 
@@ -32,6 +32,9 @@ pub def date_diff(part: ColumnExpr, start: ColumnExpr, end: ColumnExpr) -> Colum
         end: End scalar expression.
     """
     return registered_application("date_diff", [part, start, end])
+
+
+static _datediff_alias_registration: None = register_function_alias("date_diff", "datediff")
 
 
 module tests:

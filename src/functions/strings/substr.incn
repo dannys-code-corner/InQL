@@ -1,44 +1,8 @@
 """Substring compatibility alias."""
 
-from function_registry import (
-    CORE_FUNCTION_NAMESPACE,
-    FunctionClass,
-    FunctionDeterminism,
-    FunctionErrorBehavior,
-    FunctionLifecycle,
-    FunctionNullBehavior,
-    compatibility_alias_spec,
-    rewrite_mapping,
-    v0_1,
-)
-from functions.registry import register_function
 from functions.strings.substring import substring
-from projection_builders import ColumnExpr
 
-
-@register_function(compatibility_alias_spec(
-    namespace=CORE_FUNCTION_NAMESPACE,
-    function_class=FunctionClass.Scalar,
-    aliases=["substring"],
-    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-    determinism=FunctionDeterminism.Deterministic,
-    null_behavior=FunctionNullBehavior.DependsOnInputs,
-    error_behavior=FunctionErrorBehavior.Typechecked,
-    substrait=rewrite_mapping("substr(expr, start[, length]) -> substring(expr, start[, length])"),
-))
-pub def substr(expr: ColumnExpr, start: ColumnExpr, length: Option[ColumnExpr] = None) -> ColumnExpr:
-    """
-    Build a Spark-style substring alias expression.
-
-    Examples:
-        prefix = substr(col("sku"), int_expr(1), int_expr(3))
-
-    Parameters:
-        expr: Input scalar expression.
-        start: Start scalar expression.
-        length: Length expression.
-    """
-    return substring(expr, start, length)
+pub substr = alias substring
 
 
 module tests:

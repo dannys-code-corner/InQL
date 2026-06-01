@@ -8,6 +8,8 @@ source for the complete public catalog and helper signatures.
 
 from rust::incan_stdlib::errors import raise_value_error
 from function_registry import (
+    CORE_FUNCTION_NAMESPACE,
+    FunctionAliasPolicy,
     FunctionRegistry,
     FunctionRegistryEntry,
     FunctionSpec,
@@ -38,17 +40,26 @@ def _register_pending_function[F](func: F) -> F:
     return func
 
 
-pub def registered_substrait_mapping(canonical_name: str) -> SubstraitMapping:
-    """Return the decorator-registered Substrait mapping for one helper name."""
-    entry = registered_function_entry(canonical_name)
+pub def register_function_alias(
+    canonical_name: str,
+    alias_name: str,
+    alias_policy: FunctionAliasPolicy = FunctionAliasPolicy.OptInCompatibility,
+) -> None:
+    """Record one real public alias name for an already-registered core function."""
+    function_registry._add_alias(CORE_FUNCTION_NAMESPACE, canonical_name, alias_name, alias_policy)
+
+
+pub def registered_substrait_mapping(function_name: str) -> SubstraitMapping:
+    """Return the decorator-registered Substrait mapping for one canonical or alias helper name."""
+    entry = registered_function_entry(function_name)
     return entry.substrait
 
 
-pub def registered_function_entry(canonical_name: str) -> FunctionRegistryEntry:
-    """Return the decorator-registered metadata for one helper name."""
-    if let Some(entry) = function_registry.entry_by_name(canonical_name):
+pub def registered_function_entry(function_name: str) -> FunctionRegistryEntry:
+    """Return the decorator-registered metadata for one canonical or alias helper name."""
+    if let Some(entry) = function_registry.entry_by_name(function_name):
         return entry
-    message = f"missing function registry entry for `{canonical_name}`"
+    message = f"missing function registry entry for `{function_name}`"
     return raise_value_error(message)
 
 
@@ -63,8 +74,8 @@ pub def registered_application_with_options(
     options: list[ScalarFunctionOption],
 ) -> ColumnExpr:
     """Build one scalar application with non-expression options using decorator-owned registry metadata."""
-    registered_function_entry(canonical_name)
-    return scalar_function_application(canonical_name, arguments, options)
+    entry = registered_function_entry(canonical_name)
+    return scalar_function_application(entry.canonical_name, arguments, options)
 
 
 pub def function_registry_entries() -> list[FunctionRegistryEntry]:
@@ -80,9 +91,9 @@ pub def function_registry_entry(function_ref: str) -> Option[FunctionRegistryEnt
     return None
 
 
-pub def function_registry_entry_by_name(canonical_name: str) -> Option[FunctionRegistryEntry]:
-    """Return a loaded core registry entry for one canonical public function name when it is known."""
-    return function_registry.entry_by_name(canonical_name)
+pub def function_registry_entry_by_name(function_name: str) -> Option[FunctionRegistryEntry]:
+    """Return a loaded core registry entry for one canonical or alias public function name."""
+    return function_registry.entry_by_name(function_name)
 
 
 pub def function_registry_function_refs() -> list[str]:

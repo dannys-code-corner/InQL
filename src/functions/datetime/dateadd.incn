@@ -1,44 +1,8 @@
 """dbt-style date addition alias."""
 
-from function_registry import (
-    CORE_FUNCTION_NAMESPACE,
-    FunctionClass,
-    FunctionDeterminism,
-    FunctionErrorBehavior,
-    FunctionLifecycle,
-    FunctionNullBehavior,
-    compatibility_alias_spec,
-    rewrite_mapping,
-    v0_1,
-)
 from functions.datetime.date_add import date_add
-from functions.registry import register_function
-from projection_builders import ColumnExpr
 
-
-@register_function(compatibility_alias_spec(
-    namespace=CORE_FUNCTION_NAMESPACE,
-    function_class=FunctionClass.Scalar,
-    aliases=["date_add"],
-    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-    determinism=FunctionDeterminism.Deterministic,
-    null_behavior=FunctionNullBehavior.DependsOnInputs,
-    error_behavior=FunctionErrorBehavior.Typechecked,
-    substrait=rewrite_mapping("dateadd(part, amount, expr) -> date_add(part, amount, expr)"),
-))
-pub def dateadd(part: ColumnExpr, amount: ColumnExpr, expr: ColumnExpr) -> ColumnExpr:
-    """
-    Build a compatibility date addition expression.
-
-    Examples:
-        due_at = dateadd(str_expr("day"), int_expr(7), col("created_at"))
-
-    Parameters:
-        part: Date or time part expression.
-        amount: Offset amount expression.
-        expr: Input scalar expression.
-    """
-    return date_add(part, amount, expr)
+pub dateadd = alias date_add
 
 
 module tests:

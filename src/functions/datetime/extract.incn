@@ -1,43 +1,8 @@
 """SQL-style date/time extraction alias."""
 
-from function_registry import (
-    CORE_FUNCTION_NAMESPACE,
-    FunctionClass,
-    FunctionDeterminism,
-    FunctionErrorBehavior,
-    FunctionLifecycle,
-    FunctionNullBehavior,
-    compatibility_alias_spec,
-    rewrite_mapping,
-    v0_1,
-)
 from functions.datetime.date_part import date_part
-from functions.registry import register_function
-from projection_builders import ColumnExpr
 
-
-@register_function(compatibility_alias_spec(
-    namespace=CORE_FUNCTION_NAMESPACE,
-    function_class=FunctionClass.Scalar,
-    aliases=["date_part"],
-    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
-    determinism=FunctionDeterminism.Deterministic,
-    null_behavior=FunctionNullBehavior.DependsOnInputs,
-    error_behavior=FunctionErrorBehavior.Typechecked,
-    substrait=rewrite_mapping("extract(part, expr) -> date_part(part, expr)"),
-))
-pub def extract(part: ColumnExpr, expr: ColumnExpr) -> ColumnExpr:
-    """
-    Build a SQL-style extraction alias expression.
-
-    Examples:
-        order_year = extract(str_expr("year"), col("ordered_at"))
-
-    Parameters:
-        part: Date or time part expression.
-        expr: Input scalar expression.
-    """
-    return date_part(part, expr)
+pub extract = alias date_part
 
 
 module tests:

@@ -8,7 +8,7 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import register_function, registered_application
+from functions.registry import register_function, register_function_alias, registered_application
 from projection_builders import ColumnExpr
 from substrait.function_extensions import SUBSTRING_FUNCTION_ANCHOR
 
@@ -34,6 +34,9 @@ pub def substring(expr: ColumnExpr, start: ColumnExpr, length: Option[ColumnExpr
     if let Some(value) = length:
         return registered_application("substring", [expr, start, value])
     return registered_application("substring", [expr, start])
+
+
+static _substr_alias_registration: None = register_function_alias("substring", "substr")
 
 
 module tests:

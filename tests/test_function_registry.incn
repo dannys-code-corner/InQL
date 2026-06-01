@@ -442,7 +442,7 @@ def _entry_by_name_or_fail(canonical_name: str) -> FunctionRegistryEntry:
     lookup_name = f"{canonical_name}"
     match function_registry_entry_by_name(lookup_name):
         Some(entry) => return entry
-        None => return fail_t("missing function registry entry by name")
+        None => return fail_t(f"missing function registry entry by name `{lookup_name}`")
 
 
 def _local_entry_or_fail(registry: FunctionRegistry, function_ref: str) -> FunctionRegistryEntry:
@@ -454,7 +454,7 @@ def _local_entry_or_fail(registry: FunctionRegistry, function_ref: str) -> Funct
 
 
 def _local_entry_by_name_or_fail(registry: FunctionRegistry, canonical_name: str) -> FunctionRegistryEntry:
-    """Return one core-scoped local registry entry by canonical name or fail the test."""
+    """Return one core-scoped local registry entry by canonical or alias name."""
     lookup_name = f"{canonical_name}"
     match registry.entry_by_name(lookup_name):
         Some(entry) => return entry
@@ -466,7 +466,7 @@ def _local_entry_by_namespace_and_name_or_fail(
     namespace: str,
     canonical_name: str,
 ) -> FunctionRegistryEntry:
-    """Return one namespace-scoped local registry entry by canonical name or fail the test."""
+    """Return one namespace-scoped local registry entry by canonical or alias name."""
     lookup_namespace = f"{namespace}"
     lookup_name = f"{canonical_name}"
     match registry.entry_by_namespace_and_name(lookup_namespace, lookup_name):
@@ -475,8 +475,8 @@ def _local_entry_by_namespace_and_name_or_fail(
 
 
 def _expected_registry_names() -> list[str]:
-    """Return the expected registered public helper names."""
-    return ["col", "lit", "sum", "count", "count_expr", "count_distinct", "count_if", "avg", "min", "max", "approx_count_distinct", "approx_percentile", "int_expr", "float_expr", "str_expr", "bool_expr", "add", "mul", "int_lit", "str_lit", "bool_lit", "always_true", "always_false", "eq", "gt", "cast", "try_cast", "ne", "lt", "lte", "gte", "equal_null", "and_", "or_", "not_", "is_null", "is_not_null", "is_nan", "is_not_nan", "sub", "div", "mod", "neg", "coalesce", "nullif", "case_when", "in_", "between", "asc", "desc", "asc_nulls_first", "asc_nulls_last", "desc_nulls_first", "desc_nulls_last", "abs", "ceil", "floor", "round", "array", "array_contains", "array_distinct", "array_except", "array_flatten", "array_intersect", "array_join", "array_position", "range", "array_reverse", "array_slice", "array_sort", "array_union", "arrays_overlap", "cardinality", "element_at", "map_contains_key", "map_entries", "map_extract", "map_from_arrays", "map_keys", "map_values", "named_struct", "explode", "explode_outer", "posexplode", "posexplode_outer", "inline", "inline_outer", "flatten", "stack", "window", "unbounded_preceding", "preceding", "current_row", "following", "unbounded_following", "row_number", "rank", "dense_rank", "percent_rank", "cume_dist", "ntile", "lag", "lead", "first_value", "last_value", "nth_value", "sha224", "sha256", "sha384", "sha512", "sha2", "md5", "sha1", "crc32", "xxhash64", "parse_url", "try_url_decode", "url_decode", "url_encode", "check_json", "from_json", "get_json_object", "json_array_length", "json_extract_path_text", "json_object_keys", "parse_json", "schema_of_json", "to_json", "try_from_json", "from_csv", "schema_of_csv", "to_csv"]
+    """Return the expected canonical registered helper names."""
+    return ["col", "lit", "sum", "count", "count_distinct", "count_if", "avg", "min", "max", "approx_count_distinct", "approx_percentile", "int_expr", "float_expr", "str_expr", "bool_expr", "add", "mul", "int_lit", "str_lit", "bool_lit", "always_true", "always_false", "eq", "gt", "cast", "try_cast", "ne", "lt", "lte", "gte", "equal_null", "and_", "or_", "not_", "is_null", "is_not_null", "is_nan", "is_not_nan", "sub", "div", "mod", "neg", "coalesce", "nullif", "case_when", "in_", "between", "asc", "desc", "asc_nulls_first", "asc_nulls_last", "desc_nulls_first", "desc_nulls_last", "abs", "ceil", "floor", "round", "array", "array_contains", "array_distinct", "array_except", "array_flatten", "array_intersect", "array_join", "array_position", "range", "array_reverse", "array_slice", "array_sort", "array_union", "arrays_overlap", "cardinality", "element_at", "map_contains_key", "map_entries", "map_extract", "map_from_arrays", "map_keys", "map_values", "named_struct", "explode", "explode_outer", "posexplode", "posexplode_outer", "inline", "inline_outer", "flatten", "stack", "window", "unbounded_preceding", "preceding", "current_row", "following", "unbounded_following", "row_number", "rank", "dense_rank", "percent_rank", "cume_dist", "ntile", "lag", "lead", "first_value", "last_value", "nth_value", "sha224", "sha256", "sha384", "sha512", "sha2", "md5", "sha1", "crc32", "xxhash64", "parse_url", "try_url_decode", "url_decode", "url_encode", "check_json", "from_json", "get_json_object", "json_array_length", "json_extract_path_text", "json_object_keys", "parse_json", "schema_of_json", "to_json", "try_from_json", "from_csv", "schema_of_csv", "to_csv"]
 
 
 def _expected_substrait_mapped_names() -> list[str]:
@@ -485,8 +485,8 @@ def _expected_substrait_mapped_names() -> list[str]:
 
 
 def _rfc018_registry_names() -> list[str]:
-    """Return the remaining RFC 018 helper names added after the initial PR #44 math slice."""
-    return ["sqrt", "power", "exp", "ln", "log", "log10", "sign", "least", "greatest", "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "degrees", "radians", "char_length", "octet_length", "upper", "lower", "trim", "ltrim", "rtrim", "substring", "position", "overlay", "concat", "concat_ws", "replace", "translate", "repeat", "left", "right", "lpad", "rpad", "split_part", "substr", "ucase", "lcase", "encode", "decode", "base64", "unbase64", "hex", "unhex", "regexp_like", "regexp_replace", "regexp_extract", "current_date", "current_time", "current_timestamp", "date_part", "extract", "date_trunc", "time_trunc", "date_add", "dateadd", "date_sub", "date_diff", "datediff", "timestamp_diff", "to_date", "to_time", "to_timestamp", "from_unixtime", "unix_seconds", "unix_millis", "unix_micros", "make_date", "make_time", "make_timestamp", "last_day", "safe_cast"]
+    """Return the remaining RFC 018 canonical names added after the initial PR #44 math slice."""
+    return ["sqrt", "power", "exp", "ln", "log", "log10", "sign", "least", "greatest", "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "degrees", "radians", "char_length", "octet_length", "upper", "lower", "trim", "ltrim", "rtrim", "substring", "position", "overlay", "concat", "concat_ws", "replace", "translate", "repeat", "left", "right", "lpad", "rpad", "split_part", "encode", "decode", "base64", "unbase64", "hex", "unhex", "regexp_like", "regexp_replace", "regexp_extract", "current_date", "current_time", "current_timestamp", "date_part", "date_trunc", "time_trunc", "date_add", "date_sub", "date_diff", "timestamp_diff", "to_date", "to_time", "to_timestamp", "from_unixtime", "unix_seconds", "unix_millis", "unix_micros", "make_date", "make_time", "make_timestamp", "last_day"]
 
 
 def _expected_all_registry_names() -> list[str]:
@@ -732,6 +732,15 @@ def _assert_registered(canonical_name: str) -> None:
     assert _contains_text(names, canonical_name), "registry should expose the expected canonical name"
 
 
+def _assert_alias_resolves(alias_name: str, canonical_name: str) -> None:
+    """Assert one compatibility alias resolves to the canonical registry entry."""
+    entry = _entry_by_name_or_fail(f"{alias_name}")
+    assert entry.canonical_name == canonical_name, f"{alias_name} should resolve to canonical {canonical_name}"
+    assert entry.function_ref == function_ref_for(f"{canonical_name}"), f"{alias_name} should share the canonical function ref"
+    assert _contains_text(entry.aliases, f"{alias_name}"), f"{canonical_name} should declare {alias_name} as an alias"
+    assert entry.alias_policy == FunctionAliasPolicy.OptInCompatibility, "compatibility aliases should stay opt-in"
+
+
 def _assert_structural_mapping(canonical_name: str, context: str, detail: str) -> None:
     """Assert one registered helper declares relation-context structural lowering metadata."""
     lookup_name = f"{canonical_name}"
@@ -849,6 +858,22 @@ def test_function_registry__lookup_exposes_canonical_metadata() -> None:
         None => pass
 
 
+def test_function_registry__compatibility_aliases_resolve_to_canonical_entries() -> None:
+    """Assert pure spelling aliases are owned by their canonical registry entries."""
+    # -- Arrange --
+    _exercise_current_public_helpers()
+
+    # -- Act / Assert --
+    _assert_alias_resolves("count_expr", "count")
+    _assert_alias_resolves("substr", "substring")
+    _assert_alias_resolves("ucase", "upper")
+    _assert_alias_resolves("lcase", "lower")
+    _assert_alias_resolves("extract", "date_part")
+    _assert_alias_resolves("dateadd", "date_add")
+    _assert_alias_resolves("datediff", "date_diff")
+    _assert_alias_resolves("safe_cast", "try_cast")
+
+
 def test_function_registry__core_helpers_expose_portable_policy_metadata() -> None:
     """Assert current helper entries distinguish portability policy from semantic function class."""
     # -- Arrange --
@@ -858,14 +883,15 @@ def test_function_registry__core_helpers_expose_portable_policy_metadata() -> No
     # -- Act / Assert --
     for entry in entries:
         assert entry.namespace == CORE_FUNCTION_NAMESPACE, f"{entry.function_ref} should live in the core function namespace"
-        if _contains_text(
-            ["count_expr", "count_distinct", "count_if", "sha2", "substr", "ucase", "lcase", "extract", "dateadd", "datediff", "safe_cast"],
-            entry.canonical_name,
-        ):
+        if _contains_text(["count_distinct", "count_if", "sha2"], entry.canonical_name):
             assert entry.policy_category == FunctionPolicyCategory.CompatibilityAlias, f"{entry.canonical_name} should be marked as a compatibility helper"
             assert entry.alias_policy == FunctionAliasPolicy.OptInCompatibility, "compatibility helpers should be opt-in by policy"
             continue
         assert entry.policy_category == FunctionPolicyCategory.PortableCore, f"{entry.function_ref} should be portable core"
+        if len(entry.aliases) > 0:
+            assert entry.alias_policy == FunctionAliasPolicy.OptInCompatibility, "canonical entries with compatibility aliases should keep alias import opt-in"
+        else:
+            assert entry.alias_policy == FunctionAliasPolicy.CoreImport, "canonical entries without aliases should use core import policy"
 
 
 def test_function_registry__aggregate_helpers_expose_modifier_policy() -> None:
@@ -1039,7 +1065,6 @@ def test_function_registry__substrait_extension_mappings_are_structured() -> Non
         assert _contains_text(mapped_refs, function_ref_for(canonical_name)), "mapped helper should be in the Substrait extension mapping set"
     _assert_extension_mapping("sum", "sum", SUM_FUNCTION_ANCHOR)
     _assert_extension_mapping("count", "count", COUNT_FUNCTION_ANCHOR)
-    _assert_rewrite_mapping("count_expr", "count(expr)")
     _assert_rewrite_mapping("count_distinct", "count(expr).distinct()")
     _assert_rewrite_mapping("count_if", "count().filter(predicate)")
     _assert_extension_mapping("avg", "avg", AVG_FUNCTION_ANCHOR)
@@ -1284,17 +1309,10 @@ def test_function_registry__rewrite_mappings_identify_non_extension_helpers() ->
         "sha2",
         "sha2(expr, bits) -> sha224/sha256/sha384/sha512(expr) for supported literal bit lengths",
     )
-    _assert_rewrite_mapping("substr", "substr(expr, start[, length]) -> substring(expr, start[, length])")
-    _assert_rewrite_mapping("ucase", "ucase(expr) -> upper(expr)")
-    _assert_rewrite_mapping("lcase", "lcase(expr) -> lower(expr)")
     _assert_rewrite_mapping("base64", "base64(expr) -> encode(expr, 'base64')")
     _assert_rewrite_mapping("unbase64", "unbase64(expr) -> decode(expr, 'base64')")
     _assert_rewrite_mapping("hex", "hex(expr) -> encode(expr, 'hex')")
     _assert_rewrite_mapping("unhex", "unhex(expr) -> decode(expr, 'hex')")
-    _assert_rewrite_mapping("extract", "extract(part, expr) -> date_part(part, expr)")
-    _assert_rewrite_mapping("dateadd", "dateadd(part, amount, expr) -> date_add(part, amount, expr)")
-    _assert_rewrite_mapping("datediff", "datediff(part, start, end) -> date_diff(part, start, end)")
-    _assert_rewrite_mapping("safe_cast", "safe_cast(expr, target_type) -> try_cast(expr, target_type)")
     assert always_true_entry.null_behavior == FunctionNullBehavior.Predicate, "predicate helpers should expose predicate null behavior"
     assert always_false_entry.null_behavior == FunctionNullBehavior.Predicate, "predicate helpers should expose predicate null behavior"
 

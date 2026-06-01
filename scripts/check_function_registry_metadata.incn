@@ -152,7 +152,8 @@ def resolve_declaration_path(
     if depth > 8:
         return metadata_fail[Option[JsonValue]](f"{context}: alias resolution exceeded maximum depth")
     if len(target_path) < 2:
-        return metadata_fail[Option[JsonValue]]("alias target path must contain a module path and declaration name")
+        # Public compatibility aliases can point at module-local imported names instead of owning decorators.
+        return None
 
     module_path_value = target_path[:-1]
     declaration_name = target_path[len(target_path) - 1]

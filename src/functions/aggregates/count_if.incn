@@ -25,7 +25,7 @@ from projection_builders import ColumnExpr, col, column_expr_name
 @register_function(compatibility_alias_spec(
     namespace=CORE_FUNCTION_NAMESPACE,
     function_class=FunctionClass.Aggregate,
-    aliases=["count"],
+    aliases=[],
     lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
     determinism=FunctionDeterminism.Deterministic,
     null_behavior=FunctionNullBehavior.NullSkippingAggregate,
