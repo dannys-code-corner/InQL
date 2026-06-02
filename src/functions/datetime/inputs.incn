@@ -1,0 +1,10 @@
+"""Shared input normalization for date and time helpers."""
+
+from projection_builders import ColumnExpr, int_expr
+
+
+pub def integer_component_expr(value: Union[ColumnExpr, int]) -> ColumnExpr:
+    """Return one integer component as a scalar expression."""
+    match value:
+        int(number) => return int_expr(number)
+        expr => return expr

@@ -8,6 +8,7 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
+from functions.datetime.inputs import integer_component_expr
 from functions.registry import register_function, registered_application
 from projection_builders import ColumnExpr
 from substrait.function_extensions import MAKE_TIME_FUNCTION_ANCHOR
@@ -19,24 +20,33 @@ from substrait.function_extensions import MAKE_TIME_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("make_time", MAKE_TIME_FUNCTION_ANCHOR),
 ))
-pub def make_time(hour: ColumnExpr, minute: ColumnExpr, second: ColumnExpr) -> ColumnExpr:
+pub def make_time(
+    hour: Union[ColumnExpr, int],
+    minute: Union[ColumnExpr, int],
+    second: Union[ColumnExpr, int],
+) -> ColumnExpr:
     """
     Build a time construction expression.
 
     Examples:
-        time_value = make_time(int_expr(12), int_expr(30), int_expr(5))
+        time_value = make_time(hour=12, minute=30, second=5)
+        dynamic_time = make_time(col("hour"), col("minute"), 0)
 
     Parameters:
-        hour: Hour expression.
-        minute: Minute expression.
-        second: Second expression.
+        hour: Hour expression or integer literal.
+        minute: Minute expression or integer literal.
+        second: Second expression or integer literal.
     """
-    return registered_application("make_time", [hour, minute, second])
+    return registered_application(
+        "make_time",
+        [integer_component_expr(hour), integer_component_expr(minute), integer_component_expr(second)],
+    )
 
 
 module tests:
     from projection_builders import (
         ColumnExprKind,
+        col,
         column_expr_argument_count,
         column_expr_function_name,
         column_expr_kind,
@@ -44,6 +54,11 @@ module tests:
     )
     def test_make_time_builds_registered_application() -> None:
         expr = make_time(int_expr(12), int_expr(30), int_expr(5))
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "make_time"
+        assert column_expr_argument_count(expr) == 3
+    def test_make_time_accepts_integer_components() -> None:
+        expr = make_time(col("hour"), 30, 5)
         assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
         assert column_expr_function_name(expr) == "make_time"
         assert column_expr_argument_count(expr) == 3

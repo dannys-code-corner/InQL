@@ -8,6 +8,7 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
+from functions.datetime.inputs import integer_component_expr
 from functions.registry import register_function, registered_application
 from projection_builders import ColumnExpr
 from substrait.function_extensions import MAKE_DATE_FUNCTION_ANCHOR
@@ -19,24 +20,33 @@ from substrait.function_extensions import MAKE_DATE_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("make_date", MAKE_DATE_FUNCTION_ANCHOR),
 ))
-pub def make_date(year: ColumnExpr, month: ColumnExpr, day: ColumnExpr) -> ColumnExpr:
+pub def make_date(
+    year: Union[ColumnExpr, int],
+    month: Union[ColumnExpr, int],
+    day: Union[ColumnExpr, int],
+) -> ColumnExpr:
     """
     Build a date construction expression.
 
     Examples:
-        date_value = make_date(int_expr(2026), int_expr(5), int_expr(30))
+        date_value = make_date(year=2026, month=5, day=30)
+        fiscal_date = make_date(col("year"), col("month"), 1)
 
     Parameters:
-        year: Year expression.
-        month: Month expression.
-        day: Day expression.
+        year: Year expression or integer literal.
+        month: Month expression or integer literal.
+        day: Day expression or integer literal.
     """
-    return registered_application("make_date", [year, month, day])
+    return registered_application(
+        "make_date",
+        [integer_component_expr(year), integer_component_expr(month), integer_component_expr(day)],
+    )
 
 
 module tests:
     from projection_builders import (
         ColumnExprKind,
+        col,
         column_expr_argument_count,
         column_expr_function_name,
         column_expr_kind,
@@ -44,6 +54,11 @@ module tests:
     )
     def test_make_date_builds_registered_application() -> None:
         expr = make_date(int_expr(2026), int_expr(5), int_expr(30))
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "make_date"
+        assert column_expr_argument_count(expr) == 3
+    def test_make_date_accepts_integer_components() -> None:
+        expr = make_date(col("year"), 5, 30)
         assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
         assert column_expr_function_name(expr) == "make_date"
         assert column_expr_argument_count(expr) == 3

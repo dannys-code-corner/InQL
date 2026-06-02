@@ -224,13 +224,9 @@ def test_common_scalar_functions__datetime_helpers_share_scalar_application_node
     _assert_application(unix_seconds(value), "unix_seconds", 1)
     _assert_application(unix_millis(value), "unix_millis", 1)
     _assert_application(unix_micros(value), "unix_micros", 1)
-    _assert_application(make_date(int_expr(2026), int_expr(5), int_expr(30)), "make_date", 3)
-    _assert_application(make_time(int_expr(12), int_expr(30), int_expr(5)), "make_time", 3)
-    _assert_application(
-        make_timestamp(int_expr(2026), int_expr(5), int_expr(30), int_expr(12), int_expr(30), int_expr(5)),
-        "make_timestamp",
-        6,
-    )
+    _assert_application(make_date(2026, 5, 30), "make_date", 3)
+    _assert_application(make_time(12, 30, 5), "make_time", 3)
+    _assert_application(make_timestamp(2026, 5, 30, 12, 30, 5), "make_timestamp", 6)
     _assert_application(last_day(value), "last_day", 1)
 
 

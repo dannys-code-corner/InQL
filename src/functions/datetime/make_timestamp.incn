@@ -8,6 +8,7 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
+from functions.datetime.inputs import integer_component_expr
 from functions.registry import register_function, registered_application
 from projection_builders import ColumnExpr
 from substrait.function_extensions import MAKE_TIMESTAMP_FUNCTION_ANCHOR
@@ -20,40 +21,51 @@ from substrait.function_extensions import MAKE_TIMESTAMP_FUNCTION_ANCHOR
     substrait=extension_mapping("make_timestamp", MAKE_TIMESTAMP_FUNCTION_ANCHOR),
 ))
 pub def make_timestamp(
-    year: ColumnExpr,
-    month: ColumnExpr,
-    day: ColumnExpr,
-    hour: ColumnExpr,
-    minute: ColumnExpr,
-    second: ColumnExpr,
+    year: Union[ColumnExpr, int],
+    month: Union[ColumnExpr, int],
+    day: Union[ColumnExpr, int],
+    hour: Union[ColumnExpr, int],
+    minute: Union[ColumnExpr, int],
+    second: Union[ColumnExpr, int],
 ) -> ColumnExpr:
     """
     Build a timestamp construction expression.
 
     Examples:
         timestamp_value = make_timestamp(
-            int_expr(2026),
-            int_expr(5),
-            int_expr(30),
-            int_expr(12),
-            int_expr(30),
-            int_expr(5),
+            year=2026,
+            month=5,
+            day=30,
+            hour=12,
+            minute=30,
+            second=5,
         )
+        dynamic_timestamp = make_timestamp(col("year"), col("month"), col("day"), 0, 0, 0)
 
     Parameters:
-        year: Year expression.
-        month: Month expression.
-        day: Day expression.
-        hour: Hour expression.
-        minute: Minute expression.
-        second: Second expression.
+        year: Year expression or integer literal.
+        month: Month expression or integer literal.
+        day: Day expression or integer literal.
+        hour: Hour expression or integer literal.
+        minute: Minute expression or integer literal.
+        second: Second expression or integer literal.
     """
-    return registered_application("make_timestamp", [year, month, day, hour, minute, second])
+    year_expr = integer_component_expr(year)
+    month_expr = integer_component_expr(month)
+    day_expr = integer_component_expr(day)
+    hour_expr = integer_component_expr(hour)
+    minute_expr = integer_component_expr(minute)
+    second_expr = integer_component_expr(second)
+    return registered_application(
+        "make_timestamp",
+        [year_expr, month_expr, day_expr, hour_expr, minute_expr, second_expr],
+    )
 
 
 module tests:
     from projection_builders import (
         ColumnExprKind,
+        col,
         column_expr_argument_count,
         column_expr_function_name,
         column_expr_kind,
@@ -61,6 +73,11 @@ module tests:
     )
     def test_make_timestamp_builds_registered_application() -> None:
         expr = make_timestamp(int_expr(2026), int_expr(5), int_expr(30), int_expr(12), int_expr(30), int_expr(5))
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "make_timestamp"
+        assert column_expr_argument_count(expr) == 6
+    def test_make_timestamp_accepts_integer_components() -> None:
+        expr = make_timestamp(col("year"), col("month"), col("day"), 12, 30, 5)
         assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
         assert column_expr_function_name(expr) == "make_timestamp"
         assert column_expr_argument_count(expr) == 6
