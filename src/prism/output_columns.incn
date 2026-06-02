@@ -1,13 +1,25 @@
-"""Shared Prism output-column inference for authored and rewritten node views."""
+"""Shared Prism output-column and scalar-schema inference for authored and rewritten node views."""
 
 from prism.store import node_at
 from prism.rewrite import rewritten_node_at
 from prism.types import PrismNode, PrismNodeKind, PrismOptimizedView, PrismStoreId
 from aggregate_builders import aggregate_measure_output_names
-from generator_builders import generator_output_columns
-from projection_builders import ColumnExpr, project_output_columns, scalar_expr_output_name
-from schema_registry import named_table_columns
-from window_builders import window_output_columns
+from generator_builders import GeneratorApplication
+from projection_builders import (
+    BoolLiteralExpr,
+    ColumnExpr,
+    ColumnRefExpr,
+    FloatLiteralExpr,
+    IntLiteralExpr,
+    ProjectionAssignment,
+    ScalarFunctionApplicationExpr,
+    StringLiteralExpr,
+    scalar_expr_output_name,
+)
+from scalar_schema import ScalarColumnSpec, scalar_column, scalar_column_names, scalar_columns_from_row_columns
+from schema_registry import registered_named_table_columns
+from substrait.schema import SubstraitPrimitiveKind
+from window_builders import WindowProjection
 
 
 def _is_passthrough_output_kind(kind: PrismNodeKind) -> bool:
@@ -17,105 +29,185 @@ def _is_passthrough_output_kind(kind: PrismNodeKind) -> bool:
 
 pub def authored_output_columns(store_id: PrismStoreId, tip_id: int) -> list[str]:
     """Resolve authored output columns for one store-local Prism tip."""
+    return scalar_column_names(authored_output_schema(store_id, tip_id))
+
+
+pub def authored_output_schema(store_id: PrismStoreId, tip_id: int) -> list[ScalarColumnSpec]:
+    """Resolve authored output scalar-schema facts for one store-local Prism tip."""
     node = node_at(store_id, tip_id)
     if node.kind == PrismNodeKind.ReadNamedTable:
-        return named_table_columns(node.named_table)
+        return scalar_columns_from_row_columns(registered_named_table_columns(node.named_table))
     if _is_passthrough_output_kind(node.kind):
-        return authored_output_columns(store_id, node.input_ids[0])
+        return authored_output_schema(store_id, node.input_ids[0])
     if node.kind == PrismNodeKind.Project:
-        return project_output_columns(authored_output_columns(store_id, node.input_ids[0]), node.projection_assignments)
+        return _project_output_schema(authored_output_schema(store_id, node.input_ids[0]), node.projection_assignments)
     if node.kind == PrismNodeKind.Generate:
-        return generator_output_columns(
-            authored_output_columns(store_id, node.input_ids[0]),
+        return _generator_output_schema(
+            authored_output_schema(store_id, node.input_ids[0]),
             node.generator_applications[0],
         )
     if node.kind == PrismNodeKind.Window:
-        return window_output_columns(authored_output_columns(store_id, node.input_ids[0]), node.window_projections)
+        return _window_output_schema(authored_output_schema(store_id, node.input_ids[0]), node.window_projections)
     if node.kind == PrismNodeKind.Join:
-        # Join output columns preserve the conventional left-then-right relation order.
-        # We keep both sides verbatim here; duplicate names are part of the current output shape and are resolved later
-        # by higher-level schema/authoring choices rather than being collapsed at this inference layer.
-        lhs_columns = authored_output_columns(store_id, node.input_ids[0])
-        rhs_columns = authored_output_columns(store_id, node.input_ids[1])
-        mut columns: list[str] = []
+        lhs_columns = authored_output_schema(store_id, node.input_ids[0])
+        rhs_columns = authored_output_schema(store_id, node.input_ids[1])
+        mut columns: list[ScalarColumnSpec] = []
         columns.extend(lhs_columns)
         columns.extend(rhs_columns)
         return columns
     if node.kind == PrismNodeKind.GroupBy:
-        return _group_output_columns(node.group_columns)
+        return _group_output_schema(authored_output_schema(store_id, node.input_ids[0]), node.group_columns)
     if node.kind == PrismNodeKind.Aggregate:
-        # Aggregate output preserves grouping-prefix columns first,
-        # then appends one output column per aggregate measure in declaration order.
-        grouping_prefix_columns = _authored_aggregate_prefix_columns(store_id, node)
+        grouping_prefix_columns = _authored_aggregate_prefix_schema(store_id, node)
         measure_output_names = aggregate_measure_output_names(node.aggregate_measures)
-        mut columns: list[str] = grouping_prefix_columns
-        columns.extend(measure_output_names)
+        mut columns: list[ScalarColumnSpec] = grouping_prefix_columns
+        columns.extend(_unknown_schema_from_names(measure_output_names))
         return columns
     return []
 
 
 pub def rewritten_output_columns(view: PrismOptimizedView, node_id: int) -> list[str]:
     """Resolve rewritten-view output columns for one compacted Prism node."""
+    return scalar_column_names(rewritten_output_schema(view, node_id))
+
+
+pub def rewritten_output_schema(view: PrismOptimizedView, node_id: int) -> list[ScalarColumnSpec]:
+    """Resolve rewritten-view output scalar-schema facts for one compacted Prism node."""
     node = rewritten_node_at(view, node_id)
     if node.kind == PrismNodeKind.ReadNamedTable:
-        return named_table_columns(node.named_table)
+        return scalar_columns_from_row_columns(registered_named_table_columns(node.named_table))
     if _is_passthrough_output_kind(node.kind):
-        return rewritten_output_columns(view, node.input_ids[0])
+        return rewritten_output_schema(view, node.input_ids[0])
     if node.kind == PrismNodeKind.Project:
-        return project_output_columns(rewritten_output_columns(view, node.input_ids[0]), node.projection_assignments)
+        return _project_output_schema(rewritten_output_schema(view, node.input_ids[0]), node.projection_assignments)
     if node.kind == PrismNodeKind.Generate:
-        return generator_output_columns(
-            rewritten_output_columns(view, node.input_ids[0]),
-            node.generator_applications[0],
-        )
+        return _generator_output_schema(rewritten_output_schema(view, node.input_ids[0]), node.generator_applications[0])
     if node.kind == PrismNodeKind.Window:
-        return window_output_columns(rewritten_output_columns(view, node.input_ids[0]), node.window_projections)
+        return _window_output_schema(rewritten_output_schema(view, node.input_ids[0]), node.window_projections)
     if node.kind == PrismNodeKind.Join:
-        # Rewritten views keep the same left-then-right join column order as authored views
-        # so output-column inference stays stable across Prism rewrite passes.
-        lhs_columns = rewritten_output_columns(view, node.input_ids[0])
-        rhs_columns = rewritten_output_columns(view, node.input_ids[1])
-        mut columns: list[str] = []
+        lhs_columns = rewritten_output_schema(view, node.input_ids[0])
+        rhs_columns = rewritten_output_schema(view, node.input_ids[1])
+        mut columns: list[ScalarColumnSpec] = []
         columns.extend(lhs_columns)
         columns.extend(rhs_columns)
         return columns
     if node.kind == PrismNodeKind.GroupBy:
-        return _group_output_columns(node.group_columns)
+        return _group_output_schema(rewritten_output_schema(view, node.input_ids[0]), node.group_columns)
     if node.kind == PrismNodeKind.Aggregate:
-        # Rewritten aggregate nodes follow the same output contract as authored nodes:
-        # grouping-prefix columns first, aggregate measure outputs after that.
-        grouping_prefix_columns = _rewritten_aggregate_prefix_columns(view, node)
+        grouping_prefix_columns = _rewritten_aggregate_prefix_schema(view, node)
         measure_output_names = aggregate_measure_output_names(node.aggregate_measures)
-        mut columns: list[str] = grouping_prefix_columns
-        columns.extend(measure_output_names)
+        mut columns: list[ScalarColumnSpec] = grouping_prefix_columns
+        columns.extend(_unknown_schema_from_names(measure_output_names))
         return columns
     return []
 
 
-def _authored_aggregate_prefix_columns(store_id: PrismStoreId, node: PrismNode) -> list[str]:
-    """Return grouping-prefix columns that survive into one authored aggregate node output."""
+def _project_output_schema(
+    input_columns: list[ScalarColumnSpec],
+    assignments: list[ProjectionAssignment],
+) -> list[ScalarColumnSpec]:
+    """Apply ordered add-or-replace assignments to input schema facts."""
+    mut output_columns: list[ScalarColumnSpec] = []
+    output_columns.extend(input_columns)
+    for assignment in assignments:
+        output = _expression_output_schema(output_columns, assignment.expr, assignment.output_name)
+        existing_idx = _index_of_column(output_columns, assignment.output_name)
+        if existing_idx >= 0:
+            output_columns[existing_idx] = output
+        else:
+            output_columns.append(output)
+    return output_columns
+
+
+def _expression_output_schema(
+    input_columns: list[ScalarColumnSpec],
+    expr: ColumnExpr,
+    output_name: str,
+) -> ScalarColumnSpec:
+    """Infer the output schema fact for one scalar expression when InQL can do so honestly."""
+    match expr:
+        ColumnRefExpr(column) =>
+            existing_idx = _index_of_column(input_columns, column.column_name)
+            if existing_idx >= 0:
+                existing = input_columns[existing_idx]
+                return ScalarColumnSpec(name=output_name, kind=existing.kind, nullable=existing.nullable)
+            return scalar_column(output_name)
+        IntLiteralExpr(_) =>
+            return ScalarColumnSpec(name=output_name, kind=Some(SubstraitPrimitiveKind.I64), nullable=false)
+        FloatLiteralExpr(_) =>
+            return ScalarColumnSpec(name=output_name, kind=Some(SubstraitPrimitiveKind.F64), nullable=false)
+        StringLiteralExpr(_) =>
+            return ScalarColumnSpec(name=output_name, kind=Some(SubstraitPrimitiveKind.String), nullable=false)
+        BoolLiteralExpr(_) =>
+            return ScalarColumnSpec(name=output_name, kind=Some(SubstraitPrimitiveKind.Bool), nullable=false)
+        ScalarFunctionApplicationExpr(_) => return scalar_column(output_name)
+
+
+def _generator_output_schema(
+    input_columns: list[ScalarColumnSpec],
+    generator: GeneratorApplication,
+) -> list[ScalarColumnSpec]:
+    """Return output schema facts after applying one generator."""
+    mut output_columns: list[ScalarColumnSpec] = []
+    if generator.preserves_input_columns:
+        output_columns.extend(input_columns)
+    output_columns.extend(_unknown_schema_from_names(generator.output_columns))
+    return output_columns
+
+
+def _window_output_schema(
+    input_columns: list[ScalarColumnSpec],
+    projections: list[WindowProjection],
+) -> list[ScalarColumnSpec]:
+    """Return output schema facts after appending window projection outputs."""
+    mut output_columns: list[ScalarColumnSpec] = []
+    output_columns.extend(input_columns)
+    output_columns.extend(_unknown_schema_from_names([projection.output_name for projection in projections]))
+    return output_columns
+
+
+def _authored_aggregate_prefix_schema(store_id: PrismStoreId, node: PrismNode) -> list[ScalarColumnSpec]:
+    """Return grouping-prefix schema facts that survive into one authored aggregate node output."""
     if len(node.group_columns) > 0:
-        return _group_output_columns(node.group_columns)
+        return _group_output_schema(authored_output_schema(store_id, node.input_ids[0]), node.group_columns)
     input_node = node_at(store_id, node.input_ids[0])
     if input_node.kind == PrismNodeKind.GroupBy:
-        return _group_output_columns(input_node.group_columns)
+        return _group_output_schema(authored_output_schema(store_id, input_node.input_ids[0]), input_node.group_columns)
     if input_node.kind == PrismNodeKind.Aggregate:
-        return _authored_aggregate_prefix_columns(store_id, input_node)
+        return _authored_aggregate_prefix_schema(store_id, input_node)
     return []
 
 
-def _rewritten_aggregate_prefix_columns(view: PrismOptimizedView, node: PrismNode) -> list[str]:
-    """Return grouping-prefix columns that survive into one rewritten aggregate node output."""
+def _rewritten_aggregate_prefix_schema(view: PrismOptimizedView, node: PrismNode) -> list[ScalarColumnSpec]:
+    """Return grouping-prefix schema facts that survive into one rewritten aggregate node output."""
     if len(node.group_columns) > 0:
-        return _group_output_columns(node.group_columns)
+        return _group_output_schema(rewritten_output_schema(view, node.input_ids[0]), node.group_columns)
     input_node = rewritten_node_at(view, node.input_ids[0])
     if input_node.kind == PrismNodeKind.GroupBy:
-        return _group_output_columns(input_node.group_columns)
+        return _group_output_schema(rewritten_output_schema(view, input_node.input_ids[0]), input_node.group_columns)
     if input_node.kind == PrismNodeKind.Aggregate:
-        return _rewritten_aggregate_prefix_columns(view, input_node)
+        return _rewritten_aggregate_prefix_schema(view, input_node)
     return []
 
 
-def _group_output_columns(group_columns: list[ColumnExpr]) -> list[str]:
-    """Return stable output column names for grouping scalar expressions."""
-    return [scalar_expr_output_name(expr, f"group_{idx}") for idx, expr in enumerate(group_columns)]
+def _group_output_schema(
+    input_columns: list[ScalarColumnSpec],
+    group_columns: list[ColumnExpr],
+) -> list[ScalarColumnSpec]:
+    """Return stable grouping output schema facts."""
+    return [_expression_output_schema(input_columns, expr, scalar_expr_output_name(expr, f"group_{idx}")) for idx, expr in enumerate(
+        group_columns,
+    )]
+
+
+def _unknown_schema_from_names(names: list[str]) -> list[ScalarColumnSpec]:
+    """Return name-only schema facts for computed outputs."""
+    return [scalar_column(name) for name in names]
+
+
+def _index_of_column(columns: list[ScalarColumnSpec], name: str) -> int:
+    """Return the first matching column index for `name`, or `-1` when absent."""
+    for idx, column in enumerate(columns):
+        if column.name == name:
+            return idx
+    return -1

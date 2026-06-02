@@ -1,6 +1,6 @@
 """Tests for RFC 002 proto-backed Substrait emission and conformance alignment."""
 
-from std.testing import assert_is_err, fail_t
+from std.testing import assert_is_err, fail_t, parametrize
 from functions import (
     abs,
     acos,
@@ -187,7 +187,7 @@ from functions import (
 )
 from projection_builders import ColumnExpr, with_column_assignment
 from substrait.errors import SubstraitLoweringErrorKind
-from substrait.expr_lowering import scalar_expr
+from substrait.expr_lowering import scalar_expr, scalar_expr_of_schema
 from substrait.function_extensions import (
     EXPLODE_EXTENSION_URI,
     EXPLODE_OUTER_EXTENSION_URI,
@@ -531,6 +531,101 @@ def _assert_scalar_expr_lowers(expr: ColumnExpr) -> None:
     match scalar_expr(["id", "amount", "status"], expr):
         Ok(_) => pass
         Err(err) => return fail_t(err.error_message())
+
+
+def _typed_scalar_fixture_schema() -> list[RowColumnSpec]:
+    """Return the shared scalar fixture columns with concrete primitive kinds."""
+    return [RowColumnSpec(name="id", kind=SubstraitPrimitiveKind.I64, nullable=false), RowColumnSpec(
+        name="amount",
+        kind=SubstraitPrimitiveKind.I64,
+        nullable=false,
+    ), RowColumnSpec(name="ratio", kind=SubstraitPrimitiveKind.F64, nullable=false), RowColumnSpec(
+        name="status",
+        kind=SubstraitPrimitiveKind.String,
+        nullable=false,
+    )]
+
+
+def _typed_scalar_accept_expr(case_name: str) -> ColumnExpr:
+    """Return one schema-compatible scalar expression for typed argument validation."""
+    if case_name == "date_from_int_column":
+        return make_date(col("amount"), 5, 30)
+    if case_name == "number_accepts_int_column":
+        return sqrt(col("amount"))
+    if case_name == "number_accepts_float_column":
+        return sqrt(col("ratio"))
+    if case_name == "round_precision_accepts_int_column":
+        return round(col("ratio"), col("amount"))
+    if case_name == "string_unary_accepts_string_column":
+        return upper(col("status"))
+    if case_name == "string_variadic_accepts_string_columns":
+        return concat(col("status"), "-ok")
+    if case_name == "regex_accepts_string_and_int_inputs":
+        return regexp_extract(col("status"), "^([a-z]+)", 1)
+    if case_name == "encoding_accepts_string_inputs":
+        return encode(col("status"), "base64")
+    if case_name == "nested_string_accepts_string_result":
+        return upper(lower(col("status")))
+    if case_name == "nested_number_accepts_number_result":
+        return sqrt(abs(col("amount")))
+    return fail_t(f"unknown typed scalar acceptance case `{case_name}`")
+
+
+def _typed_scalar_mismatch_expr(case_name: str) -> ColumnExpr:
+    """Return one schema-incompatible scalar expression for typed argument validation."""
+    if case_name == "date_rejects_string_column":
+        return make_date(col("status"), 5, 30)
+    if case_name == "number_rejects_string_column":
+        return sqrt(col("status"))
+    if case_name == "round_precision_rejects_string_column":
+        return round(col("ratio"), col("status"))
+    if case_name == "string_unary_rejects_int_column":
+        return upper(col("amount"))
+    if case_name == "substring_position_rejects_string_column":
+        return substring(col("status"), col("status"), 2)
+    if case_name == "regex_group_rejects_string_column":
+        return regexp_extract(col("status"), "^([a-z]+)", col("status"))
+    if case_name == "encoding_rejects_int_column":
+        return encode(col("amount"), "base64")
+    if case_name == "nested_string_rejects_number_result":
+        return upper(sqrt(col("amount")))
+    if case_name == "nested_number_rejects_string_result":
+        return sqrt(lower(col("status")))
+    return fail_t(f"unknown typed scalar mismatch case `{case_name}`")
+
+
+@parametrize("case_name", ["date_from_int_column", "number_accepts_int_column", "number_accepts_float_column", "round_precision_accepts_int_column", "string_unary_accepts_string_column", "string_variadic_accepts_string_columns", "regex_accepts_string_and_int_inputs", "encoding_accepts_string_inputs", "nested_string_accepts_string_result", "nested_number_accepts_number_result"])
+def test_plan__typed_value_or_column_accepts_matching_column_kind(case_name: str) -> None:
+    """Assert typed literal-or-column helper inputs accept schema-compatible columns."""
+    # -- Arrange --
+    schema = _typed_scalar_fixture_schema()
+    expr = _typed_scalar_accept_expr(case_name)
+
+    # -- Act --
+    result = scalar_expr_of_schema(schema, expr)
+
+    # -- Assert --
+    match result:
+        Ok(_) => pass
+        Err(err) => return fail_t(err.error_message())
+
+
+@parametrize("case_name", ["date_rejects_string_column", "number_rejects_string_column", "round_precision_rejects_string_column", "string_unary_rejects_int_column", "substring_position_rejects_string_column", "regex_group_rejects_string_column", "encoding_rejects_int_column", "nested_string_rejects_number_result", "nested_number_rejects_string_result"])
+def test_plan__typed_value_or_column_rejects_mismatched_column_kind(case_name: str) -> None:
+    """Assert typed literal-or-column helper inputs reject schema-incompatible columns."""
+    # -- Arrange --
+    schema = _typed_scalar_fixture_schema()
+    expr = _typed_scalar_mismatch_expr(case_name)
+
+    # -- Act --
+    result = scalar_expr_of_schema(schema, expr)
+
+    # -- Assert --
+    match result:
+        Err(err) =>
+            assert err.kind == SubstraitLoweringErrorKind.InvalidScalarExpression, "typed argument mismatches should be scalar-expression diagnostics"
+            assert err.message.contains("argument"), "diagnostic should identify the invalid argument"
+        Ok(_) => return fail_t("typed value-or-column helper should reject a schema-incompatible column")
 
 
 def test_plan__core_scalar_extension_mappings_lower_to_substrait() -> None:

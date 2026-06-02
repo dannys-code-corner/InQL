@@ -6,8 +6,10 @@ Floor math helper.
 
 from function_registry import (
     FunctionClass,
+    FunctionInputType,
     FunctionLifecycle,
     FunctionNullBehavior,
+    scalar_argument_contract,
     deterministic_spec,
     extension_mapping,
     v0_1,
@@ -21,6 +23,8 @@ from substrait.function_extensions import FLOOR_FUNCTION_ANCHOR
     function_class=FunctionClass.Scalar,
     lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
     null_behavior=FunctionNullBehavior.DependsOnInputs,
+    scalar_arguments=Some(scalar_argument_contract(positional=[FunctionInputType.Number])),
+    scalar_result=Some(FunctionInputType.Number),
     substrait=extension_mapping("floor", FLOOR_FUNCTION_ANCHOR),
 ))
 pub def floor(expr: ColumnExpr) -> ColumnExpr:

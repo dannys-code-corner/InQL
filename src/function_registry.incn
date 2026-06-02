@@ -71,6 +71,30 @@ pub enum FunctionErrorBehavior(str):
 
 
 @derive(Clone)
+pub enum FunctionInputType(str):
+    """Primitive input contract used to validate value-or-column helper arguments."""
+
+    Any = "any"
+    Bool = "bool"
+    Int = "int"
+    Float = "float"
+    Number = "number"
+    String = "string"
+    Timestamp = "timestamp"
+
+
+@derive(Clone)
+pub model ScalarArgumentContract:
+    """Schema-aware scalar argument contract for registry-backed helper calls."""
+
+    pub positional: list[FunctionInputType]
+    pub variadic: Option[FunctionInputType]
+
+
+pub scalar_argument_contract = partial ScalarArgumentContract(variadic=None)
+
+
+@derive(Clone)
 pub enum SubstraitMappingKind(str):
     """Substrait interchange category for one portable InQL function."""
 
@@ -206,6 +230,8 @@ pub model FunctionSpec:
     pub determinism: FunctionDeterminism
     pub null_behavior: FunctionNullBehavior
     pub error_behavior: FunctionErrorBehavior
+    pub scalar_arguments: Option[ScalarArgumentContract]
+    pub scalar_result: Option[FunctionInputType]
     pub aggregate_modifiers: AggregateModifierPolicy
     pub approximation: FunctionApproximationPolicy
     pub substrait: SubstraitMapping
@@ -226,6 +252,8 @@ pub model FunctionRegistryEntry:
     pub determinism: FunctionDeterminism
     pub null_behavior: FunctionNullBehavior
     pub error_behavior: FunctionErrorBehavior
+    pub scalar_arguments: Option[ScalarArgumentContract]
+    pub scalar_result: Option[FunctionInputType]
     pub aggregate_modifiers: AggregateModifierPolicy
     pub approximation: FunctionApproximationPolicy
     pub substrait: SubstraitMapping
@@ -290,6 +318,8 @@ pub class FunctionRegistry:
                 determinism=spec.determinism,
                 null_behavior=spec.null_behavior,
                 error_behavior=spec.error_behavior,
+                scalar_arguments=spec.scalar_arguments,
+                scalar_result=spec.scalar_result,
                 aggregate_modifiers=spec.aggregate_modifiers,
                 approximation=spec.approximation,
                 substrait=spec.substrait,
@@ -333,6 +363,8 @@ pub class FunctionRegistry:
                     determinism=entry.determinism,
                     null_behavior=entry.null_behavior,
                     error_behavior=entry.error_behavior,
+                    scalar_arguments=entry.scalar_arguments,
+                    scalar_result=entry.scalar_result,
                     aggregate_modifiers=entry.aggregate_modifiers,
                     approximation=entry.approximation,
                     substrait=entry.substrait,
@@ -431,6 +463,47 @@ def _same_aggregate_modifiers(left: AggregateModifierPolicy, right: AggregateMod
     return left.allows_distinct == right.allows_distinct and left.allows_filter == right.allows_filter and left.allows_ordered_input == right.allows_ordered_input
 
 
+def _same_scalar_argument_contract(left: ScalarArgumentContract, right: ScalarArgumentContract) -> bool:
+    """Return whether two scalar argument contracts describe the same input policy."""
+    if len(left.positional) != len(right.positional):
+        return false
+    for idx in range(len(left.positional)):
+        if left.positional[idx] != right.positional[idx]:
+            return false
+    if let Some(left_variadic) = left.variadic:
+        if let Some(right_variadic) = right.variadic:
+            return left_variadic == right_variadic
+        return false
+    if let Some(_right_variadic) = right.variadic:
+        return false
+    return true
+
+
+def _same_optional_scalar_argument_contract(
+    left: Option[ScalarArgumentContract],
+    right: Option[ScalarArgumentContract],
+) -> bool:
+    """Return whether two optional scalar argument contracts describe the same input policy."""
+    if let Some(left_contract) = left:
+        if let Some(right_contract) = right:
+            return _same_scalar_argument_contract(left_contract, right_contract)
+        return false
+    if let Some(_right_contract) = right:
+        return false
+    return true
+
+
+def _same_optional_function_input_type(left: Option[FunctionInputType], right: Option[FunctionInputType]) -> bool:
+    """Return whether two optional scalar type categories match."""
+    if let Some(left_kind) = left:
+        if let Some(right_kind) = right:
+            return left_kind == right_kind
+        return false
+    if let Some(_right_kind) = right:
+        return false
+    return true
+
+
 def _same_approximation_policy(left: FunctionApproximationPolicy, right: FunctionApproximationPolicy) -> bool:
     """Return whether two approximation policies are identical."""
     return (
@@ -459,7 +532,10 @@ def _entry_matches_spec(entry: FunctionRegistryEntry, canonical_name: str, spec:
     return (entry.function_ref == namespaced_function_ref(spec.namespace, canonical_name) and entry.namespace == spec.namespace and entry.canonical_name == canonical_name and entry.policy_category == spec.policy_category and entry.function_class == spec.function_class and _same_string_list(
         entry.aliases,
         spec.aliases,
-    ) and entry.alias_policy == spec.alias_policy and _same_lifecycle(entry.lifecycle, spec.lifecycle) and entry.determinism == spec.determinism and entry.null_behavior == spec.null_behavior and entry.error_behavior == spec.error_behavior and _same_aggregate_modifiers(
+    ) and entry.alias_policy == spec.alias_policy and _same_lifecycle(entry.lifecycle, spec.lifecycle) and entry.determinism == spec.determinism and entry.null_behavior == spec.null_behavior and entry.error_behavior == spec.error_behavior and _same_optional_scalar_argument_contract(
+        entry.scalar_arguments,
+        spec.scalar_arguments,
+    ) and _same_optional_function_input_type(entry.scalar_result, spec.scalar_result) and _same_aggregate_modifiers(
         entry.aggregate_modifiers,
         spec.aggregate_modifiers,
     ) and _same_approximation_policy(entry.approximation, spec.approximation) and _same_substrait_mapping(
@@ -554,27 +630,27 @@ pub def sort_field_mapping(direction: str) -> SubstraitMapping:
 
 """Build one deterministic core-import function spec."""
 
-pub deterministic_spec = partial FunctionSpec(canonical_name=None, namespace=CORE_FUNCTION_NAMESPACE, policy_category=FunctionPolicyCategory.PortableCore, aliases=[], alias_policy=FunctionAliasPolicy.CoreImport, determinism=FunctionDeterminism.Deterministic, error_behavior=FunctionErrorBehavior.Typechecked, aggregate_modifiers=NO_AGGREGATE_MODIFIERS, approximation=NO_APPROXIMATION)
+pub deterministic_spec = partial FunctionSpec(canonical_name=None, namespace=CORE_FUNCTION_NAMESPACE, policy_category=FunctionPolicyCategory.PortableCore, aliases=[], alias_policy=FunctionAliasPolicy.CoreImport, determinism=FunctionDeterminism.Deterministic, error_behavior=FunctionErrorBehavior.Typechecked, scalar_arguments=None, scalar_result=None, aggregate_modifiers=NO_AGGREGATE_MODIFIERS, approximation=NO_APPROXIMATION)
 
 """Build one approximate distinct-count aggregate function spec."""
 
-pub approx_count_distinct_spec = partial FunctionSpec(canonical_name=None, namespace=CORE_FUNCTION_NAMESPACE, policy_category=FunctionPolicyCategory.PortableCore, function_class=FunctionClass.Aggregate, aliases=[], alias_policy=FunctionAliasPolicy.CoreImport, determinism=FunctionDeterminism.Deterministic, error_behavior=FunctionErrorBehavior.Typechecked, aggregate_modifiers=APPROXIMATE_AGGREGATE_MODIFIERS, approximation=APPROX_COUNT_DISTINCT_POLICY)
+pub approx_count_distinct_spec = partial FunctionSpec(canonical_name=None, namespace=CORE_FUNCTION_NAMESPACE, policy_category=FunctionPolicyCategory.PortableCore, function_class=FunctionClass.Aggregate, aliases=[], alias_policy=FunctionAliasPolicy.CoreImport, determinism=FunctionDeterminism.Deterministic, error_behavior=FunctionErrorBehavior.Typechecked, scalar_arguments=None, scalar_result=None, aggregate_modifiers=APPROXIMATE_AGGREGATE_MODIFIERS, approximation=APPROX_COUNT_DISTINCT_POLICY)
 
 """Build one approximate percentile aggregate function spec."""
 
-pub approx_percentile_spec = partial FunctionSpec(canonical_name=None, namespace=CORE_FUNCTION_NAMESPACE, policy_category=FunctionPolicyCategory.PortableCore, function_class=FunctionClass.Aggregate, aliases=[], alias_policy=FunctionAliasPolicy.CoreImport, determinism=FunctionDeterminism.Deterministic, error_behavior=FunctionErrorBehavior.InvalidInputDiagnostic, aggregate_modifiers=APPROXIMATE_AGGREGATE_MODIFIERS, approximation=APPROX_PERCENTILE_POLICY)
+pub approx_percentile_spec = partial FunctionSpec(canonical_name=None, namespace=CORE_FUNCTION_NAMESPACE, policy_category=FunctionPolicyCategory.PortableCore, function_class=FunctionClass.Aggregate, aliases=[], alias_policy=FunctionAliasPolicy.CoreImport, determinism=FunctionDeterminism.Deterministic, error_behavior=FunctionErrorBehavior.InvalidInputDiagnostic, scalar_arguments=None, scalar_result=None, aggregate_modifiers=APPROXIMATE_AGGREGATE_MODIFIERS, approximation=APPROX_PERCENTILE_POLICY)
 
 """Build one explicitly namespaced extension-only function spec."""
 
-pub extension_only_spec = partial FunctionSpec(canonical_name=None, policy_category=FunctionPolicyCategory.ExtensionOnly, aliases=[], alias_policy=FunctionAliasPolicy.OptInCompatibility, aggregate_modifiers=NO_AGGREGATE_MODIFIERS, approximation=NO_APPROXIMATION)
+pub extension_only_spec = partial FunctionSpec(canonical_name=None, policy_category=FunctionPolicyCategory.ExtensionOnly, aliases=[], alias_policy=FunctionAliasPolicy.OptInCompatibility, scalar_arguments=None, scalar_result=None, aggregate_modifiers=NO_AGGREGATE_MODIFIERS, approximation=NO_APPROXIMATION)
 
 """Build one opt-in compatibility alias spec for semantics that remain typeable by InQL."""
 
-pub compatibility_alias_spec = partial FunctionSpec(canonical_name=None, policy_category=FunctionPolicyCategory.CompatibilityAlias, alias_policy=FunctionAliasPolicy.OptInCompatibility, aggregate_modifiers=NO_AGGREGATE_MODIFIERS, approximation=NO_APPROXIMATION)
+pub compatibility_alias_spec = partial FunctionSpec(canonical_name=None, policy_category=FunctionPolicyCategory.CompatibilityAlias, alias_policy=FunctionAliasPolicy.OptInCompatibility, scalar_arguments=None, scalar_result=None, aggregate_modifiers=NO_AGGREGATE_MODIFIERS, approximation=NO_APPROXIMATION)
 
 """Build one explicitly namespaced engine-specific function spec."""
 
-pub engine_specific_spec = partial FunctionSpec(canonical_name=None, policy_category=FunctionPolicyCategory.EngineSpecific, aliases=[], alias_policy=FunctionAliasPolicy.OptInCompatibility, aggregate_modifiers=NO_AGGREGATE_MODIFIERS, approximation=NO_APPROXIMATION)
+pub engine_specific_spec = partial FunctionSpec(canonical_name=None, policy_category=FunctionPolicyCategory.EngineSpecific, aliases=[], alias_policy=FunctionAliasPolicy.OptInCompatibility, scalar_arguments=None, scalar_result=None, aggregate_modifiers=NO_AGGREGATE_MODIFIERS, approximation=NO_APPROXIMATION)
 
 
 pub def rejected_function_policy(requested_name: str, reason: str, alternative: str) -> RejectedFunctionPolicy:

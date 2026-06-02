@@ -2,8 +2,10 @@
 
 from function_registry import (
     FunctionClass,
+    FunctionInputType,
     FunctionLifecycle,
     FunctionNullBehavior,
+    scalar_argument_contract,
     deterministic_spec,
     extension_mapping,
     v0_1,
@@ -18,6 +20,7 @@ from substrait.function_extensions import DATE_PART_FUNCTION_ANCHOR
     function_class=FunctionClass.Scalar,
     lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
     null_behavior=FunctionNullBehavior.DependsOnInputs,
+    scalar_arguments=Some(scalar_argument_contract(positional=[FunctionInputType.String, FunctionInputType.Any])),
     substrait=extension_mapping("date_part", DATE_PART_FUNCTION_ANCHOR),
 ))
 pub def date_part(part: StrValueOrColumn, expr: ColumnExpr) -> ColumnExpr:

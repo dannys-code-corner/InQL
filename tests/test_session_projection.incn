@@ -470,6 +470,35 @@ def test_session_projection__collect_executes_common_datetime_projection_functio
     assert payload.contains("2026-02-28"), "last_day should return the last day of February 2026"
 
 
+def test_session_projection__typed_value_or_column_rejects_schema_mismatch_before_backend() -> None:
+    """Session planning should reject schema-incompatible typed helper column arguments."""
+    # -- Arrange --
+    mut session = Session.default()
+    lazy: LazyFrame[AggregateOrder] = assert_is_ok(
+        session.read_csv("aggregate_orders_typed_values", AGGREGATE_ORDERS_CSV_FIXTURE),
+        "aggregate orders fixture should load",
+    )
+
+    # -- Act / Assert --
+    date_result = session.collect(lazy.with_column("bad_date", make_date(col("customer_id"), 5, 30)))
+    match date_result:
+        Err(err) =>
+            assert err.kind == SessionErrorKind.InvalidScalarExpression, "schema mismatches should be planning diagnostics"
+            assert err.message.contains("make_date"), "diagnostic should name the typed helper"
+            assert err.message.contains("customer_id"), "diagnostic should name the offending column"
+            assert err.message.contains("int"), "diagnostic should name the expected input type"
+        Ok(_) => return fail_t("make_date should reject a string source column before DataFusion execution")
+
+    encode_result = session.collect(lazy.with_column("bad_encoding", encode(col("amount"), "base64")))
+    match encode_result:
+        Err(err) =>
+            assert err.kind == SessionErrorKind.InvalidScalarExpression, "schema mismatches should be planning diagnostics"
+            assert err.message.contains("encode"), "diagnostic should name the typed helper"
+            assert err.message.contains("amount"), "diagnostic should name the offending column"
+            assert err.message.contains("string"), "diagnostic should name the expected input type"
+        Ok(_) => return fail_t("encode should reject an integer source column before DataFusion execution")
+
+
 def test_session_projection__collect_executes_format_hashing_projection_functions() -> None:
     """collect should execute RFC 022 hashing helpers through DataFusion."""
     # -- Arrange --

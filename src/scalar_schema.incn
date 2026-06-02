@@ -1,0 +1,37 @@
+"""Schema facts available to scalar expression validation."""
+
+from substrait.schema import RowColumnSpec, SubstraitPrimitiveKind
+
+
+@derive(Clone)
+pub model ScalarColumnSpec:
+    """One input column visible to scalar expression validation."""
+
+    pub name: str
+    pub kind: Option[SubstraitPrimitiveKind]
+    pub nullable: bool
+
+
+pub def scalar_column(name: str) -> ScalarColumnSpec:
+    """Build one column spec when only the name is known."""
+    return ScalarColumnSpec(name=name, kind=None, nullable=true)
+
+
+pub def scalar_column_from_row_column(column: RowColumnSpec) -> ScalarColumnSpec:
+    """Convert one concrete row-schema column into a scalar-validation column."""
+    return ScalarColumnSpec(name=column.name, kind=Some(column.kind), nullable=column.nullable)
+
+
+pub def scalar_columns_from_names(names: list[str]) -> list[ScalarColumnSpec]:
+    """Build name-only scalar column specs."""
+    return [scalar_column(name) for name in names]
+
+
+pub def scalar_columns_from_row_columns(columns: list[RowColumnSpec]) -> list[ScalarColumnSpec]:
+    """Convert concrete row-schema columns into scalar-validation columns."""
+    return [scalar_column_from_row_column(column) for column in columns]
+
+
+pub def scalar_column_names(columns: list[ScalarColumnSpec]) -> list[str]:
+    """Return scalar column names in order."""
+    return [column.name for column in columns]

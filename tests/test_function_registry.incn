@@ -228,6 +228,7 @@ from function_registry import (
     FunctionClass,
     FunctionDeterminism,
     FunctionErrorBehavior,
+    FunctionInputType,
     FunctionLifecycle,
     FunctionApproximationPolicy,
     FunctionPolicyCategory,
@@ -794,6 +795,40 @@ def _assert_rewrite_mapping(canonical_name: str, rewrite: str) -> None:
     assert entry.substrait.rewrite == rewrite, f"{canonical_name} should describe its canonical rewrite shape"
 
 
+def _assert_scalar_argument_contract(
+    canonical_name: str,
+    positional: list[FunctionInputType],
+    variadic: Option[FunctionInputType],
+) -> None:
+    """Assert one helper exposes schema-aware scalar argument metadata."""
+    entry = _entry_or_fail(function_ref_for(canonical_name))
+    match entry.scalar_arguments:
+        Some(contract) =>
+            assert len(contract.positional) == len(positional), f"{canonical_name} should expose the expected typed argument count"
+            for idx in range(len(positional)):
+                assert contract.positional[idx] == positional[idx], f"{canonical_name} should expose the expected argument type"
+            match contract.variadic:
+                Some(actual_variadic) =>
+                    match variadic:
+                        Some(expected_variadic) =>
+                            assert actual_variadic == expected_variadic, f"{canonical_name} should expose the expected variadic type"
+                        None => return fail_t(f"{canonical_name} should not expose variadic metadata")
+                None =>
+                    match variadic:
+                        Some(_) => return fail_t(f"{canonical_name} should expose variadic metadata")
+                        None => pass
+        None => return fail_t(f"{canonical_name} should expose scalar argument metadata")
+
+
+def _assert_scalar_result(canonical_name: str, expected: FunctionInputType) -> None:
+    """Assert one helper exposes schema-aware scalar result metadata."""
+    entry = _entry_or_fail(function_ref_for(canonical_name))
+    match entry.scalar_result:
+        Some(actual) =>
+            assert actual == expected, f"{canonical_name} should expose the expected scalar result type"
+        None => return fail_t(f"{canonical_name} should expose scalar result metadata")
+
+
 def _assert_not_deprecated(entry: FunctionRegistryEntry) -> None:
     """Assert one current registry entry is not marked deprecated."""
     match entry.lifecycle.deprecated:
@@ -920,6 +955,41 @@ def test_function_registry__aggregate_helpers_expose_modifier_policy() -> None:
     assert not approx_percentile_entry.aggregate_modifiers.allows_ordered_input, "approximate percentile should reject ordered input"
     assert not abs_entry.aggregate_modifiers.allows_distinct, "scalar helpers should not expose aggregate modifier support"
     assert not abs_entry.aggregate_modifiers.allows_filter, "scalar helpers should not expose aggregate modifier support"
+
+
+def test_function_registry__typed_value_or_column_helpers_expose_scalar_argument_contracts() -> None:
+    """Assert value-or-column helpers declare schema-aware argument contracts."""
+    # -- Arrange --
+    _exercise_current_public_helpers()
+
+    _assert_scalar_argument_contract("sqrt", [FunctionInputType.Number], None)
+    _assert_scalar_result("sqrt", FunctionInputType.Number)
+    _assert_scalar_argument_contract("round", [FunctionInputType.Number, FunctionInputType.Int], None)
+    _assert_scalar_result("round", FunctionInputType.Number)
+
+    # -- Act / Assert --
+    _assert_scalar_argument_contract(
+        "make_date",
+        [FunctionInputType.Int, FunctionInputType.Int, FunctionInputType.Int],
+        None,
+    )
+    _assert_scalar_argument_contract(
+        "substring",
+        [FunctionInputType.String, FunctionInputType.Int, FunctionInputType.Int],
+        None,
+    )
+    _assert_scalar_result("substring", FunctionInputType.String)
+    _assert_scalar_argument_contract("concat", [FunctionInputType.String], Some(FunctionInputType.String))
+    _assert_scalar_result("concat", FunctionInputType.String)
+    _assert_scalar_argument_contract(
+        "regexp_extract",
+        [FunctionInputType.String, FunctionInputType.String, FunctionInputType.Int],
+        None,
+    )
+    _assert_scalar_result("regexp_extract", FunctionInputType.String)
+    _assert_scalar_result("regexp_like", FunctionInputType.Bool)
+    _assert_scalar_argument_contract("encode", [FunctionInputType.String, FunctionInputType.String], None)
+    _assert_scalar_result("encode", FunctionInputType.String)
 
 
 def test_function_registry__approximate_helpers_expose_approximation_policy() -> None:
