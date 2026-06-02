@@ -20,9 +20,11 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   INCAN_REF: release/v0.3
-  EXPECTED_INCAN_VERSION: 0.3.0-rc43
+  EXPECTED_INCAN_VERSION: 0.3.0-rc44
   RUST_BACKTRACE: 1
   INCAN_NO_BANNER: 1
+  INCAN_GENERATED_CARGO_TARGET_DIR: ${{ github.workspace }}/.incan-generated-cargo-target
+  INCAN_TEST_SHARED_TARGET_DIR: ${{ github.workspace }}/.incan-generated-cargo-target
 
 jobs:
   inql:
@@ -51,6 +53,28 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: incan -> target
+
+      - name: Cache generated InQL Cargo artifacts
+        uses: actions/cache@v4
+        with:
+          path: .incan-generated-cargo-target
+          key: inql-generated-cargo-${{ runner.os }}-incan-${{ env.EXPECTED_INCAN_VERSION }}-${{ hashFiles('incan.lock', 'incan.toml') }}
+          restore-keys: |
+            inql-generated-cargo-${{ runner.os }}-incan-${{ env.EXPECTED_INCAN_VERSION }}-
+
+      - name: Cache generated InQL Rust metadata
+        uses: actions/cache@v4
+        with:
+          path: |
+            target/incan_lock/rust_inspect/**/Cargo.toml
+            target/incan_lock/rust_inspect/**/Cargo.lock
+            target/incan_lock/rust_inspect/**/src/main.rs
+            target/incan_lock/rust_inspect/**/.incan_rust_inspect_cache.json
+            target/incan_lock/rust_inspect/**/.incan_rust_inspect_fingerprint
+          key: inql-rust-inspect-${{ runner.os }}-incan-${{ env.EXPECTED_INCAN_VERSION }}-${{ hashFiles('incan.lock', 'incan.toml') }}-${{ hashFiles('src/**/*.incn', 'tests/**/*.incn', 'scripts/**/*.incn') }}
+          restore-keys: |
+            inql-rust-inspect-${{ runner.os }}-incan-${{ env.EXPECTED_INCAN_VERSION }}-${{ hashFiles('incan.lock', 'incan.toml') }}-
+            inql-rust-inspect-${{ runner.os }}-incan-${{ env.EXPECTED_INCAN_VERSION }}-
 
       - name: Build Incan compiler
         working-directory: incan
