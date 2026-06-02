@@ -1,0 +1,55 @@
+"""Regular-expression capture extraction helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.inputs import IntValueOrColumn, StrValueOrColumn, int_value_or_column_expr, str_value_or_column_expr
+from functions.registry import register_function, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import REGEXP_EXTRACT_FUNCTION_ANCHOR
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=extension_mapping("regexp_extract", REGEXP_EXTRACT_FUNCTION_ANCHOR),
+))
+pub def regexp_extract(expr: ColumnExpr, pattern: StrValueOrColumn, group_index: IntValueOrColumn = 1) -> ColumnExpr:
+    """
+    Build a regex capture extraction expression.
+
+    Capture group indexes are one-based by default. Group zero returns the whole match.
+
+    Examples:
+        local_part = regexp_extract(col("email"), "^([^@]+)@", 1)
+
+    Parameters:
+        expr: Input scalar expression.
+        pattern: Regex pattern expression.
+        group_index: Capture group index expression.
+    """
+    return registered_application(
+        "regexp_extract",
+        [expr, str_value_or_column_expr(pattern), int_value_or_column_expr(group_index)],
+    )
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        col,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+    )
+    def test_regexp_extract_builds_registered_application() -> None:
+        expr = regexp_extract(col("email"), "^([^@]+)@", 1)
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "regexp_extract"
+        assert column_expr_argument_count(expr) == 3

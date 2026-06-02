@@ -27,7 +27,7 @@ from projection_builders import ColumnExpr
 @register_function(compatibility_alias_spec(
     namespace=CORE_FUNCTION_NAMESPACE,
     function_class=FunctionClass.Scalar,
-    aliases=["sha224", "sha256", "sha384", "sha512"],
+    aliases=[],
     lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
     determinism=FunctionDeterminism.Deterministic,
     null_behavior=FunctionNullBehavior.DependsOnInputs,

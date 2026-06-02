@@ -12,7 +12,7 @@ from function_registry import (
     deterministic_spec,
     v0_1,
 )
-from functions.registry import register_function, registered_application_with_options
+from functions.registry import register_function, register_function_alias, registered_application_with_options
 from projection_builders import ColumnExpr, scalar_function_option
 
 
@@ -36,6 +36,9 @@ pub def try_cast(expr: ColumnExpr, target_type: str) -> ColumnExpr:
         target_type: InQL type spelling to cast to.
     """
     return registered_application_with_options("try_cast", [expr], [scalar_function_option("target_type", target_type)])
+
+
+static _safe_cast_alias_registration: None = register_function_alias("try_cast", "safe_cast")
 
 
 module tests:

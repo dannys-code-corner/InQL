@@ -1,0 +1,47 @@
+"""Unix timestamp parsing helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.inputs import IntValueOrColumn, int_value_or_column_expr
+from functions.registry import register_function, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import FROM_UNIXTIME_FUNCTION_ANCHOR
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=extension_mapping("from_unixtime", FROM_UNIXTIME_FUNCTION_ANCHOR),
+))
+pub def from_unixtime(seconds: IntValueOrColumn) -> ColumnExpr:
+    """
+    Build a UTC timestamp expression from Unix seconds.
+
+    Examples:
+        created_at = from_unixtime(col("created_epoch"))
+
+    Parameters:
+        seconds: Unix-seconds expression or integer literal.
+    """
+    return registered_application("from_unixtime", [int_value_or_column_expr(seconds)])
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+    )
+    def test_from_unixtime_builds_registered_application() -> None:
+        expr = from_unixtime(0)
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "from_unixtime"
+        assert column_expr_argument_count(expr) == 1

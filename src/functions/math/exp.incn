@@ -1,0 +1,47 @@
+"""Exponential math helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import register_function, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import EXP_FUNCTION_ANCHOR
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=extension_mapping("exp", EXP_FUNCTION_ANCHOR),
+))
+pub def exp(expr: ColumnExpr) -> ColumnExpr:
+    """
+    Build an exponential expression.
+
+    Examples:
+        growth = exp(col("rate"))
+
+    Parameters:
+        expr: Input scalar expression.
+    """
+    return registered_application("exp", [expr])
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        col,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+    )
+    def test_exp_builds_registered_application() -> None:
+        expr = exp(col("value"))
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "exp"
+        assert column_expr_argument_count(expr) == 1

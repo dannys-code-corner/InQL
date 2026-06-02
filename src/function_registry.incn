@@ -256,13 +256,26 @@ pub class FunctionRegistry:
         """Record one registry entry or fail fast on invalid duplicate metadata."""
         assert _valid_canonical_name(canonical_name), (f"function canonical name must be one non-empty identifier segment, found `{canonical_name}`")
         assert _valid_namespace(spec.namespace), f"function namespace must be non-empty, found `{spec.namespace}`"
+        mut seen_aliases: list[str] = []
+        for alias in spec.aliases:
+            assert _valid_canonical_name(alias), f"function alias must be one non-empty identifier segment, found `{alias}`"
+            assert alias != canonical_name, f"function alias `{alias}` duplicates canonical name `{canonical_name}`"
+            assert not _contains_string(seen_aliases, alias), f"duplicate function alias `{alias}`"
+            seen_aliases.append(alias)
 
         function_ref = namespaced_function_ref(spec.namespace, canonical_name)
         for entry in self.entries:
             if entry.function_ref == function_ref:
                 assert _entry_matches_spec(entry, canonical_name, spec), f"conflicting duplicate function reference `{function_ref}`"
                 return
-            assert entry.namespace != spec.namespace or entry.canonical_name != canonical_name, f"duplicate canonical function name `{canonical_name}` in namespace `{spec.namespace}`"
+            if entry.namespace == spec.namespace:
+                assert entry.canonical_name != canonical_name, f"duplicate canonical function name `{canonical_name}` in namespace `{spec.namespace}`"
+                for alias in spec.aliases:
+                    assert entry.canonical_name != alias, f"function alias `{alias}` conflicts with canonical function name in namespace `{spec.namespace}`"
+                for existing_alias in entry.aliases:
+                    assert existing_alias != canonical_name, f"canonical function name `{canonical_name}` conflicts with alias in namespace `{spec.namespace}`"
+                    for alias in spec.aliases:
+                        assert existing_alias != alias, f"duplicate function alias `{alias}` in namespace `{spec.namespace}`"
 
         self.entries.append(
             FunctionRegistryEntry(
@@ -284,6 +297,49 @@ pub class FunctionRegistry:
         )
         return
 
+    def _add_alias(
+        mut self,
+        namespace: str,
+        canonical_name: str,
+        alias_name: str,
+        alias_policy: FunctionAliasPolicy,
+    ) -> None:
+        """Attach one real public alias name to an existing canonical registry entry."""
+        assert _valid_namespace(namespace), f"function namespace must be non-empty, found `{namespace}`"
+        assert _valid_canonical_name(canonical_name), f"function canonical name must be one non-empty identifier segment, found `{canonical_name}`"
+        assert _valid_canonical_name(alias_name), f"function alias must be one non-empty identifier segment, found `{alias_name}`"
+        assert alias_name != canonical_name, f"function alias `{alias_name}` duplicates canonical name `{canonical_name}`"
+        for entry in self.entries:
+            if entry.namespace == namespace and entry.canonical_name == alias_name:
+                assert false, f"function alias `{alias_name}` conflicts with canonical function name in namespace `{namespace}`"
+            if entry.namespace == namespace and _contains_string(entry.aliases, alias_name):
+                if entry.canonical_name == canonical_name and entry.alias_policy == alias_policy:
+                    return
+                assert false, f"duplicate function alias `{alias_name}` in namespace `{namespace}`"
+        for idx in range(len(self.entries)):
+            entry = self.entries[idx]
+            if entry.namespace == namespace and entry.canonical_name == canonical_name:
+                mut aliases = entry.aliases
+                aliases.append(alias_name)
+                self.entries[idx] = FunctionRegistryEntry(
+                    function_ref=entry.function_ref,
+                    namespace=entry.namespace,
+                    canonical_name=entry.canonical_name,
+                    policy_category=entry.policy_category,
+                    function_class=entry.function_class,
+                    aliases=aliases,
+                    alias_policy=alias_policy,
+                    lifecycle=entry.lifecycle,
+                    determinism=entry.determinism,
+                    null_behavior=entry.null_behavior,
+                    error_behavior=entry.error_behavior,
+                    aggregate_modifiers=entry.aggregate_modifiers,
+                    approximation=entry.approximation,
+                    substrait=entry.substrait,
+                )
+                return
+        assert false, f"missing canonical function `{canonical_name}` for alias `{alias_name}` in namespace `{namespace}`"
+
     def entry(self, function_ref: str) -> Option[FunctionRegistryEntry]:
         """Return the registry entry for one stable function reference when it is known."""
         for entry in self.entries:
@@ -291,14 +347,17 @@ pub class FunctionRegistry:
                 return Some(entry)
         return None
 
-    def entry_by_name(self, canonical_name: str) -> Option[FunctionRegistryEntry]:
-        """Return the core registry entry for one canonical public function name when it is known."""
-        return self.entry_by_namespace_and_name(CORE_FUNCTION_NAMESPACE, canonical_name)
+    def entry_by_name(self, name: str) -> Option[FunctionRegistryEntry]:
+        """Return the core registry entry for one canonical or alias public function name when it is known."""
+        return self.entry_by_namespace_and_name(CORE_FUNCTION_NAMESPACE, name)
 
-    def entry_by_namespace_and_name(self, namespace: str, canonical_name: str) -> Option[FunctionRegistryEntry]:
-        """Return the registry entry for one namespace-qualified canonical function name when it is known."""
+    def entry_by_namespace_and_name(self, namespace: str, name: str) -> Option[FunctionRegistryEntry]:
+        """Return the registry entry for one namespace-qualified canonical or alias function name."""
         for entry in self.entries:
-            if entry.namespace == namespace and entry.canonical_name == canonical_name:
+            if entry.namespace == namespace and entry.canonical_name == name:
+                return Some(entry)
+        for entry in self.entries:
+            if entry.namespace == namespace and _contains_string(entry.aliases, name):
                 return Some(entry)
         return None
 
@@ -327,6 +386,14 @@ def _same_string_list(left: list[str], right: list[str]) -> bool:
         if left[idx] != right[idx]:
             return false
     return true
+
+
+def _contains_string(values: list[str], target: str) -> bool:
+    """Return whether one string list contains the target value."""
+    for value in values:
+        if value == target:
+            return true
+    return false
 
 
 def _same_version(left: FunctionVersion, right: FunctionVersion) -> bool:

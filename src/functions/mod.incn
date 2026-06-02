@@ -15,6 +15,13 @@ pub from functions.registry import (
     function_registry_function_refs,
     registered_substrait_mapped_function_refs,
 )
+pub from functions.inputs import (
+    BoolValueOrColumn,
+    FloatValueOrColumn,
+    IntValueOrColumn,
+    ScalarValueOrColumn,
+    StrValueOrColumn,
+)
 pub from functions.references.col import col
 pub from functions.literals.always_false import always_false
 pub from functions.literals.always_true import always_true
@@ -36,9 +43,83 @@ pub from functions.aggregates.max import max
 pub from functions.approximate.approx_count_distinct import approx_count_distinct
 pub from functions.approximate.approx_percentile import approx_percentile
 pub from functions.math.abs import abs
+pub from functions.math.acos import acos
+pub from functions.math.asin import asin
+pub from functions.math.atan import atan
+pub from functions.math.atan2 import atan2
 pub from functions.math.ceil import ceil
+pub from functions.math.cos import cos
+pub from functions.math.degrees import degrees
+pub from functions.math.exp import exp
 pub from functions.math.floor import floor
+pub from functions.math.greatest import greatest
+pub from functions.math.least import least
+pub from functions.math.ln import ln
+pub from functions.math.log import log
+pub from functions.math.log10 import log10
+pub from functions.math.power import power
+pub from functions.math.radians import radians
 pub from functions.math.round import round
+pub from functions.math.sign import sign
+pub from functions.math.sin import sin
+pub from functions.math.sqrt import sqrt
+pub from functions.math.tan import tan
+pub from functions.strings.char_length import char_length
+pub from functions.strings.concat import concat
+pub from functions.strings.concat_ws import concat_ws
+pub from functions.strings.lcase import lcase
+pub from functions.strings.left import left
+pub from functions.strings.lower import lower
+pub from functions.strings.lpad import lpad
+pub from functions.strings.ltrim import ltrim
+pub from functions.strings.octet_length import octet_length
+pub from functions.strings.overlay import overlay
+pub from functions.strings.position import position
+pub from functions.strings.repeat import repeat
+pub from functions.strings.replace import replace
+pub from functions.strings.right import right
+pub from functions.strings.rpad import rpad
+pub from functions.strings.rtrim import rtrim
+pub from functions.strings.split_part import split_part
+pub from functions.strings.substr import substr
+pub from functions.strings.substring import substring
+pub from functions.strings.translate import translate
+pub from functions.strings.trim import trim
+pub from functions.strings.ucase import ucase
+pub from functions.strings.upper import upper
+pub from functions.encoding.base64 import base64
+pub from functions.encoding.decode import decode
+pub from functions.encoding.encode import encode
+pub from functions.encoding.hex import hex
+pub from functions.encoding.unbase64 import unbase64
+pub from functions.encoding.unhex import unhex
+pub from functions.regex.regexp_extract import regexp_extract
+pub from functions.regex.regexp_like import regexp_like
+pub from functions.regex.regexp_replace import regexp_replace
+pub from functions.datetime.current_date import current_date
+pub from functions.datetime.current_time import current_time
+pub from functions.datetime.current_timestamp import current_timestamp
+pub from functions.datetime.date_add import date_add
+pub from functions.datetime.date_diff import date_diff
+pub from functions.datetime.date_part import date_part
+pub from functions.datetime.date_sub import date_sub
+pub from functions.datetime.date_trunc import date_trunc
+pub from functions.datetime.dateadd import dateadd
+pub from functions.datetime.datediff import datediff
+pub from functions.datetime.extract import extract
+pub from functions.datetime.from_unixtime import from_unixtime
+pub from functions.datetime.last_day import last_day
+pub from functions.datetime.make_date import make_date
+pub from functions.datetime.make_time import make_time
+pub from functions.datetime.make_timestamp import make_timestamp
+pub from functions.datetime.time_trunc import time_trunc
+pub from functions.datetime.timestamp_diff import timestamp_diff
+pub from functions.datetime.to_date import to_date
+pub from functions.datetime.to_time import to_time
+pub from functions.datetime.to_timestamp import to_timestamp
+pub from functions.datetime.unix_micros import unix_micros
+pub from functions.datetime.unix_millis import unix_millis
+pub from functions.datetime.unix_seconds import unix_seconds
 pub from functions.nested.array import array
 pub from functions.nested.array_contains import array_contains
 pub from functions.nested.array_distinct import array_distinct
@@ -126,6 +207,7 @@ pub from functions.operators.not_ import not_
 pub from functions.operators.or_ import or_
 pub from functions.operators.sub import sub
 pub from functions.casts.cast import cast
+pub from functions.casts.safe_cast import safe_cast
 pub from functions.casts.try_cast import try_cast
 pub from functions.predicates.between import between
 pub from functions.predicates.in_ import in_

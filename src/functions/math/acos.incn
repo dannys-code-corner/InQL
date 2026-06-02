@@ -1,0 +1,47 @@
+"""Inverse-cosine math helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import register_function, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import ACOS_FUNCTION_ANCHOR
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=extension_mapping("acos", ACOS_FUNCTION_ANCHOR),
+))
+pub def acos(expr: ColumnExpr) -> ColumnExpr:
+    """
+    Build an inverse-cosine expression.
+
+    Examples:
+        angle = acos(col("ratio"))
+
+    Parameters:
+        expr: Input scalar expression.
+    """
+    return registered_application("acos", [expr])
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        col,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+    )
+    def test_acos_builds_registered_application() -> None:
+        expr = acos(col("ratio"))
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "acos"
+        assert column_expr_argument_count(expr) == 1

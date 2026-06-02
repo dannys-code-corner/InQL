@@ -1,6 +1,24 @@
 """Common math scalar helpers."""
 
 pub from functions.math.abs import abs
+pub from functions.math.acos import acos
+pub from functions.math.asin import asin
+pub from functions.math.atan import atan
+pub from functions.math.atan2 import atan2
 pub from functions.math.ceil import ceil
+pub from functions.math.cos import cos
+pub from functions.math.degrees import degrees
+pub from functions.math.exp import exp
 pub from functions.math.floor import floor
+pub from functions.math.greatest import greatest
+pub from functions.math.least import least
+pub from functions.math.ln import ln
+pub from functions.math.log import log
+pub from functions.math.log10 import log10
+pub from functions.math.power import power
+pub from functions.math.radians import radians
 pub from functions.math.round import round
+pub from functions.math.sign import sign
+pub from functions.math.sin import sin
+pub from functions.math.sqrt import sqrt
+pub from functions.math.tan import tan

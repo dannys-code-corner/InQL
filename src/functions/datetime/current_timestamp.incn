@@ -1,0 +1,45 @@
+"""Current timestamp helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionDeterminism,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import register_function, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import CURRENT_TIMESTAMP_FUNCTION_ANCHOR
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    determinism=FunctionDeterminism.Nondeterministic,
+    null_behavior=FunctionNullBehavior.NonNullLiteral,
+    substrait=extension_mapping("now", CURRENT_TIMESTAMP_FUNCTION_ANCHOR),
+))
+pub def current_timestamp() -> ColumnExpr:
+    """
+    Build a current-timestamp expression.
+
+    Examples:
+        processed_at = current_timestamp()
+    """
+    return registered_application("current_timestamp", [])
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+    )
+    def test_current_timestamp_builds_registered_application() -> None:
+        expr = current_timestamp()
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "current_timestamp"
+        assert column_expr_argument_count(expr) == 0

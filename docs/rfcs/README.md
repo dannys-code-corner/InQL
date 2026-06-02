@@ -19,12 +19,12 @@ InQL uses its **own** RFC series (starting at 000), independent of the [Incan la
 | [010][rfc-010] | Draft       | CSV dialect and interpretation contract                                                           |     |
 | [011][rfc-011] | Draft       | Source discovery and parse-unit expansion                                                         |     |
 | [012][rfc-012] | Implemented | Unified scalar expression surface                                                                 |     |
-| [013][rfc-013] | Planned     | Function catalog program                                                                          |     |
+| [013][rfc-013] | In Progress | Function catalog program                                                                          |     |
 | [014][rfc-014] | Implemented | Function registry and catalog governance                                                          |     |
 | [015][rfc-015] | Implemented | Core scalar functions and operators                                                               |     |
 | [016][rfc-016] | Implemented | Core aggregate functions                                                                          |     |
 | [017][rfc-017] | Implemented | Aggregate modifiers                                                                               |     |
-| [018][rfc-018] | In Progress | Common scalar function catalog                                                                    |     |
+| [018][rfc-018] | Implemented | Common scalar function catalog                                                                    |     |
 | [019][rfc-019] | Implemented | Window functions                                                                                  |     |
 | [020][rfc-020] | Implemented | Nested data functions                                                                             |     |
 | [021][rfc-021] | Implemented | Generator and table-valued functions                                                              |     |

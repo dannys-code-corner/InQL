@@ -1,6 +1,6 @@
 # InQL RFC 013: Function catalog program
 
-- **Status:** Planned
+- **Status:** In Progress
 - **Created:** 2026-04-27
 - **Author(s):** Danny Meijer (@dannymeijer)
 - **Related:**
@@ -16,6 +16,8 @@
   - InQL RFC 022 (semi-structured and format functions)
   - InQL RFC 023 (approximate and sketch functions)
   - InQL RFC 024 (function extension policy)
+  - InQL RFC 025 (typed sketch logical values)
+  - InQL RFC 026 (semi-structured variant logical values)
 - **Issue:** [InQL #30](https://github.com/dannys-code-corner/InQL/issues/30)
 - **RFC PR:** —
 - **Written against:** Incan v0.2
@@ -30,7 +32,7 @@ This RFC is the umbrella tracking RFC for InQL's function catalog expansion. It 
 1. Function catalog work is organized by semantic boundary, not by individual function.
 2. InQL must establish a registry and governance model before broad function families become stable.
 3. Core scalar and aggregate functions form the first author-facing expansion.
-4. Aggregate modifiers, window functions, nested data, generators, format functions, approximate/sketch functions, and extensions each require their own semantic contracts.
+4. Aggregate modifiers, window functions, nested data, generators, format functions, approximate/sketch functions, typed sketch values, semi-structured values, and extensions each require their own semantic contracts.
 5. The umbrella RFC tracks program completion; child RFCs define normative behavior.
 
 ## Motivation
@@ -43,7 +45,7 @@ The function expansion is too broad for one normative RFC if every family is spe
 
 - Establish the function catalog expansion as one coordinated program.
 - Define the child RFC set that must be resolved for the program to be considered complete.
-- Preserve a north-star target that covers scalar, aggregate, window, nested, generator, format, approximate, sketch, and extension functions.
+- Preserve a north-star target that covers scalar, aggregate, window, nested, generator, format, approximate, sketch, semi-structured, and extension functions.
 - Make RFC 014 (function registry and catalog governance) the prerequisite for catalog breadth.
 - Allow this umbrella RFC to move to Implemented only when the child set is implemented or deliberately narrowed by explicit design decision.
 
@@ -88,6 +90,8 @@ The function catalog program must consist of the following child RFCs unless thi
 - InQL RFC 022 (semi-structured and format functions)
 - InQL RFC 023 (approximate and sketch functions)
 - InQL RFC 024 (function extension policy)
+- InQL RFC 025 (typed sketch logical values)
+- InQL RFC 026 (semi-structured variant logical values)
 
 This umbrella RFC must not be marked Implemented while any required child RFC remains Draft, Planned, In Progress, Blocked, or otherwise unresolved. A child RFC may be removed from the required completion set only by a design decision recorded in this RFC or by a superseding RFC.
 
@@ -135,5 +139,5 @@ Existing helpers may remain while the child RFCs migrate them into the registry-
 
 ## Design Decisions
 
-- **Child RFC scope:** the current child RFC set is the scope of the function catalog program. InQL RFC 014 through InQL RFC 024 are required children unless this umbrella RFC is later amended or superseded.
-- **Implemented status:** this umbrella RFC may be marked Implemented only when all required child RFCs through InQL RFC 024 are implemented, rejected, or superseded by explicit design decision. Extension and sketch families are part of the umbrella scope, not optional follow-on scope.
+- **Child RFC scope:** the current child RFC set is the scope of the function catalog program. InQL RFC 014 through InQL RFC 026 are required children unless this umbrella RFC is later amended or superseded.
+- **Implemented status:** this umbrella RFC may be marked Implemented only when all required child RFCs through InQL RFC 026 are implemented, rejected, or superseded by explicit design decision. Extension, sketch, typed sketch value, and semi-structured value families are part of the umbrella scope, not optional follow-on scope.

@@ -1,0 +1,50 @@
+"""Timestamp difference helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.inputs import StrValueOrColumn, str_value_or_column_expr
+from functions.registry import register_function, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import TIMESTAMP_DIFF_FUNCTION_ANCHOR
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=extension_mapping("timestamp_diff", TIMESTAMP_DIFF_FUNCTION_ANCHOR),
+))
+pub def timestamp_diff(part: StrValueOrColumn, start: ColumnExpr, end: ColumnExpr) -> ColumnExpr:
+    """
+    Build a timestamp difference expression.
+
+    Examples:
+        seconds_open = timestamp_diff("second", col("started_at"), col("finished_at"))
+
+    Parameters:
+        part: Date or time part expression.
+        start: Start scalar expression.
+        end: End scalar expression.
+    """
+    return registered_application("timestamp_diff", [str_value_or_column_expr(part), start, end])
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        col,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+    )
+    def test_timestamp_diff_builds_registered_application() -> None:
+        expr = timestamp_diff("second", col("start_at"), col("end_at"))
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "timestamp_diff"
+        assert column_expr_argument_count(expr) == 3

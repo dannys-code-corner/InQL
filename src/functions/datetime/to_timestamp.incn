@@ -1,0 +1,54 @@
+"""Timestamp parsing helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.inputs import StrValueOrColumn, str_value_or_column_expr
+from functions.registry import register_function, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import TO_TIMESTAMP_FUNCTION_ANCHOR
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=extension_mapping("to_timestamp", TO_TIMESTAMP_FUNCTION_ANCHOR),
+))
+pub def to_timestamp(expr: ColumnExpr, format: Option[StrValueOrColumn] = None) -> ColumnExpr:
+    """
+    Build a timestamp parsing expression.
+
+    Examples:
+        ordered_at = to_timestamp(col("timestamp_text"))
+
+    Parameters:
+        expr: Input scalar expression.
+        format: Format selector expression or string literal.
+    """
+    if let Some(value) = format:
+        return registered_application("to_timestamp", [expr, str_value_or_column_expr(value)])
+    return registered_application("to_timestamp", [expr])
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        col,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+    )
+    def test_to_timestamp_builds_registered_application() -> None:
+        expr = to_timestamp(col("timestamp_text"))
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "to_timestamp"
+        assert column_expr_argument_count(expr) == 1
+    def test_to_timestamp_accepts_literal_format() -> None:
+        expr = to_timestamp(col("timestamp_text"), "%Y-%m-%d %H:%M:%S")
+        assert column_expr_argument_count(expr) == 2

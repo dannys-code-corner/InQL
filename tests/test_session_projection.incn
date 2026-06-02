@@ -2,38 +2,84 @@
 
 from functions import (
     abs,
+    acos,
     add,
     array,
     array_contains,
     array_distinct,
     array_join,
     array_position,
+    asin,
+    atan,
+    atan2,
+    base64,
     case_when,
     cast,
     ceil,
+    char_length,
     check_json,
     coalesce,
     col,
+    concat,
+    concat_ws,
+    cos,
     crc32,
+    date_add,
+    date_diff,
+    date_part,
+    date_sub,
+    date_trunc,
+    decode,
+    degrees,
     desc,
     div,
+    encode,
+    exp,
     floor,
+    from_unixtime,
     from_csv,
     from_json,
     get_json_object,
+    greatest,
     gt,
+    hex,
     json_array_length,
     json_extract_path_text,
     json_object_keys,
+    last_day,
+    least,
+    left,
     lit,
+    ln,
+    log,
+    log10,
+    lower,
+    lpad,
+    ltrim,
+    make_date,
+    make_time,
+    make_timestamp,
     md5,
     modulo,
     mul,
     neg,
     nullif,
+    octet_length,
+    overlay,
     parse_json,
     parse_url,
+    position,
+    power,
+    radians,
+    regexp_extract,
+    regexp_like,
+    regexp_replace,
+    repeat,
+    replace,
+    right,
     round,
+    rpad,
+    rtrim,
     schema_of_csv,
     schema_of_json,
     sha1,
@@ -41,12 +87,31 @@ from functions import (
     sha224,
     sha384,
     sha512,
+    sign,
+    sin,
+    split_part,
+    sqrt,
     sub,
+    substring,
+    tan,
+    timestamp_diff,
+    time_trunc,
     to_csv,
+    to_date,
     to_json,
+    to_time,
+    to_timestamp,
+    translate,
+    trim,
     try_from_json,
     try_url_decode,
     try_cast,
+    unbase64,
+    unhex,
+    unix_micros,
+    unix_millis,
+    unix_seconds,
+    upper,
     url_decode,
     url_encode,
     xxhash64,
@@ -211,7 +276,7 @@ def test_session_projection__collect_executes_core_scalar_projection_functions()
 
 
 def test_session_projection__collect_executes_common_math_scalar_projection_functions() -> None:
-    """collect should execute the first RFC 018 math scalar helpers through DataFusion."""
+    """collect should execute the full RFC 018 math scalar catalog through DataFusion."""
     # -- Arrange --
     mut session = Session.default()
 
@@ -226,22 +291,183 @@ def test_session_projection__collect_executes_common_math_scalar_projection_func
     ).with_column("floor_quarter", floor(div(col("amount"), lit(4.0)))).with_column(
         "round_quarter",
         round(div(col("amount"), lit(4.0))),
-    )
+    ).with_column("round_one_place", round(lit(2.25), lit(1))).with_column("sqrt_sixteen", sqrt(lit(16.0))).with_column(
+        "power_two_three",
+        power(lit(2.0), lit(3.0)),
+    ).with_column("exp_zero", exp(lit(0.0))).with_column("ln_one", ln(lit(1.0))).with_column(
+        "log_ten_hundred",
+        log(lit(10.0), lit(100.0)),
+    ).with_column("log10_hundred", log10(lit(100.0))).with_column("sign_negative", sign(lit(-5))).with_column(
+        "least_value",
+        least(lit(7), lit(3), lit(5)),
+    ).with_column("greatest_value", greatest(lit(7), lit(3), lit(5))).with_column("sin_zero", sin(lit(0.0))).with_column(
+        "cos_zero",
+        cos(lit(0.0)),
+    ).with_column("tan_zero", tan(lit(0.0))).with_column("asin_zero", asin(lit(0.0))).with_column(
+        "acos_one",
+        acos(lit(1.0)),
+    ).with_column("atan_zero", atan(lit(0.0))).with_column("atan2_zero", atan2(lit(0.0), lit(1.0))).with_column(
+        "degrees_zero",
+        degrees(lit(0.0)),
+    ).with_column("radians_zero", radians(lit(0.0)))
     df = _collect_or_fail(session, projected)
     payload = df.preview_text()
     resolved = df.resolved_columns()
 
     # -- Assert --
     assert df.row_count() == 3, "math scalar projections should preserve the input rows"
-    assert len(resolved) == 6, "projection should expose all appended math outputs"
+    assert len(resolved) == 25, "projection should expose all appended math outputs"
     assert payload.contains("abs_delta"), "abs projection should materialize its alias"
-    assert payload.contains("ceil_quarter"), "ceil projection should materialize its alias"
-    assert payload.contains("floor_quarter"), "floor projection should materialize its alias"
-    assert payload.contains("round_quarter"), "round projection should materialize its alias"
+    assert payload.contains("sqrt_sixteen"), "sqrt projection should materialize its alias"
+    assert payload.contains("least_value"), "least projection should materialize its alias"
+    assert payload.contains("greatest_value"), "greatest projection should materialize its alias"
     assert payload.contains("10"), "abs projection should include abs(5 - 15)"
     assert payload.contains("4"), "ceil projection should include ceil(15 / 4.0)"
     assert payload.contains("1"), "floor projection should include floor(7 / 4.0)"
     assert payload.contains("3"), "round projection should include round(10 / 4.0)"
+    assert payload.contains("-1"), "sign projection should include sign(-5)"
+    assert payload.contains("8"), "power projection should include 2^3"
+
+
+def test_session_projection__collect_executes_common_string_scalar_projection_functions() -> None:
+    """collect should execute the RFC 018 string scalar catalog through DataFusion."""
+    # -- Arrange --
+    mut session = Session.default()
+
+    # -- Act --
+    lazy: LazyFrame[AggregateOrder] = assert_is_ok(
+        session.read_csv("aggregate_orders_strings", AGGREGATE_ORDERS_CSV_FIXTURE),
+        "aggregate orders fixture should load",
+    )
+    projected = lazy.with_column("len_abc", char_length(lit("abc"))).with_column("octets_abc", octet_length(lit("abc"))).with_column(
+        "upper_abc",
+        upper(lit("abc")),
+    ).with_column("lower_abc", lower(lit("ABC"))).with_column("trimmed", trim(lit("  hello  "))).with_column(
+        "left_trimmed",
+        ltrim(lit("  hello")),
+    ).with_column("right_trimmed", rtrim(lit("hello  "))).with_column("middle", substring(lit("abcdef"), lit(2), lit(3))).with_column(
+        "position_cd",
+        position(lit("abcdef"), lit("cd")),
+    ).with_column("overlayed", overlay(lit("abcdef"), lit("ZZ"), lit(3), lit(2))).with_column(
+        "joined",
+        concat(lit("a"), lit("b")),
+    ).with_column("joined_ws", concat_ws(lit("-"), lit("a"), lit("b"))).with_column(
+        "replaced",
+        replace(lit("banana"), lit("na"), lit("NA")),
+    ).with_column("translated", translate(lit("abc"), lit("ab"), lit("xy"))).with_column(
+        "repeated",
+        repeat(lit("ha"), lit(3)),
+    ).with_column("left_two", left(lit("abcdef"), lit(2))).with_column("right_two", right(lit("abcdef"), lit(2))).with_column(
+        "left_padded",
+        lpad(lit("x"), lit(3), lit("0")),
+    ).with_column("right_padded", rpad(lit("x"), lit(3), lit("0"))).with_column(
+        "split_second",
+        split_part(lit("a,b,c"), lit(","), lit(2)),
+    )
+    df = _collect_or_fail(session, projected)
+    payload = df.preview_text()
+    resolved = df.resolved_columns()
+
+    # -- Assert --
+    assert df.row_count() == 3, "string scalar projections should preserve the input rows"
+    assert len(resolved) == 22, "projection should expose all appended string outputs"
+    assert payload.contains("upper_abc"), "upper projection should materialize its alias"
+    assert payload.contains("ABC"), "upper projection should return uppercase text"
+    assert payload.contains("hello"), "trim projections should remove surrounding spaces"
+    assert payload.contains("bcd"), "substring should use one-based SQL-compatible positions"
+    assert payload.contains("abZZef"), "overlay should replace the selected substring"
+    assert payload.contains("a-b"), "concat_ws should join values with the separator"
+    assert payload.contains("hahaha"), "repeat should materialize repeated text"
+    assert payload.contains("xyc"), "translate should replace mapped characters"
+
+
+def test_session_projection__collect_executes_common_encoding_and_regex_projection_functions() -> None:
+    """collect should execute RFC 018 encoding and regex helpers through DataFusion."""
+    # -- Arrange --
+    mut session = Session.default()
+
+    # -- Act --
+    lazy: LazyFrame[AggregateOrder] = assert_is_ok(
+        session.read_csv("aggregate_orders_encoding_regex", AGGREGATE_ORDERS_CSV_FIXTURE),
+        "aggregate orders fixture should load",
+    )
+    projected = lazy.with_column("encoded_base64", encode(lit("abc"), lit("base64"))).with_column(
+        "decoded_base64",
+        decode(lit("YWJj"), lit("base64")),
+    ).with_column("base64_abc", base64(lit("abc"))).with_column("unbase64_abc", unbase64(lit("YWJj"))).with_column(
+        "hex_abc",
+        hex(lit("abc")),
+    ).with_column("unhex_abc", unhex(lit("616263"))).with_column(
+        "regex_like",
+        regexp_like(lit("order-42"), lit("^order-[0-9]+$")),
+    ).with_column("regex_replaced", regexp_replace(lit("order-42"), lit("[0-9]+"), lit("99"))).with_column(
+        "regex_extracted",
+        regexp_extract(lit("order-42"), lit("order-([0-9]+)"), lit(1)),
+    )
+    df = _collect_or_fail(session, projected)
+    payload = df.preview_text()
+    resolved = df.resolved_columns()
+
+    # -- Assert --
+    assert df.row_count() == 3, "encoding and regex scalar projections should preserve the input rows"
+    assert len(resolved) == 11, "projection should expose all appended encoding and regex outputs"
+    assert payload.contains("YWJj"), "base64 helpers should encode abc"
+    assert payload.contains("616263"), "hex helper should encode abc as lowercase hexadecimal"
+    assert payload.contains("true"), "regexp_like should return true for the matching payload"
+    assert payload.contains("order-99"), "regexp_replace should replace the matching digits"
+    assert payload.contains("42"), "regexp_extract should return capture group one"
+
+
+def test_session_projection__collect_executes_common_datetime_projection_functions() -> None:
+    """collect should execute deterministic RFC 018 date/time helpers through DataFusion."""
+    # -- Arrange --
+    mut session = Session.default()
+
+    # -- Act --
+    lazy: LazyFrame[AggregateOrder] = assert_is_ok(
+        session.read_csv("aggregate_orders_datetime", AGGREGATE_ORDERS_CSV_FIXTURE),
+        "aggregate orders fixture should load",
+    )
+    projected = lazy.with_column("year_part", date_part(lit("year"), to_date(lit("2026-05-30")))).with_column(
+        "month_trunc",
+        date_trunc(lit("month"), to_timestamp(lit("2026-05-30T12:34:56"))),
+    ).with_column("hour_trunc", time_trunc(lit("hour"), lit("12:34:56"))).with_column(
+        "plus_two_days",
+        date_add(lit("day"), lit(2), lit("2026-05-30")),
+    ).with_column("minus_one_day", date_sub(lit("day"), lit(1), lit("2026-05-30"))).with_column(
+        "day_diff",
+        date_diff(lit("day"), lit("2026-05-30"), lit("2026-06-02")),
+    ).with_column("second_diff", timestamp_diff(lit("second"), lit("1970-01-01T00:00:00"), lit("1970-01-01T00:00:10"))).with_column(
+        "date_value",
+        to_date(lit("2026-05-30T12:34:56")),
+    ).with_column("time_value", to_time(lit("12:34:56"))).with_column(
+        "timestamp_value",
+        to_timestamp(lit("2026-05-30T12:34:56")),
+    ).with_column("from_unix", from_unixtime(lit(10))).with_column("unix_s", unix_seconds(lit("1970-01-01T00:00:10"))).with_column(
+        "unix_ms",
+        unix_millis(lit("1970-01-01T00:00:01")),
+    ).with_column("unix_us", unix_micros(lit("1970-01-01T00:00:01"))).with_column(
+        "date_made",
+        make_date(lit(2026), lit(5), lit(30)),
+    ).with_column("time_made", make_time(lit(12), lit(34), lit(56))).with_column(
+        "timestamp_made",
+        make_timestamp(lit(2026), lit(5), lit(30), lit(12), lit(34), lit(56)),
+    ).with_column("month_last_day", last_day(lit("2026-02-10")))
+    df = _collect_or_fail(session, projected)
+    payload = df.preview_text()
+    resolved = df.resolved_columns()
+
+    # -- Assert --
+    assert df.row_count() == 3, "date/time scalar projections should preserve the input rows"
+    assert len(resolved) == 20, "projection should expose all appended date/time outputs"
+    assert payload.contains("2026"), "date_part should extract the year"
+    assert payload.contains("2026-06-01"), "date_add should add whole days"
+    assert payload.contains("2026-05-29"), "date_sub should subtract whole days"
+    assert payload.contains("10"), "timestamp_diff and unix_seconds should materialize ten seconds"
+    assert payload.contains("1000"), "unix_millis should convert seconds to milliseconds"
+    assert payload.contains("1000000"), "unix_micros should convert seconds to microseconds"
+    assert payload.contains("2026-05-30T12:34:56"), "make_timestamp should materialize an ISO timestamp"
+    assert payload.contains("2026-02-28"), "last_day should return the last day of February 2026"
 
 
 def test_session_projection__collect_executes_format_hashing_projection_functions() -> None:

@@ -87,6 +87,14 @@ Function construction is a first-class review axis. Check that new helpers are c
 
 DataFusion is the first adapter, not InQL’s semantic owner. Do not encode DataFusion-only behavior in Substrait IR, do not model core-function “unsupported” as a normal Substrait state, and do not use SQL/string-script generation when DataFusion exposes a typed API. Invalid context belongs in authoring/Prism/lowering validation; backend inability belongs in adapter capability or error handling.
 
+Lessons from the RFC 016–023 closeout:
+
+- Public docs describe the user contract, not implementation sentinels, placeholder columns, backend rewrite names, compiler workaround shapes, or other internal mechanics.
+- Do not dilute maintainer requirements into helper constructors, schema strings, or adapter shortcuts. If the requested Incan surface cannot compile yet, file or fix the compiler/language issue against the original requirement instead of designing around it.
+- “Future scope” must have an owner. If a deferred capability matters, create or link the RFC/issue that owns it; if it is not important enough to record, omit the claim.
+- Review for requirement substitution explicitly: scan new APIs for places where a convenient implementation shape replaced the requested authoring shape, especially around function construction, model/schema typing, and backend execution.
+- Prefer a clean `main`-based replacement PR when an old stacked branch is closed, stale, or based on an obsolete branch, but state that tradeoff before replacing the PR because review continuity can matter.
+
 Merge strategy for this series: land cross-cutting boundary resets first, then base later slices on fresh `main`. Prefer fewer coherent follow-up PRs when RFCs share the same registry/Substrait/backend boundary, but do not fold unrelated remaining RFCs into an active boundary-reset PR without explicit maintainer approval.
 
 ## Common commands (this repo)

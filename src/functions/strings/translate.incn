@@ -1,0 +1,53 @@
+"""Character translation helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.inputs import StrValueOrColumn, str_value_or_column_expr
+from functions.registry import register_function, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import TRANSLATE_FUNCTION_ANCHOR
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=extension_mapping("translate", TRANSLATE_FUNCTION_ANCHOR),
+))
+pub def translate(expr: StrValueOrColumn, from_chars: StrValueOrColumn, to_chars: StrValueOrColumn) -> ColumnExpr:
+    """
+    Build a character translation expression.
+
+    Examples:
+        normalized = translate(col("code"), "ABC", "abc")
+
+    Parameters:
+        expr: Input scalar expression.
+        from_chars: Source character-set expression.
+        to_chars: Replacement character-set expression.
+    """
+    return registered_application(
+        "translate",
+        [str_value_or_column_expr(expr), str_value_or_column_expr(from_chars), str_value_or_column_expr(to_chars)],
+    )
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        col,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+    )
+    def test_translate_builds_registered_application() -> None:
+        expr = translate(col("code"), "ABC", "abc")
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "translate"
+        assert column_expr_argument_count(expr) == 3

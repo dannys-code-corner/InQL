@@ -1,0 +1,13 @@
+"""SQL-style date/time extraction alias."""
+
+from functions.datetime.date_part import date_part
+
+pub extract = alias date_part
+
+
+module tests:
+    from projection_builders import ColumnExprKind, col, column_expr_function_name, column_expr_kind
+    def test_extract_rewrites_to_date_part() -> None:
+        expr = extract("year", col("created_at"))
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "date_part"

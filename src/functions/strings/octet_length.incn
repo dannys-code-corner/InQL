@@ -1,0 +1,48 @@
+"""Octet-length string helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.inputs import StrValueOrColumn, str_value_or_column_expr
+from functions.registry import register_function, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import OCTET_LENGTH_FUNCTION_ANCHOR
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=extension_mapping("octet_length", OCTET_LENGTH_FUNCTION_ANCHOR),
+))
+pub def octet_length(expr: StrValueOrColumn) -> ColumnExpr:
+    """
+    Build a UTF-8 byte-count expression.
+
+    Examples:
+        name_bytes = octet_length(col("name"))
+
+    Parameters:
+        expr: Input scalar expression.
+    """
+    return registered_application("octet_length", [str_value_or_column_expr(expr)])
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        col,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+    )
+    def test_octet_length_builds_registered_application() -> None:
+        expr = octet_length(col("name"))
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "octet_length"
+        assert column_expr_argument_count(expr) == 1

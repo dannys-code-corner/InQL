@@ -20,7 +20,7 @@
   - Incan issue #658 / PR #660 (`const` model constructor initializers for typed version constants)
   - Incan issue #659 / PR #660 (lowercase exported static import/codegen mismatch)
 - **Issue:** [InQL #31](https://github.com/dannys-code-corner/InQL/issues/31)
-- **RFC PR:** —
+- **RFC PR:** [InQL #42](https://github.com/dannys-code-corner/InQL/pull/42)
 - **Written against:** Incan v0.2
 - **Shipped in:** v0.1
 

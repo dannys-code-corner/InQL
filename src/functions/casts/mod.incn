@@ -1,4 +1,5 @@
 """Scalar cast helpers."""
 
 pub from functions.casts.cast import cast
+pub from functions.casts.safe_cast import safe_cast
 pub from functions.casts.try_cast import try_cast

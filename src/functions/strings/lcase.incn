@@ -1,0 +1,13 @@
+"""Lowercase compatibility alias."""
+
+from functions.strings.lower import lower
+
+pub lcase = alias lower
+
+
+module tests:
+    from projection_builders import ColumnExprKind, col, column_expr_function_name, column_expr_kind
+    def test_lcase_rewrites_to_lower() -> None:
+        expr = lcase(col("name"))
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "lower"

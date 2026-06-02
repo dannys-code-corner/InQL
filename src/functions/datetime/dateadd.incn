@@ -1,0 +1,13 @@
+"""dbt-style date addition alias."""
+
+from functions.datetime.date_add import date_add
+
+pub dateadd = alias date_add
+
+
+module tests:
+    from projection_builders import ColumnExprKind, col, column_expr_function_name, column_expr_kind
+    def test_dateadd_rewrites_to_date_add() -> None:
+        expr = dateadd("day", 3, col("created_at"))
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "date_add"

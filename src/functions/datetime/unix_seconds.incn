@@ -1,0 +1,47 @@
+"""Unix seconds extraction helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import register_function, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import UNIX_SECONDS_FUNCTION_ANCHOR
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=extension_mapping("unix_seconds", UNIX_SECONDS_FUNCTION_ANCHOR),
+))
+pub def unix_seconds(expr: ColumnExpr) -> ColumnExpr:
+    """
+    Build a Unix-seconds extraction expression.
+
+    Examples:
+        created_s = unix_seconds(col("created_at"))
+
+    Parameters:
+        expr: Input scalar expression.
+    """
+    return registered_application("unix_seconds", [expr])
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        col,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+    )
+    def test_unix_seconds_builds_registered_application() -> None:
+        expr = unix_seconds(col("created_at"))
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "unix_seconds"
+        assert column_expr_argument_count(expr) == 1

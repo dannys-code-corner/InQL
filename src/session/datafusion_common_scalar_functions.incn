@@ -1,0 +1,774 @@
+"""DataFusion execution bridge for common scalar functions that are not native DataFusion UDFs."""
+
+from rust::datafusion::arrow::array import Array, ArrayRef, Int64Array, StringArray
+from rust::datafusion::arrow::datatypes import DataType
+from rust::datafusion::execution::context import SessionContext
+from rust::datafusion_common import DataFusionError, ScalarValue
+from rust::datafusion_expr import ColumnarValue, ScalarFunctionImplementation, Volatility, create_udf
+from rust::std::primitive import i64 as RustI64, usize as RustUsize
+from rust::std::string import String as RustString
+from rust::std::sync import Arc
+from std.datetime import Date, DateTime, DateTimeError, Time, TimeDelta, YearMonthInterval
+from std.datetime.civil import days_in_month
+from std.encoding import EncodingError
+from std.encoding.base64 import b64decode, b64decode_lenient, b64encode
+from std.encoding.hex import hexlify, unhexlify
+from std.regex import Regex, RegexError
+
+const _NANOS_PER_MICROSECOND: int = 1_000
+const _NANOS_PER_MILLISECOND: int = 1_000_000
+const _NANOS_PER_SECOND: int = 1_000_000_000
+const _SECONDS_PER_MINUTE: int = 60
+const _SECONDS_PER_HOUR: int = 60 * _SECONDS_PER_MINUTE
+const _SECONDS_PER_DAY: int = 24 * _SECONDS_PER_HOUR
+
+
+@derive(Clone)
+enum DataFusionCommonScalarFunction(str):
+    """RFC 018 scalar UDFs that InQL must provide to DataFusion itself."""
+
+    # InQL's current encoding helpers are text-to-text until RFC 026 introduces richer logical values.
+    # DataFusion exposes regexp_like/regexp_replace natively; capture extraction stays adapter-owned.
+    # These date/time helpers are InQL catalog names whose current DataFusion adapter behavior is implemented here.
+    Encode = "encode"
+    Decode = "decode"
+    RegexpExtract = "regexp_extract"
+    TimeTrunc = "time_trunc"
+    DateAdd = "date_add"
+    DateSub = "date_sub"
+    DateDiff = "date_diff"
+    TimestampDiff = "timestamp_diff"
+    UnixSeconds = "unix_seconds"
+    UnixMillis = "unix_millis"
+    UnixMicros = "unix_micros"
+    MakeTimestamp = "make_timestamp"
+    LastDay = "last_day"
+
+
+@derive(Clone)
+model DataFusionCommonScalarUdfSpec:
+    """DataFusion registration metadata for one adapter-owned common scalar UDF."""
+
+    pub function: DataFusionCommonScalarFunction
+    pub input_types: list[DataType]
+    pub return_type: DataType
+
+
+pub def register_common_scalar_udfs(ctx: SessionContext) -> None:
+    """Register RFC 018 scalar UDFs that the DataFusion adapter must emulate."""
+    for spec in _common_scalar_udf_specs():
+        ctx.register_udf(
+            create_udf(
+                name=spec.function.value(),
+                input_types=spec.input_types,
+                return_type=spec.return_type,
+                volatility=Volatility.Immutable,
+                fun=_common_scalar_callback(spec.function),
+            ),
+        )
+
+
+def _common_scalar_udf_specs() -> list[DataFusionCommonScalarUdfSpec]:
+    """Return the complete adapter-owned RFC 018 DataFusion UDF catalog."""
+    return [DataFusionCommonScalarUdfSpec(
+        function=DataFusionCommonScalarFunction.Encode,
+        input_types=[DataType.Utf8, DataType.Utf8],
+        return_type=DataType.Utf8,
+    ), DataFusionCommonScalarUdfSpec(
+        function=DataFusionCommonScalarFunction.Decode,
+        input_types=[DataType.Utf8, DataType.Utf8],
+        return_type=DataType.Utf8,
+    ), DataFusionCommonScalarUdfSpec(
+        function=DataFusionCommonScalarFunction.RegexpExtract,
+        input_types=[DataType.Utf8, DataType.Utf8, DataType.Int64],
+        return_type=DataType.Utf8,
+    ), DataFusionCommonScalarUdfSpec(
+        function=DataFusionCommonScalarFunction.TimeTrunc,
+        input_types=[DataType.Utf8, DataType.Utf8],
+        return_type=DataType.Utf8,
+    ), DataFusionCommonScalarUdfSpec(
+        function=DataFusionCommonScalarFunction.DateAdd,
+        input_types=[DataType.Utf8, DataType.Int64, DataType.Utf8],
+        return_type=DataType.Utf8,
+    ), DataFusionCommonScalarUdfSpec(
+        function=DataFusionCommonScalarFunction.DateSub,
+        input_types=[DataType.Utf8, DataType.Int64, DataType.Utf8],
+        return_type=DataType.Utf8,
+    ), DataFusionCommonScalarUdfSpec(
+        function=DataFusionCommonScalarFunction.DateDiff,
+        input_types=[DataType.Utf8, DataType.Utf8, DataType.Utf8],
+        return_type=DataType.Int64,
+    ), DataFusionCommonScalarUdfSpec(
+        function=DataFusionCommonScalarFunction.TimestampDiff,
+        input_types=[DataType.Utf8, DataType.Utf8, DataType.Utf8],
+        return_type=DataType.Int64,
+    ), DataFusionCommonScalarUdfSpec(
+        function=DataFusionCommonScalarFunction.UnixSeconds,
+        input_types=[DataType.Utf8],
+        return_type=DataType.Int64,
+    ), DataFusionCommonScalarUdfSpec(
+        function=DataFusionCommonScalarFunction.UnixMillis,
+        input_types=[DataType.Utf8],
+        return_type=DataType.Int64,
+    ), DataFusionCommonScalarUdfSpec(
+        function=DataFusionCommonScalarFunction.UnixMicros,
+        input_types=[DataType.Utf8],
+        return_type=DataType.Int64,
+    ), DataFusionCommonScalarUdfSpec(
+        function=DataFusionCommonScalarFunction.MakeTimestamp,
+        input_types=[DataType.Int64, DataType.Int64, DataType.Int64, DataType.Int64, DataType.Int64, DataType.Int64],
+        return_type=DataType.Utf8,
+    ), DataFusionCommonScalarUdfSpec(
+        function=DataFusionCommonScalarFunction.LastDay,
+        input_types=[DataType.Utf8],
+        return_type=DataType.Utf8,
+    )]
+
+
+def _common_scalar_callback(function: DataFusionCommonScalarFunction) -> ScalarFunctionImplementation:
+    """Return the DataFusion callback implementation for one common scalar function."""
+    match function:
+        DataFusionCommonScalarFunction.Encode =>
+            return Arc.from((args) => _apply_encoding_string(DataFusionCommonScalarFunction.Encode, args.to_vec()))
+        DataFusionCommonScalarFunction.Decode =>
+            return Arc.from((args) => _apply_encoding_string(DataFusionCommonScalarFunction.Decode, args.to_vec()))
+        DataFusionCommonScalarFunction.RegexpExtract => return Arc.from((args) => _apply_regexp_extract(args.to_vec()))
+        DataFusionCommonScalarFunction.TimeTrunc => return Arc.from((args) => _apply_time_trunc(args.to_vec()))
+        DataFusionCommonScalarFunction.DateAdd =>
+            return Arc.from((args) => _apply_date_offset(DataFusionCommonScalarFunction.DateAdd, args.to_vec()))
+        DataFusionCommonScalarFunction.DateSub =>
+            return Arc.from((args) => _apply_date_offset(DataFusionCommonScalarFunction.DateSub, args.to_vec()))
+        DataFusionCommonScalarFunction.DateDiff =>
+            return Arc.from((args) => _apply_temporal_diff(DataFusionCommonScalarFunction.DateDiff, args.to_vec()))
+        DataFusionCommonScalarFunction.TimestampDiff =>
+            return Arc.from((args) => _apply_temporal_diff(DataFusionCommonScalarFunction.TimestampDiff, args.to_vec()))
+        DataFusionCommonScalarFunction.UnixSeconds =>
+            return Arc.from((args) => _apply_unix_time(DataFusionCommonScalarFunction.UnixSeconds, args.to_vec()))
+        DataFusionCommonScalarFunction.UnixMillis =>
+            return Arc.from((args) => _apply_unix_time(DataFusionCommonScalarFunction.UnixMillis, args.to_vec()))
+        DataFusionCommonScalarFunction.UnixMicros =>
+            return Arc.from((args) => _apply_unix_time(DataFusionCommonScalarFunction.UnixMicros, args.to_vec()))
+        DataFusionCommonScalarFunction.MakeTimestamp => return Arc.from((args) => _apply_make_timestamp(args.to_vec()))
+        DataFusionCommonScalarFunction.LastDay => return Arc.from((args) => _apply_last_day(args.to_vec()))
+
+
+def _apply_encoding_string(
+    function: DataFusionCommonScalarFunction,
+    args: list[ColumnarValue],
+) -> Result[ColumnarValue, DataFusionError]:
+    """Apply one text encoding or decoding function across scalar and array DataFusion inputs."""
+    _require_arity(args, 2)?
+    if _all_scalar(args):
+        return Ok(
+            ColumnarValue.Scalar(
+                ScalarValue.Utf8(
+                    _encoding_string(function, _string_at(args[0].clone(), 0)?, _string_at(args[1].clone(), 0)?)?,
+                ),
+            ),
+        )
+    row_count = _row_count(args)?
+    mut values: list[Option[str]] = []
+    for idx in range(row_count):
+        values.append(_encoding_string(function, _string_at(args[0].clone(), idx)?, _string_at(args[1].clone(), idx)?)?)
+    array_ref: ArrayRef = Arc.from(StringArray.from(values))
+    return Ok(ColumnarValue.Array(array_ref))
+
+
+def _apply_regexp_extract(args: list[ColumnarValue]) -> Result[ColumnarValue, DataFusionError]:
+    """Extract one regex capture group across scalar and array DataFusion inputs."""
+    _require_arity(args, 3)?
+    if _all_scalar(args):
+        return Ok(
+            ColumnarValue.Scalar(
+                ScalarValue.Utf8(
+                    _regexp_extract(
+                        _string_at(args[0].clone(), 0)?,
+                        _string_at(args[1].clone(), 0)?,
+                        _int_at(args[2].clone(), 0)?,
+                    )?,
+                ),
+            ),
+        )
+    row_count = _row_count(args)?
+    mut values: list[Option[str]] = []
+    for idx in range(row_count):
+        values.append(
+            _regexp_extract(
+                _string_at(args[0].clone(), idx)?,
+                _string_at(args[1].clone(), idx)?,
+                _int_at(args[2].clone(), idx)?,
+            )?,
+        )
+    array_ref: ArrayRef = Arc.from(StringArray.from(values))
+    return Ok(ColumnarValue.Array(array_ref))
+
+
+def _apply_time_trunc(args: list[ColumnarValue]) -> Result[ColumnarValue, DataFusionError]:
+    """Truncate wall-clock time strings across scalar and array DataFusion inputs."""
+    _require_arity(args, 2)?
+    if _all_scalar(args):
+        return Ok(
+            ColumnarValue.Scalar(
+                ScalarValue.Utf8(_time_trunc(_string_at(args[0].clone(), 0)?, _string_at(args[1].clone(), 0)?)?),
+            ),
+        )
+    row_count = _row_count(args)?
+    mut values: list[Option[str]] = []
+    for idx in range(row_count):
+        values.append(_time_trunc(_string_at(args[0].clone(), idx)?, _string_at(args[1].clone(), idx)?)?)
+    array_ref: ArrayRef = Arc.from(StringArray.from(values))
+    return Ok(ColumnarValue.Array(array_ref))
+
+
+def _apply_date_offset(
+    function: DataFusionCommonScalarFunction,
+    args: list[ColumnarValue],
+) -> Result[ColumnarValue, DataFusionError]:
+    """Offset date or datetime strings across scalar and array DataFusion inputs."""
+    _require_arity(args, 3)?
+    if _all_scalar(args):
+        return Ok(
+            ColumnarValue.Scalar(
+                ScalarValue.Utf8(
+                    _date_offset(
+                        function,
+                        _string_at(args[0].clone(), 0)?,
+                        _int_at(args[1].clone(), 0)?,
+                        _string_at(args[2].clone(), 0)?,
+                    )?,
+                ),
+            ),
+        )
+    row_count = _row_count(args)?
+    mut values: list[Option[str]] = []
+    for idx in range(row_count):
+        values.append(
+            _date_offset(
+                function,
+                _string_at(args[0].clone(), idx)?,
+                _int_at(args[1].clone(), idx)?,
+                _string_at(args[2].clone(), idx)?,
+            )?,
+        )
+    array_ref: ArrayRef = Arc.from(StringArray.from(values))
+    return Ok(ColumnarValue.Array(array_ref))
+
+
+def _apply_temporal_diff(
+    function: DataFusionCommonScalarFunction,
+    args: list[ColumnarValue],
+) -> Result[ColumnarValue, DataFusionError]:
+    """Compute temporal differences across scalar and array DataFusion inputs."""
+    _require_arity(args, 3)?
+    if _all_scalar(args):
+        return _optional_int_scalar(
+            _temporal_diff(
+                function,
+                _string_at(args[0].clone(), 0)?,
+                _string_at(args[1].clone(), 0)?,
+                _string_at(args[2].clone(), 0)?,
+            )?,
+        )
+    row_count = _row_count(args)?
+    mut values: list[Option[int]] = []
+    for idx in range(row_count):
+        values.append(
+            _temporal_diff(
+                function,
+                _string_at(args[0].clone(), idx)?,
+                _string_at(args[1].clone(), idx)?,
+                _string_at(args[2].clone(), idx)?,
+            )?,
+        )
+    array_ref: ArrayRef = Arc.from(Int64Array.from(values))
+    return Ok(ColumnarValue.Array(array_ref))
+
+
+def _apply_unix_time(
+    function: DataFusionCommonScalarFunction,
+    args: list[ColumnarValue],
+) -> Result[ColumnarValue, DataFusionError]:
+    """Convert timestamp strings to Unix time units across scalar and array DataFusion inputs."""
+    _require_arity(args, 1)?
+    if _all_scalar(args):
+        return _optional_int_scalar(_unix_time(function, _string_at(args[0].clone(), 0)?)?)
+    row_count = _row_count(args)?
+    mut values: list[Option[int]] = []
+    for idx in range(row_count):
+        values.append(_unix_time(function, _string_at(args[0].clone(), idx)?)?)
+    array_ref: ArrayRef = Arc.from(Int64Array.from(values))
+    return Ok(ColumnarValue.Array(array_ref))
+
+
+def _apply_make_timestamp(args: list[ColumnarValue]) -> Result[ColumnarValue, DataFusionError]:
+    """Build timestamp strings from fields across scalar and array DataFusion inputs."""
+    _require_arity(args, 6)?
+    if _all_scalar(args):
+        return Ok(
+            ColumnarValue.Scalar(
+                ScalarValue.Utf8(
+                    _make_timestamp(
+                        _int_at(args[0].clone(), 0)?,
+                        _int_at(args[1].clone(), 0)?,
+                        _int_at(args[2].clone(), 0)?,
+                        _int_at(args[3].clone(), 0)?,
+                        _int_at(args[4].clone(), 0)?,
+                        _int_at(args[5].clone(), 0)?,
+                    )?,
+                ),
+            ),
+        )
+    row_count = _row_count(args)?
+    mut values: list[Option[str]] = []
+    for idx in range(row_count):
+        values.append(
+            _make_timestamp(
+                _int_at(args[0].clone(), idx)?,
+                _int_at(args[1].clone(), idx)?,
+                _int_at(args[2].clone(), idx)?,
+                _int_at(args[3].clone(), idx)?,
+                _int_at(args[4].clone(), idx)?,
+                _int_at(args[5].clone(), idx)?,
+            )?,
+        )
+    array_ref: ArrayRef = Arc.from(StringArray.from(values))
+    return Ok(ColumnarValue.Array(array_ref))
+
+
+def _apply_last_day(args: list[ColumnarValue]) -> Result[ColumnarValue, DataFusionError]:
+    """Return the last day of the month across scalar and array DataFusion inputs."""
+    _require_arity(args, 1)?
+    if _all_scalar(args):
+        return Ok(ColumnarValue.Scalar(ScalarValue.Utf8(_last_day(_string_at(args[0].clone(), 0)?)?)))
+    row_count = _row_count(args)?
+    mut values: list[Option[str]] = []
+    for idx in range(row_count):
+        values.append(_last_day(_string_at(args[0].clone(), idx)?)?)
+    array_ref: ArrayRef = Arc.from(StringArray.from(values))
+    return Ok(ColumnarValue.Array(array_ref))
+
+
+def _encoding_string(
+    function: DataFusionCommonScalarFunction,
+    value: Option[str],
+    format: Option[str],
+) -> Result[Option[str], DataFusionError]:
+    """Encode or decode one text value with the requested portable format."""
+    if value == None or format == None:
+        return Ok(None)
+    text = value.unwrap_or("")
+    raw_format = format.unwrap_or("")
+    if function == DataFusionCommonScalarFunction.Encode:
+        return _encode_text(text, raw_format)
+    return _decode_text(text, raw_format)
+
+
+def _encode_text(value: str, format: str) -> Result[Option[str], DataFusionError]:
+    """Encode UTF-8 text bytes into a portable textual representation."""
+    normalized = format.lower()
+    if normalized == "base64":
+        return Ok(Some(_strip_base64_padding(b64encode(_utf8_bytes(value)))))
+    if normalized == "base64pad":
+        return Ok(Some(b64encode(_utf8_bytes(value))))
+    if normalized == "hex":
+        return Ok(Some(hexlify(_utf8_bytes(value))))
+    return _datafusion_error(f"unsupported encoding format `{format}`")
+
+
+def _decode_text(value: str, format: str) -> Result[Option[str], DataFusionError]:
+    """Decode portable representation text into UTF-8 text."""
+    normalized = format.lower()
+    if normalized == "base64":
+        match b64decode_lenient(value):
+            Ok(decoded) => return _text_from_utf8_bytes(decoded)
+            Err(err) => return _encoding_error(err)
+    if normalized == "base64pad":
+        match b64decode(value):
+            Ok(decoded) => return _text_from_utf8_bytes(decoded)
+            Err(err) => return _encoding_error(err)
+    if normalized == "hex":
+        match unhexlify(value):
+            Ok(decoded) => return _text_from_utf8_bytes(decoded)
+            Err(err) => return _encoding_error(err)
+    return _datafusion_error(f"unsupported encoding format `{format}`")
+
+
+def _regexp_extract(
+    value: Option[str],
+    pattern: Option[str],
+    group_index: Option[int],
+) -> Result[Option[str], DataFusionError]:
+    """Return one regex capture group, defaulting null inputs to null outputs."""
+    if value == None or pattern == None or group_index == None:
+        return Ok(None)
+    regex = _compile_regex(pattern.unwrap_or(""))?
+    match regex.captures(value.unwrap_or("")):
+        Some(captures) => return Ok(captures.group(group_index.unwrap_or(0)))
+        None => return Ok(None)
+
+
+def _time_trunc(part: Option[str], value: Option[str]) -> Result[Option[str], DataFusionError]:
+    """Truncate one wall-clock time value to the requested unit."""
+    if part == None or value == None:
+        return Ok(None)
+    raw_part = part.unwrap_or("")
+    time = _parse_time(value.unwrap_or(""))?
+    normalized = raw_part.lower()
+    if normalized == "hour":
+        return Ok(Some(_time_from_fields(time.hour, 0, 0, 0)?.isoformat()))
+    if normalized == "minute":
+        return Ok(Some(_time_from_fields(time.hour, time.minute, 0, 0)?.isoformat()))
+    if normalized == "second":
+        return Ok(Some(_time_from_fields(time.hour, time.minute, time.second, 0)?.isoformat()))
+    return _datafusion_error(f"unsupported time_trunc part `{raw_part}`")
+
+
+def _date_offset(
+    function: DataFusionCommonScalarFunction,
+    part: Option[str],
+    amount: Option[int],
+    value: Option[str],
+) -> Result[Option[str], DataFusionError]:
+    """Offset one date or timestamp value by a signed amount."""
+    if part == None or amount == None or value == None:
+        return Ok(None)
+    raw_amount = amount.unwrap_or(0)
+    mut signed_amount = raw_amount
+    if function == DataFusionCommonScalarFunction.DateSub:
+        signed_amount = 0 - raw_amount
+    return _date_offset_value(part.unwrap_or(""), signed_amount, value.unwrap_or(""))
+
+
+def _date_offset_value(part: str, amount: int, value: str) -> Result[Option[str], DataFusionError]:
+    """Offset one non-null date or timestamp value."""
+    normalized = part.lower()
+    if normalized == "year" or normalized == "years":
+        if _is_date_only(value):
+            return Ok(Some((_parse_date(value)? + YearMonthInterval.years(amount)).isoformat()))
+        return Ok(Some((_parse_datetime(value)? + YearMonthInterval.years(amount)).isoformat()))
+    if normalized == "month" or normalized == "months":
+        if _is_date_only(value):
+            return Ok(Some((_parse_date(value)? + YearMonthInterval.months(amount)).isoformat()))
+        return Ok(Some((_parse_datetime(value)? + YearMonthInterval.months(amount)).isoformat()))
+    if normalized == "week" or normalized == "weeks":
+        if _is_date_only(value):
+            return Ok(Some((_parse_date(value)? + TimeDelta.weeks(amount)).isoformat()))
+        return Ok(Some((_parse_datetime(value)? + TimeDelta.weeks(amount)).isoformat()))
+    if normalized == "day" or normalized == "days":
+        if _is_date_only(value):
+            return Ok(Some((_parse_date(value)? + TimeDelta.days(amount)).isoformat()))
+        return Ok(Some((_parse_datetime(value)? + TimeDelta.days(amount)).isoformat()))
+    if normalized == "hour" or normalized == "hours":
+        return Ok(Some((_parse_datetime(value)? + TimeDelta.hours(amount)).isoformat()))
+    if normalized == "minute" or normalized == "minutes":
+        return Ok(Some((_parse_datetime(value)? + TimeDelta.minutes(amount)).isoformat()))
+    if normalized == "second" or normalized == "seconds":
+        return Ok(Some((_parse_datetime(value)? + TimeDelta.seconds(amount)).isoformat()))
+    if normalized == "millisecond" or normalized == "milliseconds":
+        return Ok(Some((_parse_datetime(value)? + TimeDelta.milliseconds(amount)).isoformat()))
+    if normalized == "microsecond" or normalized == "microseconds":
+        return Ok(Some((_parse_datetime(value)? + TimeDelta.microseconds(amount)).isoformat()))
+    return _datafusion_error(f"unsupported date offset part `{part}`")
+
+
+def _temporal_diff(
+    function: DataFusionCommonScalarFunction,
+    part: Option[str],
+    start: Option[str],
+    end: Option[str],
+) -> Result[Option[int], DataFusionError]:
+    """Return one date or timestamp difference."""
+    if part == None or start == None or end == None:
+        return Ok(None)
+    raw_part = part.unwrap_or("")
+    start_value = start.unwrap_or("")
+    end_value = end.unwrap_or("")
+    if function == DataFusionCommonScalarFunction.DateDiff:
+        return Ok(Some(_date_diff(raw_part, start_value, end_value)?))
+    return Ok(Some(_timestamp_diff(raw_part, start_value, end_value)?))
+
+
+def _date_diff(part: str, start: str, end: str) -> Result[int, DataFusionError]:
+    """Return date difference in whole requested units."""
+    start_date = _parse_date(start)?
+    end_date = _parse_date(end)?
+    normalized = part.lower()
+    if normalized == "year" or normalized == "years":
+        return Ok(end_date.year - start_date.year)
+    if normalized == "month" or normalized == "months":
+        return Ok((end_date.year - start_date.year) * 12 + (end_date.month - start_date.month))
+    days = _date_delta_days(start_date, end_date)
+    if normalized == "week" or normalized == "weeks":
+        return Ok(days // 7)
+    if normalized == "day" or normalized == "days":
+        return Ok(days)
+    return _datafusion_error(f"unsupported date_diff part `{part}`")
+
+
+def _timestamp_diff(part: str, start: str, end: str) -> Result[int, DataFusionError]:
+    """Return timestamp difference in whole requested units."""
+    delta_nanos = _datetime_delta_nanoseconds(_parse_datetime(start)?, _parse_datetime(end)?)
+    normalized = part.lower()
+    if normalized == "day" or normalized == "days":
+        return Ok(delta_nanos // (_SECONDS_PER_DAY * _NANOS_PER_SECOND))
+    if normalized == "hour" or normalized == "hours":
+        return Ok(delta_nanos // (_SECONDS_PER_HOUR * _NANOS_PER_SECOND))
+    if normalized == "minute" or normalized == "minutes":
+        return Ok(delta_nanos // (_SECONDS_PER_MINUTE * _NANOS_PER_SECOND))
+    if normalized == "second" or normalized == "seconds":
+        return Ok(delta_nanos // _NANOS_PER_SECOND)
+    if normalized == "millisecond" or normalized == "milliseconds":
+        return Ok(delta_nanos // _NANOS_PER_MILLISECOND)
+    if normalized == "microsecond" or normalized == "microseconds":
+        return Ok(delta_nanos // _NANOS_PER_MICROSECOND)
+    return _datafusion_error(f"unsupported timestamp_diff part `{part}`")
+
+
+def _unix_time(function: DataFusionCommonScalarFunction, value: Option[str]) -> Result[Option[int], DataFusionError]:
+    """Return Unix timestamp units for one timestamp value."""
+    if value == None:
+        return Ok(None)
+    nanos = _datetime_delta_nanoseconds(_unix_epoch()?, _parse_datetime(value.unwrap_or(""))?)
+    if function == DataFusionCommonScalarFunction.UnixSeconds:
+        return Ok(Some(nanos // _NANOS_PER_SECOND))
+    if function == DataFusionCommonScalarFunction.UnixMillis:
+        return Ok(Some(nanos // _NANOS_PER_MILLISECOND))
+    return Ok(Some(nanos // _NANOS_PER_MICROSECOND))
+
+
+def _make_timestamp(
+    year: Option[int],
+    month: Option[int],
+    day: Option[int],
+    hour: Option[int],
+    minute: Option[int],
+    second: Option[int],
+) -> Result[Option[str], DataFusionError]:
+    """Build one timestamp from checked fields."""
+    if year == None or month == None or day == None or hour == None or minute == None or second == None:
+        return Ok(None)
+    date = _date_from_fields(year.unwrap_or(0), month.unwrap_or(0), day.unwrap_or(0))?
+    time = _time_from_fields(hour.unwrap_or(0), minute.unwrap_or(0), second.unwrap_or(0), 0)?
+    return Ok(Some(DateTime.combine(date, time).isoformat()))
+
+
+def _last_day(value: Option[str]) -> Result[Option[str], DataFusionError]:
+    """Return the last calendar day of the input month."""
+    if value == None:
+        return Ok(None)
+    date = _parse_date(value.unwrap_or(""))?
+    return Ok(Some(_date_from_fields(date.year, date.month, days_in_month(date.year, date.month))?.isoformat()))
+
+
+def _compile_regex(pattern: str) -> Result[Regex, DataFusionError]:
+    """Compile one safe regex pattern into std.regex."""
+    match Regex.compile(pattern):
+        Ok(regex) => return Ok(regex)
+        Err(err) => return _regex_error(err)
+
+
+def _parse_date(value: str) -> Result[Date, DataFusionError]:
+    """Parse the date component of an ISO date or datetime string."""
+    match Date.fromisoformat(value[0:10]):
+        Ok(date) => return Ok(date)
+        Err(err) => return _datetime_error(err)
+
+
+def _parse_time(value: str) -> Result[Time, DataFusionError]:
+    """Parse an ISO time string."""
+    match Time.fromisoformat(value):
+        Ok(time) => return Ok(time)
+        Err(err) => return _datetime_error(err)
+
+
+def _parse_datetime(value: str) -> Result[DateTime, DataFusionError]:
+    """Parse an ISO datetime string, promoting date-only input to midnight."""
+    if _is_date_only(value):
+        return Ok(DateTime.combine(_parse_date(value)?, _time_from_fields(0, 0, 0, 0)?))
+    match DateTime.fromisoformat(value):
+        Ok(datetime) => return Ok(datetime)
+        Err(err) => return _datetime_error(err)
+
+
+def _date_from_fields(year: int, month: int, day: int) -> Result[Date, DataFusionError]:
+    """Construct a checked std.datetime Date."""
+    match Date.from_fields(year, month, day):
+        Ok(value) => return Ok(value)
+        Err(err) => return _datetime_error(err)
+
+
+def _time_from_fields(hour: int, minute: int, second: int, nanosecond: int) -> Result[Time, DataFusionError]:
+    """Construct a checked std.datetime Time."""
+    match Time.from_fields(hour, minute, second, nanosecond):
+        Ok(value) => return Ok(value)
+        Err(err) => return _datetime_error(err)
+
+
+def _unix_epoch() -> Result[DateTime, DataFusionError]:
+    """Return the UTC Unix epoch in the naive std.datetime representation."""
+    return Ok(DateTime.combine(_date_from_fields(1970, 1, 1)?, _time_from_fields(0, 0, 0, 0)?))
+
+
+def _is_date_only(value: str) -> bool:
+    """Return whether one temporal string carries only a date."""
+    return len(value) == 10
+
+
+def _date_delta_days(start: Date, end: Date) -> int:
+    """Return whole days from start to end."""
+    delta = end - start
+    if isinstance(delta, TimeDelta):
+        return delta.days
+    return 0
+
+
+def _datetime_delta_nanoseconds(start: DateTime, end: DateTime) -> int:
+    """Return nanoseconds from start to end."""
+    delta = end - start
+    if isinstance(delta, TimeDelta):
+        return delta.total_nanoseconds()
+    return 0
+
+
+def _optional_int_scalar(value: Option[int]) -> Result[ColumnarValue, DataFusionError]:
+    """Build one DataFusion scalar int value from an optional Incan int."""
+    match value:
+        Some(number) => return Ok(ColumnarValue.Scalar(ScalarValue.Int64(Some(_int_to_rust_i64(number)?))))
+        None => return Ok(ColumnarValue.Scalar(ScalarValue.Int64(None)))
+
+
+def _require_arity(args: list[ColumnarValue], expected: int) -> Result[None, DataFusionError]:
+    """Validate a DataFusion UDF arity."""
+    if len(args) == expected:
+        return Ok(None)
+    return _datafusion_error(f"common scalar UDF expected {expected} arguments, got {len(args)}")
+
+
+def _all_scalar(args: list[ColumnarValue]) -> bool:
+    """Return whether all DataFusion arguments are scalar values."""
+    for arg in args:
+        match arg:
+            ColumnarValue.Array(_) => return false
+            ColumnarValue.Scalar(_) => pass
+    return true
+
+
+def _row_count(args: list[ColumnarValue]) -> Result[int, DataFusionError]:
+    """Return the first array row count, or one for scalar-only arguments."""
+    for arg in args:
+        match arg:
+            ColumnarValue.Array(array) => return _rust_usize_to_int(array.len())
+            ColumnarValue.Scalar(_) => pass
+    return Ok(1)
+
+
+def _string_at(arg: ColumnarValue, idx: int) -> Result[Option[str], DataFusionError]:
+    """Read one optional string value from a scalar or array DataFusion value."""
+    array_result: Result[ArrayRef, DataFusionError] = arg.to_array(_int_to_rust_usize(idx + 1)?)
+    array = array_result?
+    scalar_result: Result[ScalarValue, DataFusionError] = ScalarValue.try_from_array(
+        array.as_ref(),
+        _int_to_rust_usize(idx)?,
+    )
+    scalar = scalar_result?
+    return _scalar_value_string(scalar)
+
+
+def _int_at(arg: ColumnarValue, idx: int) -> Result[Option[int], DataFusionError]:
+    """Read one optional integer value from a scalar or array DataFusion value."""
+    array_result: Result[ArrayRef, DataFusionError] = arg.to_array(_int_to_rust_usize(idx + 1)?)
+    array = array_result?
+    scalar_result: Result[ScalarValue, DataFusionError] = ScalarValue.try_from_array(
+        array.as_ref(),
+        _int_to_rust_usize(idx)?,
+    )
+    scalar = scalar_result?
+    return _scalar_value_int(scalar)
+
+
+def _scalar_value_string(value: ScalarValue) -> Result[Option[str], DataFusionError]:
+    """Convert one DataFusion scalar to optional text for scalar UDF execution."""
+    match value:
+        ScalarValue.Utf8(text) => return Ok(text)
+        ScalarValue.LargeUtf8(text) => return Ok(text)
+        ScalarValue.Utf8View(text) => return Ok(text)
+        ScalarValue.Null => return Ok(None)
+        _ => return Ok(Some(value.to_string()))
+
+
+def _scalar_value_int(value: ScalarValue) -> Result[Option[int], DataFusionError]:
+    """Convert one DataFusion scalar to optional int for scalar UDF execution."""
+    match value:
+        ScalarValue.Int64(number) =>
+            if number == None:
+                return Ok(None)
+            return Ok(Some(number.unwrap_or(0)))
+        ScalarValue.Int32(number) =>
+            if number == None:
+                return Ok(None)
+            match RustI64.try_from(number.unwrap_or(0)):
+                Ok(converted) => return Ok(Some(converted.into()))
+                Err(_) => return _datafusion_error("Int32 value does not fit Incan int")
+        ScalarValue.Null => return Ok(None)
+        _ => return _datafusion_error(f"expected integer scalar, got {value.to_string()}")
+
+
+def _strip_base64_padding(value: str) -> str:
+    """Return standard Base64 text without trailing padding for the `base64` format spelling."""
+    mut end = len(value)
+    while end > 0 and value[end - 1:end] == "=":
+        end -= 1
+    return value[0:end]
+
+
+def _utf8_bytes(value: str) -> bytes:
+    """Return the UTF-8 bytes for one string."""
+    return RustString.from(value).into_bytes()
+
+
+def _text_from_utf8_bytes(value: bytes) -> Result[Option[str], DataFusionError]:
+    """Decode UTF-8 bytes into optional text."""
+    match RustString.from_utf8(value):
+        Ok(text) => return Ok(Some(text))
+        Err(err) => return _datafusion_error(err.to_string())
+
+
+def _rust_usize_to_int(value: RustUsize) -> Result[int, DataFusionError]:
+    """Convert Rust usize to Incan int through a checked i64 boundary."""
+    match RustI64.try_from(value):
+        Ok(converted) => return Ok(converted.into())
+        Err(_) => return _datafusion_error("row count does not fit Incan int")
+
+
+def _int_to_rust_usize(value: int) -> Result[RustUsize, DataFusionError]:
+    """Convert an Incan int to Rust usize through a checked boundary."""
+    match RustUsize.try_from(value):
+        Ok(converted) => return Ok(converted)
+        Err(_) => return _datafusion_error(f"index {value} does not fit Rust usize")
+
+
+def _int_to_rust_i64(value: int) -> Result[RustI64, DataFusionError]:
+    """Convert an Incan int to Rust i64 through a checked boundary."""
+    match RustI64.try_from(value):
+        Ok(converted) => return Ok(converted)
+        Err(_) => return _datafusion_error(f"value {value} does not fit Rust i64")
+
+
+def _datetime_error[T](err: DateTimeError) -> Result[T, DataFusionError]:
+    """Convert std.datetime errors into DataFusion execution errors."""
+    return _datafusion_error(err.message())
+
+
+def _regex_error[T](err: RegexError) -> Result[T, DataFusionError]:
+    """Convert std.regex errors into DataFusion execution errors."""
+    return _datafusion_error(err.message())
+
+
+def _encoding_error[T](err: EncodingError) -> Result[T, DataFusionError]:
+    """Convert std.encoding errors into DataFusion execution errors."""
+    return _datafusion_error(err.message())
+
+
+def _datafusion_error[T](message: str) -> Result[T, DataFusionError]:
+    """Build one DataFusion execution error."""
+    return Err(DataFusionError.Execution(f"{message}"))

@@ -1,6 +1,88 @@
 """Test: common scalar helper surface."""
 
-from functions import abs, ceil, col, floor, round
+from functions import (
+    abs,
+    acos,
+    asin,
+    atan,
+    atan2,
+    base64,
+    ceil,
+    char_length,
+    col,
+    concat,
+    concat_ws,
+    cos,
+    current_date,
+    current_time,
+    current_timestamp,
+    date_add,
+    date_diff,
+    date_part,
+    date_sub,
+    date_trunc,
+    dateadd,
+    datediff,
+    decode,
+    degrees,
+    encode,
+    exp,
+    extract,
+    floor,
+    from_unixtime,
+    greatest,
+    hex,
+    int_expr,
+    last_day,
+    lcase,
+    least,
+    left,
+    ln,
+    log,
+    log10,
+    lower,
+    lpad,
+    ltrim,
+    make_date,
+    make_time,
+    make_timestamp,
+    octet_length,
+    overlay,
+    position,
+    power,
+    radians,
+    regexp_extract,
+    regexp_like,
+    regexp_replace,
+    repeat,
+    replace,
+    right,
+    round,
+    rpad,
+    rtrim,
+    safe_cast,
+    sign,
+    sin,
+    split_part,
+    sqrt,
+    substr,
+    substring,
+    tan,
+    time_trunc,
+    timestamp_diff,
+    to_date,
+    to_time,
+    to_timestamp,
+    translate,
+    trim,
+    ucase,
+    unbase64,
+    unhex,
+    unix_micros,
+    unix_millis,
+    unix_seconds,
+    upper,
+)
 from function_registry import function_ref_for
 from projection_builders import (
     ColumnExpr,
@@ -9,24 +91,152 @@ from projection_builders import (
     column_expr_function_name,
     column_expr_function_ref,
     column_expr_kind,
+    column_expr_option_value,
 )
 
 
-def _assert_math_application(expr: ColumnExpr, expected_name: str) -> None:
-    """Assert one math helper uses the shared scalar application node."""
+def _assert_application(expr: ColumnExpr, expected_name: str, expected_arg_count: int) -> None:
+    """Assert one helper uses the shared registry-backed scalar application node."""
     assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction, f"{expected_name} should use the scalar function kind"
     assert column_expr_function_name(expr) == expected_name, f"{expected_name} should preserve its canonical name"
-    assert column_expr_function_ref(expr) == function_ref_for(expected_name), "math helper should preserve its registry function ref"
-    assert column_expr_argument_count(expr) == 1, f"{expected_name} should carry one scalar argument"
+    assert column_expr_function_ref(expr) == function_ref_for(expected_name), f"{expected_name} should preserve its registry function ref"
+    assert column_expr_argument_count(expr) == expected_arg_count, f"{expected_name} should carry the expected scalar arguments"
 
 
 def test_common_scalar_functions__math_helpers_share_scalar_application_node() -> None:
-    """Assert the first common math slice uses the registry-backed scalar expression model."""
+    """Assert RFC 018 math helpers use the registry-backed scalar expression model."""
     # -- Arrange --
     amount = col("amount")
+    scale = int_expr(2)
 
     # -- Act / Assert --
-    _assert_math_application(abs(amount), "abs")
-    _assert_math_application(ceil(amount), "ceil")
-    _assert_math_application(floor(amount), "floor")
-    _assert_math_application(round(amount), "round")
+    _assert_application(abs(amount), "abs", 1)
+    _assert_application(ceil(amount), "ceil", 1)
+    _assert_application(floor(amount), "floor", 1)
+    _assert_application(round(amount), "round", 1)
+    _assert_application(round(amount, scale), "round", 2)
+    _assert_application(sqrt(amount), "sqrt", 1)
+    _assert_application(power(amount, scale), "power", 2)
+    _assert_application(exp(amount), "exp", 1)
+    _assert_application(ln(amount), "ln", 1)
+    _assert_application(log(scale, amount), "log", 2)
+    _assert_application(log10(amount), "log10", 1)
+    _assert_application(sign(amount), "sign", 1)
+    _assert_application(least(amount, int_expr(1), int_expr(0)), "least", 3)
+    _assert_application(greatest(amount, int_expr(1), int_expr(0)), "greatest", 3)
+    _assert_application(sin(amount), "sin", 1)
+    _assert_application(cos(amount), "cos", 1)
+    _assert_application(tan(amount), "tan", 1)
+    _assert_application(asin(amount), "asin", 1)
+    _assert_application(acos(amount), "acos", 1)
+    _assert_application(atan(amount), "atan", 1)
+    _assert_application(atan2(amount, scale), "atan2", 2)
+    _assert_application(degrees(amount), "degrees", 1)
+    _assert_application(radians(amount), "radians", 1)
+
+
+def test_common_scalar_functions__string_helpers_share_scalar_application_node() -> None:
+    """Assert RFC 018 string helpers use canonical registry-backed applications and aliases."""
+    # -- Arrange --
+    text = col("text")
+    needle = "-"
+    replacement = "_"
+    start = 1
+    length = 3
+
+    # -- Act / Assert --
+    _assert_application(char_length(text), "char_length", 1)
+    _assert_application(octet_length(text), "octet_length", 1)
+    _assert_application(upper(text), "upper", 1)
+    _assert_application(lower(text), "lower", 1)
+    _assert_application(trim(text), "trim", 1)
+    _assert_application(trim(text, needle), "trim", 2)
+    _assert_application(ltrim(text, needle), "ltrim", 2)
+    _assert_application(rtrim(text, needle), "rtrim", 2)
+    _assert_application(substring(text, start), "substring", 2)
+    _assert_application(substring(text, start, length), "substring", 3)
+    _assert_application(substr(text, start, length), "substring", 3)
+    _assert_application(position(text, needle), "position", 2)
+    _assert_application(overlay(text, replacement, start), "overlay", 3)
+    _assert_application(overlay(text, replacement, start, length), "overlay", 4)
+    _assert_application(concat(text, needle, replacement), "concat", 3)
+    _assert_application(concat_ws(needle, text, replacement), "concat_ws", 3)
+    _assert_application(replace(text, needle, replacement), "replace", 3)
+    _assert_application(translate(text, "ABC", "abc"), "translate", 3)
+    _assert_application(repeat(text, length), "repeat", 2)
+    _assert_application(left(text, length), "left", 2)
+    _assert_application(right(text, length), "right", 2)
+    _assert_application(lpad(text, length, replacement), "lpad", 3)
+    _assert_application(rpad(text, length, replacement), "rpad", 3)
+    _assert_application(split_part(text, needle, start), "split_part", 3)
+    _assert_application(ucase(text), "upper", 1)
+    _assert_application(lcase(text), "lower", 1)
+
+
+def test_common_scalar_functions__encoding_and_regex_helpers_share_scalar_application_node() -> None:
+    """Assert RFC 018 encoding and regex helpers expose canonical expression shapes."""
+    # -- Arrange --
+    text = col("text")
+    pattern = "^([a-z]+)$"
+    flags = "i"
+
+    # -- Act / Assert --
+    _assert_application(encode(text, "base64"), "encode", 2)
+    _assert_application(decode(text, "base64"), "decode", 2)
+    _assert_application(base64(text), "encode", 2)
+    _assert_application(unbase64(text), "decode", 2)
+    _assert_application(hex(text), "encode", 2)
+    _assert_application(unhex(text), "decode", 2)
+    _assert_application(regexp_like(text, pattern), "regexp_like", 2)
+    _assert_application(regexp_like(text, pattern, flags), "regexp_like", 3)
+    _assert_application(regexp_replace(text, pattern, "x"), "regexp_replace", 3)
+    _assert_application(regexp_replace(text, pattern, "x", flags), "regexp_replace", 4)
+    _assert_application(regexp_extract(text, pattern), "regexp_extract", 3)
+    _assert_application(regexp_extract(text, pattern, 0), "regexp_extract", 3)
+
+
+def test_common_scalar_functions__datetime_helpers_share_scalar_application_node() -> None:
+    """Assert RFC 018 date/time helpers expose canonical expression shapes and aliases."""
+    # -- Arrange --
+    value = col("created_at")
+    part = "day"
+    amount = 1
+
+    # -- Act / Assert --
+    _assert_application(current_date(), "current_date", 0)
+    _assert_application(current_time(), "current_time", 0)
+    _assert_application(current_timestamp(), "current_timestamp", 0)
+    _assert_application(date_part(part, value), "date_part", 2)
+    _assert_application(extract(part, value), "date_part", 2)
+    _assert_application(date_trunc(part, value), "date_trunc", 2)
+    _assert_application(time_trunc(part, value), "time_trunc", 2)
+    _assert_application(date_add(part, amount, value), "date_add", 3)
+    _assert_application(dateadd(part, amount, value), "date_add", 3)
+    _assert_application(date_sub(part, amount, value), "date_sub", 3)
+    _assert_application(date_diff(part, value, value), "date_diff", 3)
+    _assert_application(datediff(part, value, value), "date_diff", 3)
+    _assert_application(timestamp_diff(part, value, value), "timestamp_diff", 3)
+    _assert_application(to_date(value), "to_date", 1)
+    _assert_application(to_time(value), "to_time", 1)
+    _assert_application(to_timestamp(value), "to_timestamp", 1)
+    _assert_application(from_unixtime(amount), "from_unixtime", 1)
+    _assert_application(unix_seconds(value), "unix_seconds", 1)
+    _assert_application(unix_millis(value), "unix_millis", 1)
+    _assert_application(unix_micros(value), "unix_micros", 1)
+    _assert_application(make_date(2026, 5, 30), "make_date", 3)
+    _assert_application(make_time(12, 30, 5), "make_time", 3)
+    _assert_application(make_timestamp(2026, 5, 30, 12, 30, 5), "make_timestamp", 6)
+    _assert_application(last_day(value), "last_day", 1)
+
+
+def test_common_scalar_functions__safe_cast_alias_targets_try_cast() -> None:
+    """Assert RFC 018 compatibility cast spelling rewrites into the canonical cast expression."""
+    # -- Arrange --
+    value = col("maybe_number")
+
+    # -- Act --
+    expr = safe_cast(value, "int64")
+
+    # -- Assert --
+    _assert_application(expr, "try_cast", 1)
+    assert column_expr_option_value(expr, "target_type") == "int64", "safe_cast should preserve the target type option"

@@ -1,0 +1,53 @@
+"""Delimited string part helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.inputs import IntValueOrColumn, StrValueOrColumn, int_value_or_column_expr, str_value_or_column_expr
+from functions.registry import register_function, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import SPLIT_PART_FUNCTION_ANCHOR
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=extension_mapping("split_part", SPLIT_PART_FUNCTION_ANCHOR),
+))
+pub def split_part(expr: StrValueOrColumn, delimiter: StrValueOrColumn, field: IntValueOrColumn) -> ColumnExpr:
+    """
+    Build a one-based delimited string field expression.
+
+    Examples:
+        domain = split_part(col("email"), "@", 2)
+
+    Parameters:
+        expr: Input scalar expression.
+        delimiter: Scalar expression argument.
+        field: Scalar expression argument.
+    """
+    return registered_application(
+        "split_part",
+        [str_value_or_column_expr(expr), str_value_or_column_expr(delimiter), int_value_or_column_expr(field)],
+    )
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        col,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+    )
+    def test_split_part_builds_registered_application() -> None:
+        expr = split_part(col("email"), "@", 2)
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "split_part"
+        assert column_expr_argument_count(expr) == 3

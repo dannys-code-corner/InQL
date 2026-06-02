@@ -1,0 +1,70 @@
+"""Typed literal-or-column input aliases for public function helpers."""
+
+from projection_builders import ColumnExpr, bool_expr, float_expr, int_expr, str_expr
+
+
+pub type BoolValueOrColumn = Union[ColumnExpr, bool]
+
+
+pub type FloatValueOrColumn = Union[ColumnExpr, float]
+
+
+pub type IntValueOrColumn = Union[ColumnExpr, int]
+
+
+pub type StrValueOrColumn = Union[ColumnExpr, str]
+
+
+pub type ScalarValueOrColumn = Union[ColumnExpr, bool, float, int, str]
+
+
+pub def bool_value_or_column_expr(value: BoolValueOrColumn) -> ColumnExpr:
+    """Return a boolean literal or existing scalar expression as a scalar expression."""
+    match value:
+        bool(flag) => return bool_expr(flag)
+        expr => return expr
+
+
+pub def float_value_or_column_expr(value: FloatValueOrColumn) -> ColumnExpr:
+    """Return a floating-point literal or existing scalar expression as a scalar expression."""
+    match value:
+        float(number) => return float_expr(number)
+        expr => return expr
+
+
+pub def int_value_or_column_expr(value: IntValueOrColumn) -> ColumnExpr:
+    """Return an integer literal or existing scalar expression as a scalar expression."""
+    match value:
+        int(number) => return int_expr(number)
+        expr => return expr
+
+
+pub def str_value_or_column_expr(value: StrValueOrColumn) -> ColumnExpr:
+    """Return a string literal or existing scalar expression as a scalar expression."""
+    match value:
+        str(text) => return str_expr(text)
+        expr => return expr
+
+
+pub def scalar_value_or_column_expr(value: ScalarValueOrColumn) -> ColumnExpr:
+    """Return a primitive literal or existing scalar expression as a scalar expression."""
+    match value:
+        bool(flag) => return bool_expr(flag)
+        float(number) => return float_expr(number)
+        int(number) => return int_expr(number)
+        str(text) => return str_expr(text)
+        expr => return expr
+
+
+module tests:
+    from projection_builders import ColumnExprKind, col, column_expr_kind
+    def test_int_value_or_column_expr_accepts_literal_values() -> None:
+        assert column_expr_kind(int_value_or_column_expr(7)) == ColumnExprKind.IntLiteral
+    def test_float_value_or_column_expr_accepts_literal_values() -> None:
+        assert column_expr_kind(float_value_or_column_expr(1.5)) == ColumnExprKind.FloatLiteral
+    def test_str_value_or_column_expr_accepts_literal_values() -> None:
+        assert column_expr_kind(str_value_or_column_expr("day")) == ColumnExprKind.StringLiteral
+    def test_bool_value_or_column_expr_accepts_literal_values() -> None:
+        assert column_expr_kind(bool_value_or_column_expr(true)) == ColumnExprKind.BoolLiteral
+    def test_scalar_value_or_column_expr_preserves_column_expressions() -> None:
+        assert column_expr_kind(scalar_value_or_column_expr(col("amount"))) == ColumnExprKind.Column

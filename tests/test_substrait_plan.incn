@@ -3,6 +3,7 @@
 from std.testing import assert_is_err, fail_t
 from functions import (
     abs,
+    acos,
     add,
     always_true,
     and_,
@@ -23,31 +24,57 @@ from functions import (
     arrays_overlap,
     asc,
     asc_nulls_last,
+    asin,
+    atan,
+    atan2,
     avg,
+    base64,
     between,
     case_when,
     cast,
     ceil,
+    char_length,
     check_json,
     col,
-    cume_dist,
     coalesce,
+    concat,
+    concat_ws,
+    cos,
     count,
     count_distinct,
     count_if,
     crc32,
+    cume_dist,
+    current_date,
+    current_time,
+    current_timestamp,
+    date_add,
+    date_diff,
+    date_part,
+    date_sub,
+    date_trunc,
+    dateadd,
+    datediff,
+    decode,
+    degrees,
     dense_rank,
     desc,
     div,
+    encode,
     eq,
     equal_null,
+    exp,
+    extract,
     floor,
     first_value,
     from_csv,
     from_json,
+    from_unixtime,
     get_json_object,
+    greatest,
     gt,
     gte,
+    hex,
     in_,
     is_nan,
     is_not_nan,
@@ -58,10 +85,23 @@ from functions import (
     json_object_keys,
     lit,
     lag,
+    last_day,
     last_value,
     lead,
+    least,
+    left,
+    lcase,
+    ln,
+    log,
+    log10,
+    lower,
+    lpad,
+    ltrim,
     lt,
     lte,
+    make_date,
+    make_time,
+    make_timestamp,
     map_contains_key,
     map_entries,
     map_extract,
@@ -80,12 +120,26 @@ from functions import (
     nth_value,
     nullif,
     ntile,
+    octet_length,
     or_,
+    overlay,
     parse_json,
     parse_url,
     percent_rank,
+    position,
+    power,
+    radians,
     rank,
+    regexp_extract,
+    regexp_like,
+    regexp_replace,
+    repeat,
+    replace,
+    right,
     round,
+    rpad,
+    rtrim,
+    safe_cast,
     row_number,
     schema_of_csv,
     schema_of_json,
@@ -95,13 +149,34 @@ from functions import (
     sha256,
     sha384,
     sha512,
+    sign,
+    sin,
+    split_part,
+    sqrt,
     sub,
+    substr,
+    substring,
     sum,
+    tan,
+    timestamp_diff,
+    time_trunc,
     to_csv,
+    to_date,
     to_json,
+    to_time,
+    to_timestamp,
+    translate,
+    trim,
     try_cast,
     try_from_json,
     try_url_decode,
+    unbase64,
+    unhex,
+    unix_micros,
+    unix_millis,
+    unix_seconds,
+    upper,
+    ucase,
     url_decode,
     url_encode,
     xxhash64,
@@ -514,6 +589,94 @@ def test_plan__core_scalar_extension_mappings_lower_to_substrait() -> None:
     _assert_scalar_expr_lowers(schema_of_csv(col("status")))
     _assert_scalar_expr_lowers(from_csv[FormatPlanSchema](col("status")))
     _assert_scalar_expr_lowers(to_csv(col("status")))
+
+
+def test_plan__common_scalar_extension_mappings_lower_to_substrait() -> None:
+    """Assert the full RFC 018 scalar catalog emits registry-backed Substrait functions."""
+    # -- Arrange / Act / Assert --
+    _assert_scalar_expr_lowers(abs(col("amount")))
+    _assert_scalar_expr_lowers(ceil(div(col("amount"), lit(4.0))))
+    _assert_scalar_expr_lowers(floor(div(col("amount"), lit(4.0))))
+    _assert_scalar_expr_lowers(round(div(col("amount"), lit(4.0))))
+    _assert_scalar_expr_lowers(round(div(col("amount"), lit(4.0)), lit(1)))
+    _assert_scalar_expr_lowers(sqrt(col("amount")))
+    _assert_scalar_expr_lowers(power(col("amount"), lit(2)))
+    _assert_scalar_expr_lowers(exp(col("amount")))
+    _assert_scalar_expr_lowers(ln(col("amount")))
+    _assert_scalar_expr_lowers(log(lit(10), col("amount")))
+    _assert_scalar_expr_lowers(log10(col("amount")))
+    _assert_scalar_expr_lowers(sign(col("amount")))
+    _assert_scalar_expr_lowers(least(col("amount"), lit(1), lit(2)))
+    _assert_scalar_expr_lowers(greatest(col("amount"), lit(1), lit(2)))
+    _assert_scalar_expr_lowers(sin(col("amount")))
+    _assert_scalar_expr_lowers(cos(col("amount")))
+    _assert_scalar_expr_lowers(tan(col("amount")))
+    _assert_scalar_expr_lowers(asin(div(col("amount"), lit(100.0))))
+    _assert_scalar_expr_lowers(acos(div(col("amount"), lit(100.0))))
+    _assert_scalar_expr_lowers(atan(col("amount")))
+    _assert_scalar_expr_lowers(atan2(col("amount"), lit(1)))
+    _assert_scalar_expr_lowers(degrees(col("amount")))
+    _assert_scalar_expr_lowers(radians(col("amount")))
+
+    _assert_scalar_expr_lowers(char_length(col("status")))
+    _assert_scalar_expr_lowers(octet_length(col("status")))
+    _assert_scalar_expr_lowers(upper(col("status")))
+    _assert_scalar_expr_lowers(lower(col("status")))
+    _assert_scalar_expr_lowers(ucase(col("status")))
+    _assert_scalar_expr_lowers(lcase(col("status")))
+    _assert_scalar_expr_lowers(trim(col("status")))
+    _assert_scalar_expr_lowers(ltrim(col("status")))
+    _assert_scalar_expr_lowers(rtrim(col("status")))
+    _assert_scalar_expr_lowers(substring(col("status"), lit(1), lit(2)))
+    _assert_scalar_expr_lowers(substr(col("status"), lit(1), lit(2)))
+    _assert_scalar_expr_lowers(position(col("status"), lit("a")))
+    _assert_scalar_expr_lowers(overlay(col("status"), lit("z"), lit(1), lit(1)))
+    _assert_scalar_expr_lowers(concat(col("status"), lit("-x")))
+    _assert_scalar_expr_lowers(concat_ws(lit("-"), col("status"), lit("x")))
+    _assert_scalar_expr_lowers(replace(col("status"), lit("a"), lit("b")))
+    _assert_scalar_expr_lowers(translate(col("status"), lit("ab"), lit("xy")))
+    _assert_scalar_expr_lowers(repeat(col("status"), lit(2)))
+    _assert_scalar_expr_lowers(left(col("status"), lit(2)))
+    _assert_scalar_expr_lowers(right(col("status"), lit(2)))
+    _assert_scalar_expr_lowers(lpad(col("status"), lit(5), lit("0")))
+    _assert_scalar_expr_lowers(rpad(col("status"), lit(5), lit("0")))
+    _assert_scalar_expr_lowers(split_part(col("status"), lit("-"), lit(1)))
+
+    _assert_scalar_expr_lowers(encode(col("status"), lit("base64")))
+    _assert_scalar_expr_lowers(decode(col("status"), lit("base64")))
+    _assert_scalar_expr_lowers(base64(col("status")))
+    _assert_scalar_expr_lowers(unbase64(col("status")))
+    _assert_scalar_expr_lowers(hex(col("status")))
+    _assert_scalar_expr_lowers(unhex(col("status")))
+    _assert_scalar_expr_lowers(regexp_like(col("status"), lit("^a")))
+    _assert_scalar_expr_lowers(regexp_replace(col("status"), lit("a"), lit("b")))
+    _assert_scalar_expr_lowers(regexp_extract(col("status"), lit("([a-z]+)"), lit(1)))
+
+    _assert_scalar_expr_lowers(current_date())
+    _assert_scalar_expr_lowers(current_time())
+    _assert_scalar_expr_lowers(current_timestamp())
+    _assert_scalar_expr_lowers(date_part(lit("year"), col("status")))
+    _assert_scalar_expr_lowers(extract(lit("year"), col("status")))
+    _assert_scalar_expr_lowers(date_trunc(lit("month"), col("status")))
+    _assert_scalar_expr_lowers(time_trunc(lit("hour"), col("status")))
+    _assert_scalar_expr_lowers(date_add(lit("day"), lit(1), col("status")))
+    _assert_scalar_expr_lowers(dateadd(lit("day"), lit(1), col("status")))
+    _assert_scalar_expr_lowers(date_sub(lit("day"), lit(1), col("status")))
+    _assert_scalar_expr_lowers(date_diff(lit("day"), col("status"), lit("2026-05-31")))
+    _assert_scalar_expr_lowers(datediff(lit("day"), col("status"), lit("2026-05-31")))
+    _assert_scalar_expr_lowers(timestamp_diff(lit("second"), col("status"), lit("2026-05-31T00:00:00")))
+    _assert_scalar_expr_lowers(to_date(col("status")))
+    _assert_scalar_expr_lowers(to_time(col("status")))
+    _assert_scalar_expr_lowers(to_timestamp(col("status")))
+    _assert_scalar_expr_lowers(from_unixtime(col("amount")))
+    _assert_scalar_expr_lowers(unix_seconds(col("status")))
+    _assert_scalar_expr_lowers(unix_millis(col("status")))
+    _assert_scalar_expr_lowers(unix_micros(col("status")))
+    _assert_scalar_expr_lowers(make_date(lit(2026), lit(5), lit(30)))
+    _assert_scalar_expr_lowers(make_time(lit(12), lit(34), lit(56)))
+    _assert_scalar_expr_lowers(make_timestamp(lit(2026), lit(5), lit(30), lit(12), lit(34), lit(56)))
+    _assert_scalar_expr_lowers(last_day(col("status")))
+    _assert_scalar_expr_lowers(safe_cast(col("status"), "int64"))
 
 
 def test_plan__nested_scalar_extension_mappings_lower_to_substrait() -> None:

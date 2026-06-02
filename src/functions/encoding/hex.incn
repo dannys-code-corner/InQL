@@ -1,0 +1,40 @@
+"""Hex encoding convenience helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    rewrite_mapping,
+    v0_1,
+)
+from functions.encoding.encode import encode
+from functions.registry import register_function
+from projection_builders import ColumnExpr
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=rewrite_mapping("hex(expr) -> encode(expr, 'hex')"),
+))
+pub def hex(expr: ColumnExpr) -> ColumnExpr:
+    """
+    Build a lowercase hexadecimal encoding expression.
+
+    Examples:
+        encoded = hex(col("payload"))
+
+    Parameters:
+        expr: Input scalar expression.
+    """
+    return encode(expr, "hex")
+
+
+module tests:
+    from projection_builders import ColumnExprKind, col, column_expr_function_name, column_expr_kind
+    def test_hex_rewrites_to_encode() -> None:
+        expr = hex(col("payload"))
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "encode"

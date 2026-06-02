@@ -1,0 +1,61 @@
+"""One-based substring helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.inputs import IntValueOrColumn, StrValueOrColumn, int_value_or_column_expr, str_value_or_column_expr
+from functions.registry import register_function, register_function_alias, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import SUBSTRING_FUNCTION_ANCHOR
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=extension_mapping("substring", SUBSTRING_FUNCTION_ANCHOR),
+))
+pub def substring(
+    expr: StrValueOrColumn,
+    start: IntValueOrColumn,
+    length: Option[IntValueOrColumn] = None,
+) -> ColumnExpr:
+    """
+    Build a one-based substring expression.
+
+    Examples:
+        prefix = substring(col("sku"), 1, 3)
+
+    Parameters:
+        expr: Input scalar expression.
+        start: Start scalar expression.
+        length: Length expression.
+    """
+    expr_value = str_value_or_column_expr(expr)
+    start_value = int_value_or_column_expr(start)
+    if let Some(value) = length:
+        return registered_application("substring", [expr_value, start_value, int_value_or_column_expr(value)])
+    return registered_application("substring", [expr_value, start_value])
+
+
+static _substr_alias_registration: None = register_function_alias("substring", "substr")
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        col,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+    )
+    def test_substring_builds_registered_application() -> None:
+        expr = substring(col("sku"), 1, 3)
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "substring"
+        assert column_expr_argument_count(expr) == 3

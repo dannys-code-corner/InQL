@@ -1,0 +1,13 @@
+"""Substring compatibility alias."""
+
+from functions.strings.substring import substring
+
+pub substr = alias substring
+
+
+module tests:
+    from projection_builders import ColumnExprKind, col, column_expr_function_name, column_expr_kind
+    def test_substr_rewrites_to_substring() -> None:
+        expr = substr(col("sku"), 1, 3)
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "substring"

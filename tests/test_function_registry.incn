@@ -143,6 +143,83 @@ from functions import (
     window,
     xxhash64,
 )
+from functions import (
+    acos,
+    asin,
+    atan,
+    atan2,
+    base64,
+    char_length,
+    concat,
+    concat_ws,
+    cos,
+    current_date,
+    current_time,
+    current_timestamp,
+    date_add,
+    date_diff,
+    date_part,
+    date_sub,
+    date_trunc,
+    dateadd,
+    datediff,
+    decode,
+    degrees,
+    encode,
+    exp,
+    extract,
+    from_unixtime,
+    greatest,
+    hex,
+    last_day,
+    lcase,
+    least,
+    left,
+    ln,
+    log,
+    log10,
+    lower,
+    lpad,
+    ltrim,
+    make_date,
+    make_time,
+    make_timestamp,
+    octet_length,
+    overlay,
+    position,
+    power,
+    radians,
+    regexp_extract,
+    regexp_like,
+    regexp_replace,
+    repeat,
+    replace,
+    right,
+    rpad,
+    rtrim,
+    safe_cast,
+    sign,
+    sin,
+    split_part,
+    sqrt,
+    substr,
+    substring,
+    tan,
+    time_trunc,
+    timestamp_diff,
+    to_date,
+    to_time,
+    to_timestamp,
+    translate,
+    trim,
+    ucase,
+    unbase64,
+    unhex,
+    unix_micros,
+    unix_millis,
+    unix_seconds,
+    upper,
+)
 from function_registry import (
     APPROX_COUNT_DISTINCT_POLICY,
     APPROX_PERCENTILE_POLICY,
@@ -270,6 +347,72 @@ from substrait.function_extensions import (
     POSEXPLODE_OUTER_EXTENSION_URI,
     RANGE_FUNCTION_ANCHOR,
 )
+from substrait.function_extensions import (
+    ACOS_FUNCTION_ANCHOR,
+    ASIN_FUNCTION_ANCHOR,
+    ATAN2_FUNCTION_ANCHOR,
+    ATAN_FUNCTION_ANCHOR,
+    CHAR_LENGTH_FUNCTION_ANCHOR,
+    CONCAT_FUNCTION_ANCHOR,
+    CONCAT_WS_FUNCTION_ANCHOR,
+    COS_FUNCTION_ANCHOR,
+    CURRENT_DATE_FUNCTION_ANCHOR,
+    CURRENT_TIME_FUNCTION_ANCHOR,
+    CURRENT_TIMESTAMP_FUNCTION_ANCHOR,
+    DATE_ADD_FUNCTION_ANCHOR,
+    DATE_DIFF_FUNCTION_ANCHOR,
+    DATE_PART_FUNCTION_ANCHOR,
+    DATE_SUB_FUNCTION_ANCHOR,
+    DATE_TRUNC_FUNCTION_ANCHOR,
+    DECODE_FUNCTION_ANCHOR,
+    DEGREES_FUNCTION_ANCHOR,
+    ENCODE_FUNCTION_ANCHOR,
+    EXP_FUNCTION_ANCHOR,
+    FROM_UNIXTIME_FUNCTION_ANCHOR,
+    GREATEST_FUNCTION_ANCHOR,
+    LAST_DAY_FUNCTION_ANCHOR,
+    LEAST_FUNCTION_ANCHOR,
+    LEFT_FUNCTION_ANCHOR,
+    LN_FUNCTION_ANCHOR,
+    LOG10_FUNCTION_ANCHOR,
+    LOG_FUNCTION_ANCHOR,
+    LOWER_FUNCTION_ANCHOR,
+    LPAD_FUNCTION_ANCHOR,
+    LTRIM_FUNCTION_ANCHOR,
+    MAKE_DATE_FUNCTION_ANCHOR,
+    MAKE_TIME_FUNCTION_ANCHOR,
+    MAKE_TIMESTAMP_FUNCTION_ANCHOR,
+    OCTET_LENGTH_FUNCTION_ANCHOR,
+    OVERLAY_FUNCTION_ANCHOR,
+    POSITION_FUNCTION_ANCHOR,
+    POWER_FUNCTION_ANCHOR,
+    RADIANS_FUNCTION_ANCHOR,
+    REGEXP_EXTRACT_FUNCTION_ANCHOR,
+    REGEXP_LIKE_FUNCTION_ANCHOR,
+    REGEXP_REPLACE_FUNCTION_ANCHOR,
+    REPEAT_FUNCTION_ANCHOR,
+    REPLACE_FUNCTION_ANCHOR,
+    RIGHT_FUNCTION_ANCHOR,
+    RPAD_FUNCTION_ANCHOR,
+    RTRIM_FUNCTION_ANCHOR,
+    SIGN_FUNCTION_ANCHOR,
+    SIN_FUNCTION_ANCHOR,
+    SPLIT_PART_FUNCTION_ANCHOR,
+    SQRT_FUNCTION_ANCHOR,
+    SUBSTRING_FUNCTION_ANCHOR,
+    TAN_FUNCTION_ANCHOR,
+    TIME_TRUNC_FUNCTION_ANCHOR,
+    TIMESTAMP_DIFF_FUNCTION_ANCHOR,
+    TO_DATE_FUNCTION_ANCHOR,
+    TO_TIME_FUNCTION_ANCHOR,
+    TO_TIMESTAMP_FUNCTION_ANCHOR,
+    TRANSLATE_FUNCTION_ANCHOR,
+    TRIM_FUNCTION_ANCHOR,
+    UNIX_MICROS_FUNCTION_ANCHOR,
+    UNIX_MILLIS_FUNCTION_ANCHOR,
+    UNIX_SECONDS_FUNCTION_ANCHOR,
+    UPPER_FUNCTION_ANCHOR,
+)
 
 
 @derive(Clone)
@@ -299,7 +442,7 @@ def _entry_by_name_or_fail(canonical_name: str) -> FunctionRegistryEntry:
     lookup_name = f"{canonical_name}"
     match function_registry_entry_by_name(lookup_name):
         Some(entry) => return entry
-        None => return fail_t("missing function registry entry by name")
+        None => return fail_t(f"missing function registry entry by name `{lookup_name}`")
 
 
 def _local_entry_or_fail(registry: FunctionRegistry, function_ref: str) -> FunctionRegistryEntry:
@@ -311,7 +454,7 @@ def _local_entry_or_fail(registry: FunctionRegistry, function_ref: str) -> Funct
 
 
 def _local_entry_by_name_or_fail(registry: FunctionRegistry, canonical_name: str) -> FunctionRegistryEntry:
-    """Return one core-scoped local registry entry by canonical name or fail the test."""
+    """Return one core-scoped local registry entry by canonical or alias name."""
     lookup_name = f"{canonical_name}"
     match registry.entry_by_name(lookup_name):
         Some(entry) => return entry
@@ -323,7 +466,7 @@ def _local_entry_by_namespace_and_name_or_fail(
     namespace: str,
     canonical_name: str,
 ) -> FunctionRegistryEntry:
-    """Return one namespace-scoped local registry entry by canonical name or fail the test."""
+    """Return one namespace-scoped local registry entry by canonical or alias name."""
     lookup_namespace = f"{namespace}"
     lookup_name = f"{canonical_name}"
     match registry.entry_by_namespace_and_name(lookup_namespace, lookup_name):
@@ -332,13 +475,37 @@ def _local_entry_by_namespace_and_name_or_fail(
 
 
 def _expected_registry_names() -> list[str]:
-    """Return the expected registered public helper names."""
-    return ["col", "lit", "sum", "count", "count_expr", "count_distinct", "count_if", "avg", "min", "max", "approx_count_distinct", "approx_percentile", "int_expr", "float_expr", "str_expr", "bool_expr", "add", "mul", "int_lit", "str_lit", "bool_lit", "always_true", "always_false", "eq", "gt", "cast", "try_cast", "ne", "lt", "lte", "gte", "equal_null", "and_", "or_", "not_", "is_null", "is_not_null", "is_nan", "is_not_nan", "sub", "div", "mod", "neg", "coalesce", "nullif", "case_when", "in_", "between", "asc", "desc", "asc_nulls_first", "asc_nulls_last", "desc_nulls_first", "desc_nulls_last", "abs", "ceil", "floor", "round", "array", "array_contains", "array_distinct", "array_except", "array_flatten", "array_intersect", "array_join", "array_position", "range", "array_reverse", "array_slice", "array_sort", "array_union", "arrays_overlap", "cardinality", "element_at", "map_contains_key", "map_entries", "map_extract", "map_from_arrays", "map_keys", "map_values", "named_struct", "explode", "explode_outer", "posexplode", "posexplode_outer", "inline", "inline_outer", "flatten", "stack", "window", "unbounded_preceding", "preceding", "current_row", "following", "unbounded_following", "row_number", "rank", "dense_rank", "percent_rank", "cume_dist", "ntile", "lag", "lead", "first_value", "last_value", "nth_value", "sha224", "sha256", "sha384", "sha512", "sha2", "md5", "sha1", "crc32", "xxhash64", "parse_url", "try_url_decode", "url_decode", "url_encode", "check_json", "from_json", "get_json_object", "json_array_length", "json_extract_path_text", "json_object_keys", "parse_json", "schema_of_json", "to_json", "try_from_json", "from_csv", "schema_of_csv", "to_csv"]
+    """Return the expected canonical registered helper names."""
+    return ["col", "lit", "sum", "count", "count_distinct", "count_if", "avg", "min", "max", "approx_count_distinct", "approx_percentile", "int_expr", "float_expr", "str_expr", "bool_expr", "add", "mul", "int_lit", "str_lit", "bool_lit", "always_true", "always_false", "eq", "gt", "cast", "try_cast", "ne", "lt", "lte", "gte", "equal_null", "and_", "or_", "not_", "is_null", "is_not_null", "is_nan", "is_not_nan", "sub", "div", "mod", "neg", "coalesce", "nullif", "case_when", "in_", "between", "asc", "desc", "asc_nulls_first", "asc_nulls_last", "desc_nulls_first", "desc_nulls_last", "abs", "ceil", "floor", "round", "array", "array_contains", "array_distinct", "array_except", "array_flatten", "array_intersect", "array_join", "array_position", "range", "array_reverse", "array_slice", "array_sort", "array_union", "arrays_overlap", "cardinality", "element_at", "map_contains_key", "map_entries", "map_extract", "map_from_arrays", "map_keys", "map_values", "named_struct", "explode", "explode_outer", "posexplode", "posexplode_outer", "inline", "inline_outer", "flatten", "stack", "window", "unbounded_preceding", "preceding", "current_row", "following", "unbounded_following", "row_number", "rank", "dense_rank", "percent_rank", "cume_dist", "ntile", "lag", "lead", "first_value", "last_value", "nth_value", "sha224", "sha256", "sha384", "sha512", "sha2", "md5", "sha1", "crc32", "xxhash64", "parse_url", "try_url_decode", "url_decode", "url_encode", "check_json", "from_json", "get_json_object", "json_array_length", "json_extract_path_text", "json_object_keys", "parse_json", "schema_of_json", "to_json", "try_from_json", "from_csv", "schema_of_csv", "to_csv"]
 
 
 def _expected_substrait_mapped_names() -> list[str]:
     """Return helpers with concrete Substrait extension-function mappings."""
     return ["sum", "count", "avg", "min", "max", "approx_count_distinct", "approx_percentile", "add", "mul", "eq", "gt", "ne", "lt", "lte", "gte", "equal_null", "and_", "or_", "not_", "is_null", "is_not_null", "is_nan", "sub", "div", "mod", "neg", "coalesce", "nullif", "between", "abs", "ceil", "floor", "round", "array", "array_contains", "array_distinct", "array_except", "array_flatten", "array_intersect", "array_join", "array_position", "range", "array_reverse", "array_slice", "array_sort", "array_union", "arrays_overlap", "cardinality", "element_at", "map_entries", "map_extract", "map_from_arrays", "map_keys", "map_values", "named_struct", "row_number", "rank", "dense_rank", "percent_rank", "cume_dist", "ntile", "lag", "lead", "first_value", "last_value", "nth_value", "sha224", "sha256", "sha384", "sha512", "md5", "sha1", "crc32", "xxhash64", "parse_url", "try_url_decode", "url_decode", "url_encode", "check_json", "from_json", "get_json_object", "json_array_length", "json_extract_path_text", "json_object_keys", "parse_json", "schema_of_json", "to_json", "try_from_json", "from_csv", "schema_of_csv", "to_csv"]
+
+
+def _rfc018_registry_names() -> list[str]:
+    """Return the remaining RFC 018 canonical names added after the initial PR #44 math slice."""
+    return ["sqrt", "power", "exp", "ln", "log", "log10", "sign", "least", "greatest", "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "degrees", "radians", "char_length", "octet_length", "upper", "lower", "trim", "ltrim", "rtrim", "substring", "position", "overlay", "concat", "concat_ws", "replace", "translate", "repeat", "left", "right", "lpad", "rpad", "split_part", "encode", "decode", "base64", "unbase64", "hex", "unhex", "regexp_like", "regexp_replace", "regexp_extract", "current_date", "current_time", "current_timestamp", "date_part", "date_trunc", "time_trunc", "date_add", "date_sub", "date_diff", "timestamp_diff", "to_date", "to_time", "to_timestamp", "from_unixtime", "unix_seconds", "unix_millis", "unix_micros", "make_date", "make_time", "make_timestamp", "last_day"]
+
+
+def _expected_all_registry_names() -> list[str]:
+    """Return the complete expected registered helper surface."""
+    mut names = _expected_registry_names()
+    names.extend(_rfc018_registry_names())
+    return names
+
+
+def _rfc018_substrait_mapped_names() -> list[str]:
+    """Return remaining RFC 018 helpers with concrete Substrait extension-function mappings."""
+    return ["sqrt", "power", "exp", "ln", "log", "log10", "sign", "least", "greatest", "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "degrees", "radians", "char_length", "octet_length", "upper", "lower", "trim", "ltrim", "rtrim", "substring", "position", "overlay", "concat", "concat_ws", "replace", "translate", "repeat", "left", "right", "lpad", "rpad", "split_part", "encode", "decode", "regexp_like", "regexp_replace", "regexp_extract", "current_date", "current_time", "current_timestamp", "date_part", "date_trunc", "time_trunc", "date_add", "date_sub", "date_diff", "timestamp_diff", "to_date", "to_time", "to_timestamp", "from_unixtime", "unix_seconds", "unix_millis", "unix_micros", "make_date", "make_time", "make_timestamp", "last_day"]
+
+
+def _expected_all_substrait_mapped_names() -> list[str]:
+    """Return the complete expected extension-backed helper set."""
+    mut names = _expected_substrait_mapped_names()
+    names.extend(_rfc018_substrait_mapped_names())
+    return names
 
 
 def _exercise_current_public_helpers() -> None:
@@ -406,6 +573,83 @@ def _exercise_current_public_helpers() -> None:
     ceil(amount)
     floor(amount)
     round(amount)
+    round(amount, int_lit(2))
+    sqrt(amount)
+    power(amount, int_lit(2))
+    exp(amount)
+    ln(amount)
+    log(int_lit(2), amount)
+    log10(amount)
+    sign(amount)
+    least(amount, int_lit(0), int_lit(1))
+    greatest(amount, int_lit(0), int_lit(1))
+    sin(amount)
+    cos(amount)
+    tan(amount)
+    asin(amount)
+    acos(amount)
+    atan(amount)
+    atan2(amount, int_lit(1))
+    degrees(amount)
+    radians(amount)
+    char_length(status)
+    octet_length(status)
+    upper(status)
+    lower(status)
+    trim(status)
+    trim(status, str_lit("_"))
+    ltrim(status, str_lit("_"))
+    rtrim(status, str_lit("_"))
+    substring(status, int_lit(1), int_lit(3))
+    substr(status, int_lit(1), int_lit(3))
+    position(status, str_lit("-"))
+    overlay(status, str_lit("X"), int_lit(2), int_lit(1))
+    concat(status, str_lit("-"), amount)
+    concat_ws(str_lit("-"), status, amount)
+    replace(status, str_lit("-"), str_lit(""))
+    translate(status, str_lit("ABC"), str_lit("abc"))
+    repeat(str_lit("*"), int_lit(3))
+    left(status, int_lit(3))
+    right(status, int_lit(2))
+    lpad(status, int_lit(6), str_lit("0"))
+    rpad(status, int_lit(6), str_lit(" "))
+    split_part(status, str_lit("@"), int_lit(2))
+    ucase(status)
+    lcase(status)
+    encode(status, str_lit("base64"))
+    decode(status, str_lit("base64"))
+    base64(status)
+    unbase64(status)
+    hex(status)
+    unhex(status)
+    regexp_like(status, str_lit("^paid$"))
+    regexp_replace(status, str_lit("[^a-z]"), str_lit(""))
+    regexp_extract(status, str_lit("^([a-z]+)$"), int_lit(1))
+    current_date()
+    current_time()
+    current_timestamp()
+    date_part(str_lit("year"), status)
+    extract(str_lit("year"), status)
+    date_trunc(str_lit("month"), status)
+    time_trunc(str_lit("hour"), status)
+    date_add(str_lit("day"), int_lit(1), status)
+    dateadd(str_lit("day"), int_lit(1), status)
+    date_sub(str_lit("day"), int_lit(1), status)
+    date_diff(str_lit("day"), status, status)
+    datediff(str_lit("day"), status, status)
+    timestamp_diff(str_lit("second"), status, status)
+    to_date(status)
+    to_time(status)
+    to_timestamp(status)
+    from_unixtime(int_lit(0))
+    unix_seconds(status)
+    unix_millis(status)
+    unix_micros(status)
+    make_date(int_lit(2026), int_lit(5), int_lit(30))
+    make_time(int_lit(12), int_lit(30), int_lit(5))
+    make_timestamp(int_lit(2026), int_lit(5), int_lit(30), int_lit(12), int_lit(30), int_lit(5))
+    last_day(status)
+    safe_cast(status, "int64")
     array_contains(tags, str_lit("paid"))
     array_distinct(tags)
     array_except(tags, backup_tags)
@@ -488,6 +732,15 @@ def _assert_registered(canonical_name: str) -> None:
     assert _contains_text(names, canonical_name), "registry should expose the expected canonical name"
 
 
+def _assert_alias_resolves(alias_name: str, canonical_name: str) -> None:
+    """Assert one compatibility alias resolves to the canonical registry entry."""
+    entry = _entry_by_name_or_fail(f"{alias_name}")
+    assert entry.canonical_name == canonical_name, f"{alias_name} should resolve to canonical {canonical_name}"
+    assert entry.function_ref == function_ref_for(f"{canonical_name}"), f"{alias_name} should share the canonical function ref"
+    assert _contains_text(entry.aliases, f"{alias_name}"), f"{canonical_name} should declare {alias_name} as an alias"
+    assert entry.alias_policy == FunctionAliasPolicy.OptInCompatibility, "compatibility aliases should stay opt-in"
+
+
 def _assert_structural_mapping(canonical_name: str, context: str, detail: str) -> None:
     """Assert one registered helper declares relation-context structural lowering metadata."""
     lookup_name = f"{canonical_name}"
@@ -552,7 +805,7 @@ def test_function_registry__covers_current_public_helpers() -> None:
     """Assert that RFC 015 registry metadata covers the current public helper surface."""
     # -- Arrange --
     _exercise_current_public_helpers()
-    expected_names = _expected_registry_names()
+    expected_names = _expected_all_registry_names()
 
     # -- Act --
     entry_count = function_registry_entry_count()
@@ -571,7 +824,7 @@ def test_function_registry__lifecycle_metadata_is_versioned() -> None:
     entries = function_registry_entries()
 
     # -- Act / Assert --
-    assert len(entries) == len(_expected_registry_names()), "lifecycle fixture should cover the current registry surface"
+    assert len(entries) == len(_expected_all_registry_names()), "lifecycle fixture should cover the current registry surface"
     for entry in entries:
         assert entry.lifecycle.since.major == v0_1.major, f"{entry.function_ref} should expose its introduction major version"
         assert entry.lifecycle.since.minor == v0_1.minor, f"{entry.function_ref} should expose its introduction minor version"
@@ -605,6 +858,22 @@ def test_function_registry__lookup_exposes_canonical_metadata() -> None:
         None => pass
 
 
+def test_function_registry__compatibility_aliases_resolve_to_canonical_entries() -> None:
+    """Assert pure spelling aliases are owned by their canonical registry entries."""
+    # -- Arrange --
+    _exercise_current_public_helpers()
+
+    # -- Act / Assert --
+    _assert_alias_resolves("count_expr", "count")
+    _assert_alias_resolves("substr", "substring")
+    _assert_alias_resolves("ucase", "upper")
+    _assert_alias_resolves("lcase", "lower")
+    _assert_alias_resolves("extract", "date_part")
+    _assert_alias_resolves("dateadd", "date_add")
+    _assert_alias_resolves("datediff", "date_diff")
+    _assert_alias_resolves("safe_cast", "try_cast")
+
+
 def test_function_registry__core_helpers_expose_portable_policy_metadata() -> None:
     """Assert current helper entries distinguish portability policy from semantic function class."""
     # -- Arrange --
@@ -614,11 +883,15 @@ def test_function_registry__core_helpers_expose_portable_policy_metadata() -> No
     # -- Act / Assert --
     for entry in entries:
         assert entry.namespace == CORE_FUNCTION_NAMESPACE, f"{entry.function_ref} should live in the core function namespace"
-        if entry.canonical_name == "count_expr" or entry.canonical_name == "count_distinct" or entry.canonical_name == "count_if" or entry.canonical_name == "sha2":
+        if _contains_text(["count_distinct", "count_if", "sha2"], entry.canonical_name):
             assert entry.policy_category == FunctionPolicyCategory.CompatibilityAlias, f"{entry.canonical_name} should be marked as a compatibility helper"
             assert entry.alias_policy == FunctionAliasPolicy.OptInCompatibility, "compatibility helpers should be opt-in by policy"
             continue
         assert entry.policy_category == FunctionPolicyCategory.PortableCore, f"{entry.function_ref} should be portable core"
+        if len(entry.aliases) > 0:
+            assert entry.alias_policy == FunctionAliasPolicy.OptInCompatibility, "canonical entries with compatibility aliases should keep alias import opt-in"
+        else:
+            assert entry.alias_policy == FunctionAliasPolicy.CoreImport, "canonical entries without aliases should use core import policy"
 
 
 def test_function_registry__aggregate_helpers_expose_modifier_policy() -> None:
@@ -787,12 +1060,11 @@ def test_function_registry__substrait_extension_mappings_are_structured() -> Non
     mapped_refs = registered_substrait_mapped_function_refs()
 
     # -- Assert --
-    assert len(mapped_refs) == len(_expected_substrait_mapped_names()), "only helpers with honest current Substrait mappings should be extension-backed"
-    for canonical_name in _expected_substrait_mapped_names():
+    assert len(mapped_refs) == len(_expected_all_substrait_mapped_names()), "only helpers with honest current Substrait mappings should be extension-backed"
+    for canonical_name in _expected_all_substrait_mapped_names():
         assert _contains_text(mapped_refs, function_ref_for(canonical_name)), "mapped helper should be in the Substrait extension mapping set"
     _assert_extension_mapping("sum", "sum", SUM_FUNCTION_ANCHOR)
     _assert_extension_mapping("count", "count", COUNT_FUNCTION_ANCHOR)
-    _assert_rewrite_mapping("count_expr", "count(expr)")
     _assert_rewrite_mapping("count_distinct", "count(expr).distinct()")
     _assert_rewrite_mapping("count_if", "count().filter(predicate)")
     _assert_extension_mapping("avg", "avg", AVG_FUNCTION_ANCHOR)
@@ -826,6 +1098,70 @@ def test_function_registry__substrait_extension_mappings_are_structured() -> Non
     _assert_extension_mapping("ceil", "ceil", CEIL_FUNCTION_ANCHOR)
     _assert_extension_mapping("floor", "floor", FLOOR_FUNCTION_ANCHOR)
     _assert_extension_mapping("round", "round", ROUND_FUNCTION_ANCHOR)
+    _assert_extension_mapping("sqrt", "sqrt", SQRT_FUNCTION_ANCHOR)
+    _assert_extension_mapping("power", "power", POWER_FUNCTION_ANCHOR)
+    _assert_extension_mapping("exp", "exp", EXP_FUNCTION_ANCHOR)
+    _assert_extension_mapping("ln", "ln", LN_FUNCTION_ANCHOR)
+    _assert_extension_mapping("log", "log", LOG_FUNCTION_ANCHOR)
+    _assert_extension_mapping("log10", "log10", LOG10_FUNCTION_ANCHOR)
+    _assert_extension_mapping("sign", "signum", SIGN_FUNCTION_ANCHOR)
+    _assert_extension_mapping("least", "least", LEAST_FUNCTION_ANCHOR)
+    _assert_extension_mapping("greatest", "greatest", GREATEST_FUNCTION_ANCHOR)
+    _assert_extension_mapping("sin", "sin", SIN_FUNCTION_ANCHOR)
+    _assert_extension_mapping("cos", "cos", COS_FUNCTION_ANCHOR)
+    _assert_extension_mapping("tan", "tan", TAN_FUNCTION_ANCHOR)
+    _assert_extension_mapping("asin", "asin", ASIN_FUNCTION_ANCHOR)
+    _assert_extension_mapping("acos", "acos", ACOS_FUNCTION_ANCHOR)
+    _assert_extension_mapping("atan", "atan", ATAN_FUNCTION_ANCHOR)
+    _assert_extension_mapping("atan2", "atan2", ATAN2_FUNCTION_ANCHOR)
+    _assert_extension_mapping("degrees", "degrees", DEGREES_FUNCTION_ANCHOR)
+    _assert_extension_mapping("radians", "radians", RADIANS_FUNCTION_ANCHOR)
+    _assert_extension_mapping("char_length", "character_length", CHAR_LENGTH_FUNCTION_ANCHOR)
+    _assert_extension_mapping("octet_length", "octet_length", OCTET_LENGTH_FUNCTION_ANCHOR)
+    _assert_extension_mapping("upper", "upper", UPPER_FUNCTION_ANCHOR)
+    _assert_extension_mapping("lower", "lower", LOWER_FUNCTION_ANCHOR)
+    _assert_extension_mapping("trim", "btrim", TRIM_FUNCTION_ANCHOR)
+    _assert_extension_mapping("ltrim", "ltrim", LTRIM_FUNCTION_ANCHOR)
+    _assert_extension_mapping("rtrim", "rtrim", RTRIM_FUNCTION_ANCHOR)
+    _assert_extension_mapping("substring", "substring", SUBSTRING_FUNCTION_ANCHOR)
+    _assert_extension_mapping("position", "strpos", POSITION_FUNCTION_ANCHOR)
+    _assert_extension_mapping("overlay", "overlay", OVERLAY_FUNCTION_ANCHOR)
+    _assert_extension_mapping("concat", "concat", CONCAT_FUNCTION_ANCHOR)
+    _assert_extension_mapping("concat_ws", "concat_ws", CONCAT_WS_FUNCTION_ANCHOR)
+    _assert_extension_mapping("replace", "replace", REPLACE_FUNCTION_ANCHOR)
+    _assert_extension_mapping("translate", "translate", TRANSLATE_FUNCTION_ANCHOR)
+    _assert_extension_mapping("repeat", "repeat", REPEAT_FUNCTION_ANCHOR)
+    _assert_extension_mapping("left", "left", LEFT_FUNCTION_ANCHOR)
+    _assert_extension_mapping("right", "right", RIGHT_FUNCTION_ANCHOR)
+    _assert_extension_mapping("lpad", "lpad", LPAD_FUNCTION_ANCHOR)
+    _assert_extension_mapping("rpad", "rpad", RPAD_FUNCTION_ANCHOR)
+    _assert_extension_mapping("split_part", "split_part", SPLIT_PART_FUNCTION_ANCHOR)
+    _assert_extension_mapping("encode", "encode", ENCODE_FUNCTION_ANCHOR)
+    _assert_extension_mapping("decode", "decode", DECODE_FUNCTION_ANCHOR)
+    _assert_extension_mapping("regexp_like", "regexp_like", REGEXP_LIKE_FUNCTION_ANCHOR)
+    _assert_extension_mapping("regexp_replace", "regexp_replace", REGEXP_REPLACE_FUNCTION_ANCHOR)
+    _assert_extension_mapping("regexp_extract", "regexp_extract", REGEXP_EXTRACT_FUNCTION_ANCHOR)
+    _assert_extension_mapping("current_date", "current_date", CURRENT_DATE_FUNCTION_ANCHOR)
+    _assert_extension_mapping("current_time", "current_time", CURRENT_TIME_FUNCTION_ANCHOR)
+    _assert_extension_mapping("current_timestamp", "now", CURRENT_TIMESTAMP_FUNCTION_ANCHOR)
+    _assert_extension_mapping("date_part", "date_part", DATE_PART_FUNCTION_ANCHOR)
+    _assert_extension_mapping("date_trunc", "date_trunc", DATE_TRUNC_FUNCTION_ANCHOR)
+    _assert_extension_mapping("time_trunc", "time_trunc", TIME_TRUNC_FUNCTION_ANCHOR)
+    _assert_extension_mapping("date_add", "date_add", DATE_ADD_FUNCTION_ANCHOR)
+    _assert_extension_mapping("date_sub", "date_sub", DATE_SUB_FUNCTION_ANCHOR)
+    _assert_extension_mapping("date_diff", "date_diff", DATE_DIFF_FUNCTION_ANCHOR)
+    _assert_extension_mapping("timestamp_diff", "timestamp_diff", TIMESTAMP_DIFF_FUNCTION_ANCHOR)
+    _assert_extension_mapping("to_date", "to_date", TO_DATE_FUNCTION_ANCHOR)
+    _assert_extension_mapping("to_time", "to_time", TO_TIME_FUNCTION_ANCHOR)
+    _assert_extension_mapping("to_timestamp", "to_timestamp", TO_TIMESTAMP_FUNCTION_ANCHOR)
+    _assert_extension_mapping("from_unixtime", "from_unixtime", FROM_UNIXTIME_FUNCTION_ANCHOR)
+    _assert_extension_mapping("unix_seconds", "unix_seconds", UNIX_SECONDS_FUNCTION_ANCHOR)
+    _assert_extension_mapping("unix_millis", "unix_millis", UNIX_MILLIS_FUNCTION_ANCHOR)
+    _assert_extension_mapping("unix_micros", "unix_micros", UNIX_MICROS_FUNCTION_ANCHOR)
+    _assert_extension_mapping("make_date", "make_date", MAKE_DATE_FUNCTION_ANCHOR)
+    _assert_extension_mapping("make_time", "make_time", MAKE_TIME_FUNCTION_ANCHOR)
+    _assert_extension_mapping("make_timestamp", "make_timestamp", MAKE_TIMESTAMP_FUNCTION_ANCHOR)
+    _assert_extension_mapping("last_day", "last_day", LAST_DAY_FUNCTION_ANCHOR)
     _assert_extension_mapping("array", "make_array", MAKE_ARRAY_FUNCTION_ANCHOR)
     _assert_extension_mapping("array_contains", "array_has", ARRAY_HAS_FUNCTION_ANCHOR)
     _assert_extension_mapping("array_distinct", "array_distinct", ARRAY_DISTINCT_FUNCTION_ANCHOR)
@@ -973,6 +1309,10 @@ def test_function_registry__rewrite_mappings_identify_non_extension_helpers() ->
         "sha2",
         "sha2(expr, bits) -> sha224/sha256/sha384/sha512(expr) for supported literal bit lengths",
     )
+    _assert_rewrite_mapping("base64", "base64(expr) -> encode(expr, 'base64')")
+    _assert_rewrite_mapping("unbase64", "unbase64(expr) -> decode(expr, 'base64')")
+    _assert_rewrite_mapping("hex", "hex(expr) -> encode(expr, 'hex')")
+    _assert_rewrite_mapping("unhex", "unhex(expr) -> decode(expr, 'hex')")
     assert always_true_entry.null_behavior == FunctionNullBehavior.Predicate, "predicate helpers should expose predicate null behavior"
     assert always_false_entry.null_behavior == FunctionNullBehavior.Predicate, "predicate helpers should expose predicate null behavior"
 

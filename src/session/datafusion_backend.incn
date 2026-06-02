@@ -97,6 +97,7 @@ from substrait.relations import project_rel_with_expressions, read_named_table_r
 from substrait.schema import RowColumnSpec, SubstraitPrimitiveKind
 from substrait.schema_registry import register_named_table_schema
 from substrait.window_metadata import WINDOW_NULL_TREATMENT_OPTION, WINDOW_OUTPUT_NAME_OPTION
+from session.datafusion_common_scalar_functions import register_common_scalar_udfs
 from session.datafusion_format_functions import register_format_udfs
 
 const SUBSTRAIT_APPROX_COUNT_DISTINCT_FUNCTION_NAME: str = "approx_count_distinct"
@@ -154,6 +155,7 @@ pub async def datafusion_execute_async(
 ) -> Result[None, BackendError]:
     """Execute one Substrait plan via DataFusion and discard collected rows."""
     ctx = SessionContext.new()
+    register_common_scalar_udfs(ctx.clone())
     register_format_udfs(ctx.clone())
     await _register_sources(ctx, registrations)?
 
@@ -170,6 +172,7 @@ pub async def datafusion_collect_materialization_async(
     """Execute one Substrait plan via DataFusion and return structured DataFrame materialization."""
     ctx = SessionContext.new()
     resolved_columns = root_names(plan.clone())
+    register_common_scalar_udfs(ctx.clone())
     register_format_udfs(ctx.clone())
     await _register_sources(ctx, registrations)?
 
@@ -199,6 +202,7 @@ pub async def datafusion_write_csv_async(
 ) -> Result[None, BackendError]:
     """Execute one plan and write result rows to a CSV sink URI via DataFusion."""
     ctx = SessionContext.new()
+    register_common_scalar_udfs(ctx.clone())
     register_format_udfs(ctx.clone())
     await _register_sources(ctx, registrations)?
 
@@ -215,6 +219,7 @@ pub async def datafusion_write_parquet_async(
 ) -> Result[None, BackendError]:
     """Execute one plan and write result rows to a Parquet sink URI via DataFusion."""
     ctx = SessionContext.new()
+    register_common_scalar_udfs(ctx.clone())
     register_format_udfs(ctx.clone())
     await _register_sources(ctx, registrations)?
 

@@ -13,6 +13,7 @@
 - **Carriers that know their row type** — `DataFrame[T]`, `LazyFrame[T]`, and `DataStream[T]` share a `DataSet[T]` surface; bounded vs unbounded is reflected in the type hierarchy so unsafe streaming operations can be rejected at compile time.
 - **SQL-familiar `query { }` blocks** — Clause-oriented relational syntax, typed against the current query schema, aligned with the same resolution rules as method chains.
 - **One naming model** — `.column`, `alias.column`, bare names in the query schema, and ordinary Incan bindings are specified so blocks, chains, and future surfaces stay equivalent where it counts.
+- **A registry-backed function catalog** — Core operators, aggregates, common scalar functions, window helpers, generators, nested-data helpers, and compatibility aliases share one checked helper model and carry portable metadata for Substrait and backend adapters.
 - **Portable logical plans** — Substrait is the normative interchange; read roots stay logical while binding and execution stay in the session layer (see RFCs 002 and 004).
 
 Design is **RFC-driven**; **[docs/rfcs/](docs/rfcs/README.md)** is the source of truth.
@@ -33,6 +34,8 @@ Normative proposals live under **[docs/rfcs/](docs/rfcs/README.md)**. InQL’s R
 | **003** | `query { }` blocks — grammar, typing, lowering to Substrait                                      |
 | **004** | Execution context — session, read / execute / write, DataFusion as reference backend             |
 | **005** | Pipe-forward (`\|>`)                                                                             |
+| **013** | Function catalog program — shared registry, metadata, policy, and implementation plan            |
+| **018** | Common scalar function catalog — math, string, regex, date/time, encoding, and aliases           |
 
 ## Project layout
 
@@ -41,7 +44,7 @@ Normative proposals live under **[docs/rfcs/](docs/rfcs/README.md)**. InQL’s R
 - `src/lib.incn` — public exports
 - `src/` — library modules
 - `tests/` — tests
-- `.github/workflows/` — CI (uses reusable Incan composite action for caching)
+- `.github/workflows/` — CI (builds the pinned Incan release branch, then runs InQL checks)
 
 Build and test from this repo root (with `incan` on your `PATH`):
 

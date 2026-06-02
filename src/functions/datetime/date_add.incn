@@ -1,0 +1,53 @@
+"""Date/timestamp addition helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.inputs import IntValueOrColumn, StrValueOrColumn, int_value_or_column_expr, str_value_or_column_expr
+from functions.registry import register_function, register_function_alias, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import DATE_ADD_FUNCTION_ANCHOR
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=extension_mapping("date_add", DATE_ADD_FUNCTION_ANCHOR),
+))
+pub def date_add(part: StrValueOrColumn, amount: IntValueOrColumn, expr: ColumnExpr) -> ColumnExpr:
+    """
+    Build a date/timestamp addition expression.
+
+    Examples:
+        due_at = date_add("day", 7, col("created_at"))
+
+    Parameters:
+        part: Date or time part expression.
+        amount: Offset amount expression.
+        expr: Input scalar expression.
+    """
+    return registered_application("date_add", [str_value_or_column_expr(part), int_value_or_column_expr(amount), expr])
+
+
+static _dateadd_alias_registration: None = register_function_alias("date_add", "dateadd")
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        col,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+    )
+    def test_date_add_builds_registered_application() -> None:
+        expr = date_add("day", 3, col("created_at"))
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "date_add"
+        assert column_expr_argument_count(expr) == 3

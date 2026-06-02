@@ -1,6 +1,6 @@
 # InQL RFC 018: Common scalar function catalog
 
-- **Status:** In Progress
+- **Status:** Implemented
 - **Created:** 2026-04-27
 - **Author(s):** Danny Meijer (@dannymeijer)
 - **Related:**
@@ -9,13 +9,13 @@
   - InQL RFC 014 (function registry and catalog governance)
   - InQL RFC 015 (core scalar functions and operators)
 - **Issue:** [InQL #35](https://github.com/dannys-code-corner/InQL/issues/35)
-- **RFC PR:** [InQL #44](https://github.com/dannys-code-corner/InQL/pull/44)
+- **RFC PR:** [InQL #44](https://github.com/dannys-code-corner/InQL/pull/44) (initial math slice); [InQL #54](https://github.com/dannys-code-corner/InQL/pull/54) (full implementation)
 - **Written against:** Incan v0.2
-- **Shipped in:** —
+- **Shipped in:** v0.1
 
 ## Summary
 
-This RFC defines the common scalar function catalog beyond the core scalar slice: practical math, string, binary, regex, and date/time functions that authors expect in a dataframe system. The catalog is standards-led where possible, preserves compatibility aliases where semantics match, and leaves specialist or format-specific families to later RFCs.
+This RFC defines the common scalar function catalog beyond the core scalar slice: practical math, string, encoding, regex, and date/time functions that authors expect in a dataframe system. The catalog is standards-led where possible, preserves compatibility aliases where semantics match, and leaves specialist or format-specific families to their owning RFCs.
 
 ## Motivation
 
@@ -25,7 +25,7 @@ The catalog should still avoid copying every backend-specific function. Function
 
 ## Goals
 
-- Define common math, string, binary, regex, and date/time scalar functions.
+- Define common math, string, encoding, regex, and date/time scalar functions.
 - Specify canonical names and compatibility aliases at the family level.
 - Require type, null, and error behavior to be registry-visible.
 - Keep format-specific, nested-data, sketch, geospatial, and engine-specific functions out of this RFC.
@@ -59,15 +59,15 @@ Compatibility aliases are useful, but authors should see one canonical InQL name
 
 InQL should define common math functions including `abs`, `ceil`, `floor`, `round`, `sqrt`, `power`, `exp`, `ln`, `log`, `log10`, `sign`, `least`, `greatest`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `degrees`, and `radians`.
 
-InQL should define common string functions including `char_length`, `octet_length`, `upper`, `lower`, `trim`, `ltrim`, `rtrim`, `substring`, `position`, `overlay`, `concat`, `concat_ws`, `replace`, `translate`, `repeat`, `left`, `right`, `lpad`, and `rpad`.
+InQL should define common string functions including `char_length`, `octet_length`, `upper`, `lower`, `trim`, `ltrim`, `rtrim`, `substring`, `position`, `overlay`, `concat`, `concat_ws`, `replace`, `translate`, `repeat`, `left`, `right`, `lpad`, `rpad`, and `split_part`.
 
-InQL should define common binary and encoding functions including `encode`, `decode`, `base64`, `unbase64`, `hex`, and `unhex`, provided their character encoding and invalid-input behavior are specified.
+InQL should define common text encoding functions including `encode`, `decode`, `base64`, `unbase64`, `hex`, and `unhex`, provided their character encoding and invalid-input behavior are specified.
 
 InQL should define common regex functions including `regexp_like`, `regexp_replace`, and `regexp_extract` once the regex flavor and capture semantics are specified.
 
-InQL should define common date/time functions including `current_date`, `current_time`, `current_timestamp`, `extract`, `date_part`, `date_trunc`, `time_trunc`, `date_add`, `date_sub`, `date_diff`, `timestamp_diff`, `to_date`, `to_time`, `to_timestamp`, `from_unixtime`, `unix_seconds`, `unix_millis`, `unix_micros`, `make_date`, `make_time`, and `make_timestamp`.
+InQL should define common date/time functions including `current_date`, `current_time`, `current_timestamp`, `extract`, `date_part`, `date_trunc`, `time_trunc`, `date_add`, `date_sub`, `date_diff`, `timestamp_diff`, `to_date`, `to_time`, `to_timestamp`, `from_unixtime`, `unix_seconds`, `unix_millis`, `unix_micros`, `make_date`, `make_time`, `make_timestamp`, and `last_day`.
 
-The catalog should explicitly account for dbt-style portability names such as `dateadd`, `datediff`, `safe_cast`, `split_part`, `last_day`, `hash`, and type-name helpers. These names may be canonical, aliases, or extension helpers, but their adapter-specific rendering requirements must be represented through the registry rather than undocumented backend conditionals.
+The catalog should explicitly account for dbt-style portability names such as `dateadd`, `datediff`, and `safe_cast`. These names may be canonical helpers or compatibility aliases, but their adapter-specific rendering requirements must be represented through the registry rather than undocumented backend conditionals. Deterministic hash helpers belong to InQL RFC 022. Semi-structured type and variant helpers belong to InQL RFC 026.
 
 Every function added by this RFC must be entered in the function registry with type rules, null behavior, determinism, and backend support. Current time functions must be marked stable within a query or explicitly nondeterministic; the registry must not leave that ambiguous.
 
@@ -81,7 +81,11 @@ This RFC requires importable function names. Query syntax may expose SQL keyword
 
 Canonical names should prefer SQL-standard or widely portable names where semantics match. Compatibility aliases may include Spark-style names such as `substr`, `ucase`, `lcase`, `dateadd`, or `datediff` where they are unambiguous.
 
-String functions must define whether indices are one-based or zero-based. Date/time functions must define timezone and session-time behavior before they can reach Planned status.
+String functions must use one-based SQL-compatible positions for functions such as `substring`, `position`, `overlay`, `left`, `right`, `lpad`, `rpad`, and `split_part`. `position` returns `0` when the search string is not found.
+
+Regex functions use a safe Rust-regex-compatible flavor: no lookaround or backreferences are guaranteed by the portable contract. `regexp_extract` defaults to capture group `1`; group `0` returns the full match.
+
+Current date, time, and timestamp helpers are registry-marked as nondeterministic because InQL's registry has no separate statement-stable determinism category. Backends may evaluate them statement-stably, but InQL authors must not rely on them as deterministic pure functions.
 
 ### Interaction with other InQL surfaces
 
@@ -113,22 +117,16 @@ Existing arithmetic helpers should be treated as the start of this catalog but s
 
 ## Implementation Plan
 
-### Phase 1: Math scalar slice
+### Phase 1: Initial math scalar slice
 
-- Add a small portable math family with honest Substrait and DataFusion behavior.
+- Add the first portable math family with honest Substrait and DataFusion behavior.
 - Cover helper expression shape, registry metadata, Substrait lowering, and concrete session execution.
 
-### Phase 2: Remaining math functions
+### Phase 2: Complete common scalar catalog
 
-- Add the remaining math functions once type and edge-case behavior is specified clearly enough to be portable.
-
-### Phase 3: String functions
-
-- Add string normalization and composition helpers after string position/indexing decisions are recorded.
-
-### Phase 4: Binary, regex, and date/time functions
-
-- Add binary/encoding helpers, regex helpers, and date/time helpers only after their invalid-input, regex flavor, timezone, and session-time behavior are settled.
+- Add the remaining math helpers, string helpers, text encoding helpers, regex helpers, date/time helpers, and compatibility aliases.
+- Preserve InQL semantics through registry metadata and Substrait extension mappings, with adapter-owned DataFusion UDFs only where DataFusion has no direct API-level equivalent.
+- Cover registry metadata, Substrait lowering, expression shape, and concrete DataFusion-backed session execution.
 
 ## Progress Checklist
 
@@ -139,19 +137,20 @@ Existing arithmetic helpers should be treated as the start of this catalog but s
 - [x] Add scalar lowering tests and DataFusion-backed session execution tests with concrete output values.
 - [x] Publish the implemented math slice in the function reference docs.
 
-### Remaining RFC 018 scope
+### Implemented in the full RFC 018 follow-up
 
-- [ ] Add remaining math helpers such as `sqrt`, `power`, logarithms, trigonometry, `least`, and `greatest`.
-- [ ] Add string helpers such as `upper`, `lower`, `trim`, `substring`, `position`, `concat`, and padding/replacement helpers.
-- [ ] Add binary and encoding helpers with explicit invalid-input behavior.
-- [ ] Add regex helpers after regex flavor and capture semantics are specified.
-- [ ] Add date/time helpers after timezone and session-time behavior are specified.
-- [ ] Add compatibility aliases where they are semantic aliases rather than backend spellings.
+- [x] Add remaining math helpers such as `sqrt`, `power`, logarithms, trigonometry, `least`, and `greatest`.
+- [x] Add string helpers such as `upper`, `lower`, `trim`, `substring`, `position`, `concat`, `split_part`, and padding/replacement helpers.
+- [x] Add text encoding helpers with explicit invalid-input behavior.
+- [x] Add regex helpers with explicit regex flavor and capture semantics.
+- [x] Add date/time helpers with explicit determinism and session-time behavior.
+- [x] Add compatibility aliases where they are semantic aliases rather than backend spellings.
 
-## Unresolved questions
+## Design Decisions
 
-- Should string positions be one-based for SQL compatibility or zero-based for host-language familiarity?
-- Which regex engine and regex feature set should InQL standardize?
-- What is the session timezone model for current timestamp and timestamp conversion functions?
-
-<!-- When every question is resolved, rename this section to **Design Decisions**, group answers under ### Resolved, and remove this comment. -->
+- **String positions:** RFC 018 string positions are one-based for SQL compatibility. `position` returns `0` when the search string is absent.
+- **Regex flavor:** RFC 018 regex helpers use Rust-regex-compatible semantics. The portable contract does not require lookaround or backreference support.
+- **Regex captures:** `regexp_extract(expr, pattern)` defaults to capture group `1`; group `0` returns the full match.
+- **Current time determinism:** `current_date`, `current_time`, and `current_timestamp` are registry-marked nondeterministic until the registry has a statement-stable category.
+- **Encoding scope:** RFC 018 encoding helpers are text-to-text helpers. Binary and semi-structured logical value surfaces belong to InQL RFC 026 rather than hidden DataFusion-specific behavior.
+- **DataFusion boundary:** DataFusion native functions are used where they preserve InQL semantics directly. Adapter UDFs are DataFusion execution details and do not own the InQL semantic contract.

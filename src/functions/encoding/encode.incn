@@ -1,0 +1,51 @@
+"""Text-to-encoded-string helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.inputs import StrValueOrColumn, str_value_or_column_expr
+from functions.registry import register_function, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import ENCODE_FUNCTION_ANCHOR
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=extension_mapping("encode", ENCODE_FUNCTION_ANCHOR),
+))
+pub def encode(expr: ColumnExpr, format: StrValueOrColumn) -> ColumnExpr:
+    """
+    Build an encoding expression.
+
+    Supported portable formats are `base64`, `base64pad`, and `hex`.
+
+    Examples:
+        encoded = encode(col("payload"), "base64")
+
+    Parameters:
+        expr: Input scalar expression.
+        format: Format selector expression.
+    """
+    return registered_application("encode", [expr, str_value_or_column_expr(format)])
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        col,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+    )
+    def test_encode_builds_registered_application() -> None:
+        expr = encode(col("payload"), "base64")
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "encode"
+        assert column_expr_argument_count(expr) == 2

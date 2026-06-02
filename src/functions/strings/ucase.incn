@@ -1,0 +1,13 @@
+"""Uppercase compatibility alias."""
+
+from functions.strings.upper import upper
+
+pub ucase = alias upper
+
+
+module tests:
+    from projection_builders import ColumnExprKind, col, column_expr_function_name, column_expr_kind
+    def test_ucase_rewrites_to_upper() -> None:
+        expr = ucase(col("name"))
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "upper"

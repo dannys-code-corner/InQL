@@ -1,0 +1,49 @@
+"""Two-argument inverse-tangent math helper."""
+
+from function_registry import (
+    FunctionClass,
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    deterministic_spec,
+    extension_mapping,
+    v0_1,
+)
+from functions.registry import register_function, registered_application
+from projection_builders import ColumnExpr
+from substrait.function_extensions import ATAN2_FUNCTION_ANCHOR
+
+
+@register_function(deterministic_spec(
+    function_class=FunctionClass.Scalar,
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    substrait=extension_mapping("atan2", ATAN2_FUNCTION_ANCHOR),
+))
+pub def atan2(y: ColumnExpr, x: ColumnExpr) -> ColumnExpr:
+    """
+    Build an inverse tangent from `y` and `x` coordinates.
+
+    Examples:
+        angle = atan2(col("y"), col("x"))
+
+    Parameters:
+        y: Y-coordinate expression.
+        x: X-coordinate expression.
+    """
+    return registered_application("atan2", [y, x])
+
+
+module tests:
+    from projection_builders import (
+        ColumnExprKind,
+        col,
+        column_expr_argument_count,
+        column_expr_function_name,
+        column_expr_kind,
+        int_expr,
+    )
+    def test_atan2_builds_registered_application() -> None:
+        expr = atan2(col("y"), int_expr(1))
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "atan2"
+        assert column_expr_argument_count(expr) == 2
