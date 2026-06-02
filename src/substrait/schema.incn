@@ -14,12 +14,14 @@ from rust::substrait::proto::type import (
     Fp64,
     I64,
     Kind,
+    List as SubstraitList,
     Nullability,
     PrecisionTimestamp,
     String as SubstraitString,
     Struct,
 )
 from rust::incan_stdlib::errors import raise_value_error
+from rust::std::boxed import Box
 
 
 @derive(Clone)
@@ -29,6 +31,10 @@ pub enum SubstraitPrimitiveKind(str):
     F64 = "f64"
     Timestamp = "timestamp"
     String = "string"
+    BoolList = "list<bool>"
+    I64List = "list<i64>"
+    F64List = "list<f64>"
+    StringList = "list<string>"
 
 
 @derive(Clone)
@@ -59,6 +65,14 @@ def _primitive_kind_from_type_name(type_name: str) -> SubstraitPrimitiveKind:
         return SubstraitPrimitiveKind.F64
     if type_name == "str":
         return SubstraitPrimitiveKind.String
+    if type_name == "list[bool]" or type_name == "List[bool]":
+        return SubstraitPrimitiveKind.BoolList
+    if type_name == "list[int]" or type_name == "List[int]":
+        return SubstraitPrimitiveKind.I64List
+    if type_name == "list[float]" or type_name == "List[float]":
+        return SubstraitPrimitiveKind.F64List
+    if type_name == "list[str]" or type_name == "List[str]":
+        return SubstraitPrimitiveKind.StringList
     message = f"unsupported model field type `{type_name}` for InQL row shape"
     return raise_value_error(message)
 
@@ -71,6 +85,10 @@ def _schema_type_name(kind: SubstraitPrimitiveKind) -> str:
         SubstraitPrimitiveKind.F64 => return "DOUBLE"
         SubstraitPrimitiveKind.Timestamp => return "TIMESTAMP"
         SubstraitPrimitiveKind.String => return "STRING"
+        SubstraitPrimitiveKind.BoolList => return "ARRAY<BOOLEAN>"
+        SubstraitPrimitiveKind.I64List => return "ARRAY<BIGINT>"
+        SubstraitPrimitiveKind.F64List => return "ARRAY<DOUBLE>"
+        SubstraitPrimitiveKind.StringList => return "ARRAY<STRING>"
 
 
 def _field_type_name(raw_type_name: str) -> str:
@@ -137,6 +155,30 @@ def _type_from_primitive(kind: SubstraitPrimitiveKind, nullable: bool) -> Type:
             )
         SubstraitPrimitiveKind.String =>
             return Type(kind=Some(Kind.String(SubstraitString(type_variation_reference=0, nullability=n.into()))))
+        SubstraitPrimitiveKind.BoolList =>
+            return _list_type(_type_from_primitive(SubstraitPrimitiveKind.Bool, true), nullable)
+        SubstraitPrimitiveKind.I64List =>
+            return _list_type(_type_from_primitive(SubstraitPrimitiveKind.I64, true), nullable)
+        SubstraitPrimitiveKind.F64List =>
+            return _list_type(_type_from_primitive(SubstraitPrimitiveKind.F64, true), nullable)
+        SubstraitPrimitiveKind.StringList =>
+            return _list_type(_type_from_primitive(SubstraitPrimitiveKind.String, true), nullable)
+
+
+def _list_type(element_type: Type, nullable: bool) -> Type:
+    """Lower a primitive list element type into a Substrait list type."""
+    mut n = Nullability.Required
+    if nullable:
+        n = Nullability.Nullable
+    return Type(
+        kind=Some(
+            Kind.List(
+                Box.new(
+                    SubstraitList(type=Some(Box.new(element_type)), type_variation_reference=0, nullability=n.into()),
+                ),
+            ),
+        ),
+    )
 
 
 def _row_shape_field_types(shape: RowShapeSpec) -> list[Type]:

@@ -1,6 +1,6 @@
 # InQL RFC 003: `query {}` blocks — syntax, typing, Substrait
 
-- **Status:** Planned
+- **Status:** Implemented
 - **Created:** 2026-03-22
 - **Author(s):** Danny Meijer
 - **Related:**
@@ -9,12 +9,12 @@
   - InQL RFC 002 (Apache Substrait — **normative `Rel`-level contract** for lowering)
 - **Issue:** [InQL #4](https://github.com/dannys-code-corner/InQL/issues/4)
 - **RFC PR:** -
-- **Written against:** Incan v0.2
-- **Shipped in:** -
+- **Written against:** Incan v0.3
+- **Shipped in:** InQL v0.1
 
 ## Summary
 
-This RFC specifies the **`query { ... }`** expression: grammar, typechecking (including clause-level use of `.column`, `relation.column`, bare identifiers, and aggregate rules), vocabulary activation for the `query` keyword (InQL package as dependency), and lowering to Apache Substrait. Naming-form semantics and current query schema are defined in InQL RFC 000; this RFC **must** remain consistent with that document. It depends on InQL RFC 001: `FROM` sources **must** conform to InQL RFC 001's `DataSet[T]` trait (`DataFrame[T]`, `LazyFrame[T]`, or `DataStream[T]`) so that `T` supplies fields for resolution. InQL RFC 002 owns the Substrait `Rel` and expression contract, mapping catalog, and read vs binding boundaries; this RFC **must** conform to InQL RFC 002 for serialized plan semantics. `SELECT DISTINCT` is part of the minimum clause surface defined here.
+This RFC specifies the **`query { ... }`** expression: grammar, typechecking (including clause-level use of `.column`, `relation.column`, bare identifiers, and aggregate rules), vocabulary activation for the `query` keyword (InQL package as dependency), and lowering to Apache Substrait. InQL also accepts the expression-position colon spelling `query:` for consistency with Incan vocabulary declarations. Naming-form semantics and current query schema are defined in InQL RFC 000; this RFC **must** remain consistent with that document. It depends on InQL RFC 001: `FROM` sources **must** conform to InQL RFC 001's `DataSet[T]` trait (`DataFrame[T]`, `LazyFrame[T]`, or `DataStream[T]`) so that `T` supplies fields for resolution. InQL RFC 002 owns the Substrait `Rel` and expression contract, mapping catalog, and read vs binding boundaries; this RFC **must** conform to InQL RFC 002 for serialized plan semantics. `SELECT DISTINCT` is part of the minimum clause surface defined here.
 
 ## Motivation
 
@@ -39,8 +39,7 @@ A SQL-familiar surface inside Incan improves readability and enables compile-tim
 ## Guide-level explanation
 
 ```incan
-from pub::inql import DataFrame
-from pub::inql.functions import count, sum, avg
+from pub::inql import DataFrame, avg, count, desc, sum
 from models import Order, OrderSummary
 
 def summarize_orders(orders: DataFrame[Order]) -> DataFrame[OrderSummary]:
@@ -49,11 +48,11 @@ def summarize_orders(orders: DataFrame[Order]) -> DataFrame[OrderSummary]:
         WHERE .status == "completed"
         GROUP BY .region
         SELECT
-            region,
+            .region as region,
             count() as order_count,
             sum(.amount) as total_revenue,
             avg(.amount) as avg_order_value,
-        ORDER BY total_revenue DESC
+        ORDER BY desc(.total_revenue)
     }
 ```
 
@@ -64,8 +63,9 @@ The compiler checks `.status`, `.amount`, `GROUP BY` / `SELECT` consistency, and
 ### Packaging and activation
 
 - Projects that depend on InQL **must** obtain `query` through library-driven vocabulary activation in the host compiler.
-- A compilation unit with InQL active **must** parse `query { ... }` as specified here.
-- Aggregate helpers such as `count`, `sum`, `avg`, `min`, and `max` are library symbols, instead of ambient builtins. Examples in this RFC import them from `pub::inql.functions`; implementations **must** provide an equivalent importable surface for aggregate functions used in relational expressions.
+- A compilation unit with InQL active **must** parse `query { ... }` as specified here. It **may** also accept
+  expression-position `query:` as an equivalent spelling.
+- Aggregate helpers such as `count`, `sum`, `avg`, `min`, and `max` are library symbols, instead of ambient builtins. Examples in this RFC import them from the `pub::inql` facade; implementations **must** provide an equivalent importable surface for aggregate functions used in relational expressions.
 
 ### `FROM` and relation to InQL RFC 001
 
@@ -95,8 +95,8 @@ Inside relational expression positions (`WHERE`, `JOIN ON`, `GROUP BY`, `ORDER B
 ### Aggregates
 
 - Under `GROUP BY`, `SELECT` references **must** be grouped or aggregated; illegal mixing **must** error.
-- Aggregate function calls in relational expressions **must** resolve through imported library symbols (for example `from pub::inql.functions import count, sum, avg`). The compiler **must not** treat `count`, `sum`, `avg`, `min`, or `max` as implicitly in scope ambient names.
-- This RFC defines the minimum required aggregate-function surface and import model for `query {}`; it is not an exhaustive catalog of all present or future InQL functions. Additional functions **may** be added later through additive library evolution or follow-up RFCs, provided they do not change the semantics of the required set defined here.
+- Aggregate function calls in relational expressions **must** resolve through imported library symbols (for example `from pub::inql import count, sum, avg`). The compiler **must not** treat `count`, `sum`, `avg`, `min`, or `max` as implicitly in scope ambient names.
+- This RFC defines the minimum required aggregate-function surface and import model for `query {}`; it is not an exhaustive catalog of all InQL functions. Additional functions require additive library evolution or follow-up RFCs that do not change the semantics of the required set defined here.
 - `SELECT DISTINCT` **must** be supported as a projection modifier in the minimum `query {}` surface. It removes duplicate rows from the projected schema and lowers using the distinct-row contract defined by InQL RFC 002.
 
 ### Clause inventory (minimum)
@@ -105,8 +105,8 @@ This RFC **must** require at least:
 
 - `FROM`, `WHERE`, `SELECT`, `GROUP BY`, `ORDER BY`, `LIMIT`
 - inner `JOIN ... ON`, `LEFT JOIN ... ON`
-- `EXPLODE` (or equivalent) for `List` fields
-- `WINDOW BY` (or equivalent) for ranked/windowed forms in scope
+- `EXPLODE <expr> as <alias>` for list-valued expressions
+- `WINDOW BY <alias> = <window expression>` for ranked/windowed forms in scope
 
 Post-`SELECT` filters on the projected schema use `WHERE` again (a `WHERE` clause ordered after `SELECT` in the block). `HAVING` is **not** InQL syntax and **must not** be introduced.
 
@@ -155,9 +155,11 @@ Post-`SELECT` filters on the projected schema use `WHERE` again (a `WHERE` claus
 - **Return type inference**: `query {}` infers the output schema from the `SELECT` list. The result preserves the collection kind of the `FROM` source: a `query {}` over a `DataStream` yields a `DataStream`; over a `LazyFrame` yields a `LazyFrame`; over a `DataFrame` yields a `DataFrame`. Explicit type annotation at the call site is optional but recommended for documentation.
 - **Post-`SELECT` clause ordering**: the canonical clause order is `FROM` → `JOIN` → `WHERE` → `GROUP BY` → `SELECT` → `WHERE` (post-`SELECT` filter) → `ORDER BY` → `LIMIT`. `HAVING` is not InQL syntax (InQL RFC 000). Exact diagnostic wording for ordering violations is an implementation detail.
 - **Aggregate minimum set**: the initial implementation requires at least `count`, `sum`, `avg`, `min`, `max`. Window functions (`WINDOW BY` and ranked expressions) are part of the clause inventory but their detailed builtin set evolves during implementation. `DataStream` source restrictions follow InQL RFC 001's static capability gating: operations requiring unbounded state are statically rejected.
-- **Aggregate function scope:** the minimum aggregate set is exposed through an importable InQL functions module (examples use `pub::inql.functions`). These names are ordinary imported symbols that gain aggregate meaning in aggregate-capable relational positions; they are not special ambient builtins.
-- **`IN` clause**: deferred to a future amendment. The initial implementation does not require `IN` as a clause operator. If added later, the RHS **must** conform to `DataSet[T]` with a compatible schema.
+- **Aggregate function scope:** the minimum aggregate set is exposed through an importable InQL facade (examples use `pub::inql`). These names are ordinary imported symbols that gain aggregate meaning in aggregate-capable relational positions; they are not special ambient builtins.
+- **`IN` clause**: not part of the RFC003 clause grammar. A separate RFC is required before introducing `IN` as a query-block clause operator, and its RHS contract must conform to `DataSet[T]` with a compatible schema.
 - **Substrait version and mapping catalog**: InQL RFC 002 owns pinning policy, the north-star operator → `Rel` catalog, and extension URI requirements; the exact revision shipped with a toolchain is documented in release artifacts alongside the implementation.
 - **Alternate surfaces**: pipe-forward is InQL RFC 005; method chains are InQL RFC 001. This RFC does not mandate alternative surfaces in the initial implementation.
-- **Minimum join surface:** the required v0.1 clause inventory includes `JOIN ... ON` (inner join) and `LEFT JOIN ... ON`. `RIGHT` and `FULL OUTER` joins are not part of the required minimum and **may** be added later as additive extensions.
+- **Minimum join surface:** the required v0.1 clause inventory includes `JOIN ... ON` (inner join) and `LEFT JOIN ... ON`. `RIGHT` and `FULL OUTER` joins are not part of the required RFC003 minimum; adding them requires an additive extension that preserves the current join semantics.
 - **`SELECT DISTINCT`:** `query {}` **must** support `SELECT DISTINCT` in the minimum clause surface. It is the canonical clause-level spelling for duplicate elimination in this surface; method-chain APIs may expose equivalent operations, but they do not replace the query-surface keyword.
+- **Ordering syntax:** the implemented v0.1 query surface uses ordering helpers such as `asc(.amount)` and
+  `desc(.amount)` rather than postfix SQL tokens such as `.amount DESC`.

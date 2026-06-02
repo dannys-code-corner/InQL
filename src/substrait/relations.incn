@@ -84,6 +84,7 @@ from substrait.expr_lowering import (
     grouping_reference_indexes,
     i64_expr,
     lower_project,
+    lower_select_project,
     scalar_expr,
     string_expr,
 )
@@ -857,6 +858,39 @@ pub def try_project_rel_of_columns(
     )
 
 
+pub def select_project_rel_of_columns(
+    input: Rel,
+    input_columns: list[str],
+    assignments: list[ProjectionAssignment],
+) -> Rel:
+    """Wrap a child relation in `ProjectRel` with exclusive projection semantics."""
+    return _lowered_rel_or_raise(try_select_project_rel_of_columns(input, input_columns, assignments))
+
+
+pub def try_select_project_rel_of_columns(
+    input: Rel,
+    input_columns: list[str],
+    assignments: list[ProjectionAssignment],
+) -> Result[Rel, SubstraitLoweringError]:
+    """Fallibly wrap a child relation in an exclusive `ProjectRel`."""
+    lowered = lower_select_project(input_columns, assignments)?
+    common = RelCommon(
+        hint=None,
+        advanced_extension=None,
+        emit_kind=Some(EmitKind.Emit(Emit(output_mapping=lowered.output_mapping))),
+    )
+    return Ok(
+        _rel_project(
+            ProjectRel(
+                common=Some(common),
+                input=Some(Box.new(input)),
+                expressions=lowered.expressions,
+                advanced_extension=None,
+            ),
+        ),
+    )
+
+
 pub def project_rel_with_expressions(input: Rel, expressions: list[Expression]) -> Rel:
     """Append already-lowered Substrait expressions to a relation."""
     # The DataFusion adapter uses this to evaluate generator arguments into temporary columns before unnesting.
@@ -870,24 +904,67 @@ pub def project_rel_with_expressions(input: Rel, expressions: list[Expression]) 
     )
 
 
-pub def join_rel(left: Rel, right: Rel, on_predicate: bool) -> Rel:
+pub def join_rel(left: Rel, right: Rel, on_predicate: ColumnExpr) -> Rel:
     """Wrap two child relations in an inner `JoinRel`."""
     return join_rel_of_kind(left, right, on_predicate, SubstraitJoinKind.Inner)
 
 
-pub def join_rel_of_kind(left: Rel, right: Rel, on_predicate: bool, kind: SubstraitJoinKind) -> Rel:
+pub def join_rel_of_kind(left: Rel, right: Rel, on_predicate: ColumnExpr, kind: SubstraitJoinKind) -> Rel:
     """Wrap two child relations in `JoinRel` using one explicit Substrait join variant."""
-    return _rel_join(
-        JoinRel(
-            common=Some(_direct_common()),
-            left=Some(Box.new(left)),
-            right=Some(Box.new(right)),
-            expression=Some(Box.new(bool_expr(on_predicate))),
-            post_join_filter=None,
-            type=_join_type_from_kind(kind),
-            advanced_extension=None,
+    return join_rel_of_columns(
+        left.clone(),
+        relation_output_columns(left),
+        right.clone(),
+        relation_output_columns(right),
+        on_predicate,
+        kind,
+    )
+
+
+pub def join_rel_of_columns(
+    left: Rel,
+    left_columns: list[str],
+    right: Rel,
+    right_columns: list[str],
+    on_predicate: ColumnExpr,
+    kind: SubstraitJoinKind,
+) -> Rel:
+    """Wrap two child relations in `JoinRel` using explicit join predicate input columns."""
+    return _lowered_rel_or_raise(try_join_rel_of_columns(left, left_columns, right, right_columns, on_predicate, kind))
+
+
+pub def try_join_rel_of_columns(
+    left: Rel,
+    left_columns: list[str],
+    right: Rel,
+    right_columns: list[str],
+    on_predicate: ColumnExpr,
+    kind: SubstraitJoinKind,
+) -> Result[Rel, SubstraitLoweringError]:
+    """Fallibly wrap two child relations in a typed `JoinRel`."""
+    input_columns = _join_input_columns(left_columns, right_columns)
+    predicate = filter_predicate_expr(input_columns, on_predicate)?
+    return Ok(
+        _rel_join(
+            JoinRel(
+                common=Some(_direct_common()),
+                left=Some(Box.new(left)),
+                right=Some(Box.new(right)),
+                expression=Some(Box.new(predicate)),
+                post_join_filter=None,
+                type=_join_type_from_kind(kind),
+                advanced_extension=None,
+            ),
         ),
     )
+
+
+def _join_input_columns(left_columns: list[str], right_columns: list[str]) -> list[str]:
+    """Return the scalar-expression input columns visible to one join predicate."""
+    mut input_columns: list[str] = []
+    input_columns.extend(left_columns)
+    input_columns.extend(right_columns)
+    return input_columns
 
 
 pub def cross_rel(left: Rel, right: Rel) -> Rel:

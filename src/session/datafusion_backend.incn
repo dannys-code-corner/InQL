@@ -31,7 +31,6 @@ from rust::substrait::proto::expression::window_function import Bound, BoundsTyp
 from rust::substrait::proto::expression::window_function::bound import Kind as BoundKind
 from rust::substrait::proto::function_argument import ArgType
 from rust::substrait::proto::rel import RelType
-from rust::substrait::proto::join_rel import JoinType
 from rust::substrait::proto::sort_field import SortDirection, SortKind
 from rust::datafusion::common import Column, ScalarValue, UnnestOptions
 from rust::datafusion::arrow::datatypes import DataType as ArrowDataType
@@ -245,8 +244,30 @@ async def _dataframe_from_plan(ctx: SessionContext, plan: Plan) -> Result[RustDa
     """Build a DataFusion DataFrame, including InQL-owned relation bridges."""
     root = root_rel(plan.clone())
     match _window_rel(root.clone()):
-        Some(window_rel) => return await _dataframe_from_window_rel(ctx, window_rel, root_names(plan.clone()))
+        Some(_) => return await _dataframe_from_window_root_plan(ctx, plan)
         None => return await _dataframe_from_non_window_plan(ctx, plan)
+
+
+async def _dataframe_from_window_root_plan(ctx: SessionContext, plan: Plan) -> Result[RustDataFrame, BackendError]:
+    """Build a DataFusion DataFrame for plans whose semantic root is a window relation."""
+    mut rewritten_root = root_rel(plan.clone())
+    materializations = _collect_materialized_generator_relations(rewritten_root.clone(), "root")
+    if len(materializations) > 0:
+        for materialization in materializations:
+            table_name = _materialized_generator_table_name(materialization.path)
+            df = await _dataframe_from_generator_extension(ctx.clone(), materialization.extension)?
+            await _register_materialized_dataframe(ctx.clone(), table_name, df)?
+        rewritten_root = _replace_materialized_generator_relations(rewritten_root, "root")
+
+    match _window_rel(rewritten_root):
+        Some(window_rel) => return await _dataframe_from_window_rel(ctx, window_rel, root_names(plan))
+        None =>
+            return Err(
+                backend_error(
+                    BackendErrorKind.BackendPlanningError,
+                    "window root planning lost the window relation during adapter materialization",
+                ),
+            )
 
 
 async def _dataframe_from_non_window_plan(ctx: SessionContext, plan: Plan) -> Result[RustDataFrame, BackendError]:
@@ -478,6 +499,11 @@ def _materialization_child_paths(rel: Rel, path: str) -> list[RelationChildPath]
             if let Some(child) = fetch.input:
                 return [RelationChildPath(rel=child.as_ref().clone(), path=f"{path}_fetch")]
             return []
+        Some(RelType.Window(window_rel)) =>
+            window = window_rel.as_ref().clone()
+            if let Some(child) = window.input:
+                return [RelationChildPath(rel=child.as_ref().clone(), path=f"{path}_window")]
+            return []
         Some(RelType.Set(set_rel)) =>
             mut children: list[RelationChildPath] = []
             for idx, input in enumerate(set_rel.inputs):
@@ -525,6 +551,8 @@ def _replace_materialized_generator_children(rel: Rel, path: str) -> Rel:
             return _replace_aggregate_generator_child(rel, aggregate_rel.as_ref().clone(), path)
         Some(RelType.Sort(sort_rel)) => return _replace_sort_generator_child(rel, sort_rel.as_ref().clone(), path)
         Some(RelType.Fetch(fetch_rel)) => return _replace_fetch_generator_child(rel, fetch_rel.as_ref().clone(), path)
+        Some(RelType.Window(window_rel)) =>
+            return _replace_window_generator_child(rel, window_rel.as_ref().clone(), path)
         Some(RelType.Set(set_rel)) => return _replace_set_generator_children(set_rel, path)
         Some(RelType.ExtensionSingle(extension_rel)) =>
             return _replace_extension_generator_child(rel, extension_rel.as_ref().clone(), path)
@@ -586,7 +614,6 @@ def _replace_join_generator_children(join: JoinRel, path: str) -> Rel:
         left = Some(_rewritten_generator_child(child, f"{path}_join_left"))
     if let Some(child) = right:
         right = Some(_rewritten_generator_child(child, f"{path}_join_right"))
-    # Public InQL joins currently lower only inner joins; preserve that contract while rewriting child inputs.
     return Rel(
         rel_type=Some(
             RelType.Join(
@@ -597,7 +624,7 @@ def _replace_join_generator_children(join: JoinRel, path: str) -> Rel:
                         right=right,
                         expression=join.expression,
                         post_join_filter=join.post_join_filter,
-                        type=JoinType.Inner.into(),
+                        type=join.type,
                         advanced_extension=join.advanced_extension,
                     ),
                 ),
@@ -683,6 +710,29 @@ def _replace_fetch_generator_child(original: Rel, fetch: FetchRel, path: str) ->
                                 advanced_extension=fetch.advanced_extension,
                                 offset_mode=fetch.offset_mode,
                                 count_mode=fetch.count_mode,
+                            ),
+                        ),
+                    ),
+                ),
+            )
+        None => return original
+
+
+def _replace_window_generator_child(original: Rel, window: ConsistentPartitionWindowRel, path: str) -> Rel:
+    """Rebuild a WindowRel with its input child rewritten when present."""
+    match window.input:
+        Some(child) =>
+            return Rel(
+                rel_type=Some(
+                    RelType.Window(
+                        Box.new(
+                            ConsistentPartitionWindowRel(
+                                common=window.common,
+                                input=Some(_rewritten_generator_child(child, f"{path}_window")),
+                                window_functions=window.window_functions,
+                                partition_expressions=window.partition_expressions,
+                                sorts=window.sorts,
+                                advanced_extension=window.advanced_extension,
                             ),
                         ),
                     ),
@@ -860,7 +910,7 @@ def _replace_join_window_children(join: JoinRel, path: str) -> Rel:
                         right=right,
                         expression=join.expression,
                         post_join_filter=join.post_join_filter,
-                        type=JoinType.Inner.into(),
+                        type=join.type,
                         advanced_extension=join.advanced_extension,
                     ),
                 ),
@@ -1045,6 +1095,16 @@ def _register_materialized_schema_from_batch(table_name: str, batch: RecordBatch
 
 def _substrait_kind_for_arrow_type_name(type_name: str) -> SubstraitPrimitiveKind:
     """Map the current DataFusion primitive output type names into InQL's minimal Substrait schema kinds."""
+    if type_name.starts_with("List(") or type_name.starts_with("LargeList("):
+        if type_name.contains("Int64") or type_name.contains("Int32") or type_name.contains("UInt64") or type_name.contains(
+            "UInt32",
+        ):
+            return SubstraitPrimitiveKind.I64List
+        if type_name.contains("Float64") or type_name.contains("Float32"):
+            return SubstraitPrimitiveKind.F64List
+        if type_name.contains("Boolean"):
+            return SubstraitPrimitiveKind.BoolList
+        return SubstraitPrimitiveKind.StringList
     if type_name == "Int64" or type_name == "Int32" or type_name == "UInt64" or type_name == "UInt32":
         return SubstraitPrimitiveKind.I64
     if type_name == "Float64" or type_name == "Float32":

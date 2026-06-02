@@ -37,7 +37,14 @@ from prism.store import (
     reachable_node_ids,
     store_nodes,
 )
-from prism.types import authored_node_kind_name, PrismNodeKind, PrismOptimizedView, PrismRewriteExplain, PrismStoreId
+from prism.types import (
+    authored_node_kind_name,
+    PrismJoinKind,
+    PrismNodeKind,
+    PrismOptimizedView,
+    PrismRewriteExplain,
+    PrismStoreId,
+)
 from substrait.errors import SubstraitLoweringError
 
 
@@ -64,36 +71,36 @@ pub class PrismCursor[T with Clone]:
             store_id=self.store_id,
             kind=PrismNodeKind.Filter,
             input_ids=[self.tip_id],
-            named_table="",
-            join_predicate=false,
+            join_predicate=always_true(),
             filter_predicate=predicate,
-            limit_count=0,
-            group_columns=[],
-            sort_columns=[],
-            aggregate_measures=[],
-            generator_applications=[],
-            window_projections=[],
-            projection_assignments=[],
         )
         return PrismCursor(store_id=self.store_id, tip_id=next_tip_id, _type_marker=[])
 
-    def join(self, other: Self, predicate: bool) -> Self:
+    def join(self, other: PrismCursor[T], predicate: ColumnExpr, relation_name: str = "") -> Self:
         """Append one join against another cursor, adopting foreign authored state only when stores differ."""
+        return self._join_with_kind(other, predicate, relation_name, PrismJoinKind.Inner)
+
+    def left_join(self, other: PrismCursor[T], predicate: ColumnExpr, relation_name: str = "") -> Self:
+        """Append one left join against another cursor."""
+        return self._join_with_kind(other, predicate, relation_name, PrismJoinKind.Left)
+
+    def _join_with_kind(
+        self,
+        other: PrismCursor[T],
+        predicate: ColumnExpr,
+        relation_name: str,
+        kind: PrismJoinKind,
+    ) -> Self:
+        """Append one typed join node, adopting foreign authored state only when stores differ."""
         if self.store_id.0 == other.store_id.0:
             next_tip_id = append_node(
                 store_id=self.store_id,
                 kind=PrismNodeKind.Join,
                 input_ids=[self.tip_id, other.tip_id],
-                named_table="",
+                join_kind=kind,
+                join_relation_name=relation_name,
                 join_predicate=predicate,
                 filter_predicate=always_true(),
-                limit_count=0,
-                group_columns=[],
-                sort_columns=[],
-                aggregate_measures=[],
-                generator_applications=[],
-                window_projections=[],
-                projection_assignments=[],
             )
             return PrismCursor(store_id=self.store_id, tip_id=next_tip_id, _type_marker=[])
         adoption = adopt_cursor_subgraph(self.store_id, other.store_id, other.tip_id)
@@ -101,35 +108,31 @@ pub class PrismCursor[T with Clone]:
             store_id=self.store_id,
             kind=PrismNodeKind.Join,
             input_ids=[self.tip_id, adoption.adopted_tip_id],
-            named_table="",
+            join_kind=kind,
+            join_relation_name=relation_name,
             join_predicate=predicate,
             filter_predicate=always_true(),
-            limit_count=0,
-            group_columns=[],
-            sort_columns=[],
-            aggregate_measures=[],
-            generator_applications=[],
-            window_projections=[],
-            projection_assignments=[],
         )
         return PrismCursor(store_id=self.store_id, tip_id=next_tip_id, _type_marker=[])
 
-    def select(self) -> Self:
-        """Append one identity projection node and return the derived tip."""
+    def select[U with Clone](self, assignments: list[ProjectionAssignment] = []) -> PrismCursor[U]:
+        """Append one SELECT projection node and return the derived tip."""
+        if len(assignments) > 0:
+            next_tip_id = append_node(
+                store_id=self.store_id,
+                kind=PrismNodeKind.SelectProject,
+                input_ids=[self.tip_id],
+                join_predicate=always_true(),
+                filter_predicate=always_true(),
+                projection_assignments=assignments,
+            )
+            return PrismCursor(store_id=self.store_id, tip_id=next_tip_id, _type_marker=[])
         next_tip_id = append_node(
             store_id=self.store_id,
             kind=PrismNodeKind.Project,
             input_ids=[self.tip_id],
-            named_table="",
-            join_predicate=false,
+            join_predicate=always_true(),
             filter_predicate=always_true(),
-            limit_count=0,
-            group_columns=[],
-            sort_columns=[],
-            aggregate_measures=[],
-            generator_applications=[],
-            window_projections=[],
-            projection_assignments=[],
         )
         return PrismCursor(store_id=self.store_id, tip_id=next_tip_id, _type_marker=[])
 
@@ -139,15 +142,8 @@ pub class PrismCursor[T with Clone]:
             store_id=self.store_id,
             kind=PrismNodeKind.Project,
             input_ids=[self.tip_id],
-            named_table="",
-            join_predicate=false,
+            join_predicate=always_true(),
             filter_predicate=always_true(),
-            limit_count=0,
-            group_columns=[],
-            sort_columns=[],
-            aggregate_measures=[],
-            generator_applications=[],
-            window_projections=[],
             projection_assignments=[with_column_assignment(name, expr)],
         )
         return PrismCursor(store_id=self.store_id, tip_id=next_tip_id, _type_marker=[])
@@ -158,16 +154,9 @@ pub class PrismCursor[T with Clone]:
             store_id=self.store_id,
             kind=PrismNodeKind.GroupBy,
             input_ids=[self.tip_id],
-            named_table="",
-            join_predicate=false,
+            join_predicate=always_true(),
             filter_predicate=always_true(),
-            limit_count=0,
             group_columns=columns,
-            sort_columns=[],
-            aggregate_measures=[],
-            generator_applications=[],
-            window_projections=[],
-            projection_assignments=[],
         )
         return PrismCursor(store_id=self.store_id, tip_id=next_tip_id, _type_marker=[])
 
@@ -177,16 +166,9 @@ pub class PrismCursor[T with Clone]:
             store_id=self.store_id,
             kind=PrismNodeKind.Aggregate,
             input_ids=[self.tip_id],
-            named_table="",
-            join_predicate=false,
+            join_predicate=always_true(),
             filter_predicate=always_true(),
-            limit_count=0,
-            group_columns=[],
-            sort_columns=[],
             aggregate_measures=measures,
-            generator_applications=[],
-            window_projections=[],
-            projection_assignments=[],
         )
         return PrismCursor(store_id=self.store_id, tip_id=next_tip_id, _type_marker=[])
 
@@ -196,16 +178,9 @@ pub class PrismCursor[T with Clone]:
             store_id=self.store_id,
             kind=PrismNodeKind.OrderBy,
             input_ids=[self.tip_id],
-            named_table="",
-            join_predicate=false,
+            join_predicate=always_true(),
             filter_predicate=always_true(),
-            limit_count=0,
-            group_columns=[],
             sort_columns=columns,
-            aggregate_measures=[],
-            generator_applications=[],
-            window_projections=[],
-            projection_assignments=[],
         )
         return PrismCursor(store_id=self.store_id, tip_id=next_tip_id, _type_marker=[])
 
@@ -215,16 +190,9 @@ pub class PrismCursor[T with Clone]:
             store_id=self.store_id,
             kind=PrismNodeKind.Limit,
             input_ids=[self.tip_id],
-            named_table="",
-            join_predicate=false,
+            join_predicate=always_true(),
             filter_predicate=always_true(),
             limit_count=n,
-            group_columns=[],
-            sort_columns=[],
-            aggregate_measures=[],
-            generator_applications=[],
-            window_projections=[],
-            projection_assignments=[],
         )
         return PrismCursor(store_id=self.store_id, tip_id=next_tip_id, _type_marker=[])
 
@@ -234,16 +202,9 @@ pub class PrismCursor[T with Clone]:
             store_id=self.store_id,
             kind=PrismNodeKind.Generate,
             input_ids=[self.tip_id],
-            named_table="",
-            join_predicate=false,
+            join_predicate=always_true(),
             filter_predicate=always_true(),
-            limit_count=0,
-            group_columns=[],
-            sort_columns=[],
-            aggregate_measures=[],
             generator_applications=[generator],
-            window_projections=[],
-            projection_assignments=[],
         )
         return PrismCursor(store_id=self.store_id, tip_id=next_tip_id, _type_marker=[])
 
@@ -253,16 +214,9 @@ pub class PrismCursor[T with Clone]:
             store_id=self.store_id,
             kind=PrismNodeKind.Window,
             input_ids=[self.tip_id],
-            named_table="",
-            join_predicate=false,
+            join_predicate=always_true(),
             filter_predicate=always_true(),
-            limit_count=0,
-            group_columns=[],
-            sort_columns=[],
-            aggregate_measures=[],
-            generator_applications=[],
             window_projections=[window_projection(name, application)],
-            projection_assignments=[],
         )
         return PrismCursor(store_id=self.store_id, tip_id=next_tip_id, _type_marker=[])
 
@@ -297,17 +251,9 @@ pub def prism_cursor_named_table[T with Clone](table_name: str) -> PrismCursor[T
     tip_id = append_node(
         store_id=store_id,
         kind=PrismNodeKind.ReadNamedTable,
-        input_ids=[],
         named_table=table_name,
-        join_predicate=false,
+        join_predicate=always_true(),
         filter_predicate=always_true(),
-        limit_count=0,
-        group_columns=[],
-        sort_columns=[],
-        aggregate_measures=[],
-        generator_applications=[],
-        window_projections=[],
-        projection_assignments=[],
     )
     return PrismCursor(store_id=store_id, tip_id=tip_id, _type_marker=[])
 
@@ -320,15 +266,29 @@ pub def prism_cursor_apply_filter[T with Clone](cursor: PrismCursor[T], predicat
 pub def prism_cursor_apply_join[T with Clone](
     left: PrismCursor[T],
     right: PrismCursor[T],
-    predicate: bool,
+    predicate: ColumnExpr,
+    relation_name: str = "",
 ) -> PrismCursor[T]:
     """Apply dataset-level join intent while preserving same-store cheapness and cross-store correctness."""
-    return left.join(right, predicate)
+    return left.join(right, predicate, relation_name)
 
 
-pub def prism_cursor_apply_select[T with Clone](cursor: PrismCursor[T]) -> PrismCursor[T]:
-    """Apply dataset-level identity projection intent through Prism."""
-    return cursor.select()
+pub def prism_cursor_apply_left_join[T with Clone](
+    left: PrismCursor[T],
+    right: PrismCursor[T],
+    predicate: ColumnExpr,
+    relation_name: str = "",
+) -> PrismCursor[T]:
+    """Apply dataset-level left join intent through Prism."""
+    return left.left_join(right, predicate, relation_name)
+
+
+pub def prism_cursor_apply_select[T with Clone, U with Clone](
+    cursor: PrismCursor[T],
+    assignments: list[ProjectionAssignment] = [],
+) -> PrismCursor[U]:
+    """Apply dataset-level SELECT projection intent through Prism."""
+    return cursor.select[U](assignments)
 
 
 pub def prism_cursor_apply_with_column[T with Clone](

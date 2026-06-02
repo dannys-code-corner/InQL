@@ -230,6 +230,11 @@ pub def project_output_columns(input_columns: list[str], assignments: list[Proje
     return output_columns
 
 
+pub def select_project_output_columns(assignments: list[ProjectionAssignment]) -> list[str]:
+    """Return output column names for an exclusive projection assignment list."""
+    return [assignment.output_name for assignment in assignments]
+
+
 def _index_of_column(columns: list[str], name: str) -> int:
     """Return the first matching column index for `name`, or `-1` when absent."""
     for idx, column_name in enumerate(columns):

@@ -9,7 +9,7 @@ describe portable relational intent.
 - builder-based grouping and aggregation via `col(...)`, `sum(...)`, and `count()`
 """
 
-from functions import add, col, count, eq, gt, lit, mul, sum
+from functions import add, always_true, col, count, eq, gt, lit, mul, sum
 from dataset import DataSet, BoundedDataSet, DataFrame, LazyFrame
 from models import AggregateOrder, Customer, Order, OrderLine
 
@@ -31,7 +31,7 @@ def customer_dimension(customers: LazyFrame[Customer]) -> LazyFrame[Customer]:
 
 
 def join_orders_with_revision(orders: LazyFrame[Order], revised_orders: LazyFrame[Order]) -> LazyFrame[Order]:
-    return orders.join(revised_orders, true)
+    return orders.join(revised_orders, always_true())
 
 
 def customer_dimension_preview(customers: LazyFrame[Customer]) -> LazyFrame[Customer]:

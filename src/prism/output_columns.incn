@@ -5,7 +5,12 @@ from prism.rewrite import rewritten_node_at
 from prism.types import PrismNode, PrismNodeKind, PrismOptimizedView, PrismStoreId
 from aggregate_builders import aggregate_measure_output_names
 from generator_builders import generator_output_columns
-from projection_builders import ColumnExpr, project_output_columns, scalar_expr_output_name
+from projection_builders import (
+    ColumnExpr,
+    project_output_columns,
+    scalar_expr_output_name,
+    select_project_output_columns,
+)
 from schema_registry import named_table_columns
 from window_builders import window_output_columns
 
@@ -24,6 +29,8 @@ pub def authored_output_columns(store_id: PrismStoreId, tip_id: int) -> list[str
         return authored_output_columns(store_id, node.input_ids[0])
     if node.kind == PrismNodeKind.Project:
         return project_output_columns(authored_output_columns(store_id, node.input_ids[0]), node.projection_assignments)
+    if node.kind == PrismNodeKind.SelectProject:
+        return select_project_output_columns(node.projection_assignments)
     if node.kind == PrismNodeKind.Generate:
         return generator_output_columns(
             authored_output_columns(store_id, node.input_ids[0]),
@@ -36,7 +43,10 @@ pub def authored_output_columns(store_id: PrismStoreId, tip_id: int) -> list[str
         # We keep both sides verbatim here; duplicate names are part of the current output shape and are resolved later
         # by higher-level schema/authoring choices rather than being collapsed at this inference layer.
         lhs_columns = authored_output_columns(store_id, node.input_ids[0])
-        rhs_columns = authored_output_columns(store_id, node.input_ids[1])
+        rhs_columns = _right_join_output_columns(
+            authored_output_columns(store_id, node.input_ids[1]),
+            node.join_relation_name,
+        )
         mut columns: list[str] = []
         columns.extend(lhs_columns)
         columns.extend(rhs_columns)
@@ -63,6 +73,8 @@ pub def rewritten_output_columns(view: PrismOptimizedView, node_id: int) -> list
         return rewritten_output_columns(view, node.input_ids[0])
     if node.kind == PrismNodeKind.Project:
         return project_output_columns(rewritten_output_columns(view, node.input_ids[0]), node.projection_assignments)
+    if node.kind == PrismNodeKind.SelectProject:
+        return select_project_output_columns(node.projection_assignments)
     if node.kind == PrismNodeKind.Generate:
         return generator_output_columns(
             rewritten_output_columns(view, node.input_ids[0]),
@@ -74,7 +86,10 @@ pub def rewritten_output_columns(view: PrismOptimizedView, node_id: int) -> list
         # Rewritten views keep the same left-then-right join column order as authored views
         # so output-column inference stays stable across Prism rewrite passes.
         lhs_columns = rewritten_output_columns(view, node.input_ids[0])
-        rhs_columns = rewritten_output_columns(view, node.input_ids[1])
+        rhs_columns = _right_join_output_columns(
+            rewritten_output_columns(view, node.input_ids[1]),
+            node.join_relation_name,
+        )
         mut columns: list[str] = []
         columns.extend(lhs_columns)
         columns.extend(rhs_columns)
@@ -90,6 +105,13 @@ pub def rewritten_output_columns(view: PrismOptimizedView, node_id: int) -> list
         columns.extend(measure_output_names)
         return columns
     return []
+
+
+def _right_join_output_columns(columns: list[str], relation_name: str) -> list[str]:
+    """Return right-side join output columns, qualified when query lowering supplied a relation name."""
+    if len(relation_name) == 0:
+        return columns
+    return [f"{relation_name}.{column}" for column in columns]
 
 
 def _authored_aggregate_prefix_columns(store_id: PrismStoreId, node: PrismNode) -> list[str]:

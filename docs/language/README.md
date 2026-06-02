@@ -11,6 +11,7 @@ This section documents the current InQL package surface.
 
 - [Dataset carriers (Reference)][dataset-reference]
 - [Dataset carriers (Explanation)][dataset-explanation]
+- [Query blocks (Reference)][query-blocks-reference]
 
 ### Execution and materialization
 
@@ -29,6 +30,7 @@ This section documents the current InQL package surface.
 [explanation]: explanation/
 [dataset-reference]: reference/dataset_carriers.md
 [dataset-explanation]: explanation/dataset_carriers.md
+[query-blocks-reference]: reference/query_blocks.md
 [execution-reference]: reference/execution_context.md
 [execution-explanation]: explanation/execution_context.md
 [substrait-read-root]: reference/substrait/read_root_binding_contract.md

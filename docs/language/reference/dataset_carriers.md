@@ -37,7 +37,7 @@ Deferred logical pipeline. Always bounded.
 
 ### `DataStream[T]`
 
-Streaming specialization. Shares the `DataSet[T]` API while carrying unbounded semantics.
+Streaming specialization. Shares the carrier method surface while carrying unbounded semantics.
 
 ## Related reference pages
 

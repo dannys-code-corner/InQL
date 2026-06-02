@@ -107,7 +107,7 @@ def test_prism__same_store_join_reuses_shared_history() -> None:
     right: PrismCursor[Order] = base.select()
 
     # -- Act --
-    joined: PrismCursor[Order] = left.join(right.clone(), true)
+    joined: PrismCursor[Order] = left.join(right.clone(), always_true())
     plan = joined.to_substrait_plan()
 
     # -- Assert --
@@ -131,7 +131,7 @@ def test_prism__same_store_join_with_longer_branches_is_still_one_append() -> No
     right: PrismCursor[Order] = base.select().limit(5)
 
     # -- Act --
-    joined: PrismCursor[Order] = left.join(right.clone(), true)
+    joined: PrismCursor[Order] = left.join(right.clone(), always_true())
     plan = joined.to_substrait_plan()
 
     # -- Assert --
@@ -151,7 +151,7 @@ def test_prism__cross_store_join_adopts_reachable_subgraph() -> None:
     right: PrismCursor[Order] = prism_cursor_named_table(str("orders_archive")).filter(always_false())
 
     # -- Act --
-    joined: PrismCursor[Order] = left.join(right.clone(), true)
+    joined: PrismCursor[Order] = left.join(right.clone(), always_true())
     plan = joined.to_substrait_plan()
 
     # -- Assert --
@@ -172,8 +172,8 @@ def test_prism__cross_store_join_dedups_equivalent_reachable_rhs_nodes() -> None
     right_right: PrismCursor[Order] = right_base.filter(always_false())
 
     # -- Act --
-    right_joined: PrismCursor[Order] = right_left.join(right_right, true)
-    joined: PrismCursor[Order] = left.join(right_joined.clone(), true)
+    right_joined: PrismCursor[Order] = right_left.join(right_right, always_true())
+    joined: PrismCursor[Order] = left.join(right_joined.clone(), always_true())
     plan = joined.to_substrait_plan()
 
     # -- Assert --
@@ -195,8 +195,8 @@ def test_prism__cross_store_join_dedups_equivalent_rhs_multistep_branches() -> N
     right_right: PrismCursor[Order] = right_base.filter(always_false()).order_by([col("id")])
 
     # -- Act --
-    right_joined: PrismCursor[Order] = right_left.join(right_right.clone(), true)
-    joined: PrismCursor[Order] = left.join(right_joined.clone(), true)
+    right_joined: PrismCursor[Order] = right_left.join(right_right.clone(), always_true())
+    joined: PrismCursor[Order] = left.join(right_joined.clone(), always_true())
     plan = joined.to_substrait_plan()
 
     # -- Assert --
@@ -219,8 +219,8 @@ def test_prism__cross_store_adoption_keeps_distinct_aggregate_modifier_state() -
     right_distinct: PrismCursor[Order] = right_base.group_by([col("id")]).agg([count(col("id")).distinct()])
 
     # -- Act --
-    right_joined: PrismCursor[Order] = right_plain.join(right_distinct.clone(), true)
-    joined: PrismCursor[Order] = left.join(right_joined.clone(), true)
+    right_joined: PrismCursor[Order] = right_plain.join(right_distinct.clone(), always_true())
+    joined: PrismCursor[Order] = left.join(right_joined.clone(), always_true())
     plan = joined.to_substrait_plan()
 
     # -- Assert --
@@ -241,8 +241,8 @@ def test_prism__cross_store_adoption_keeps_aggregate_arguments() -> None:
     right_tail: PrismCursor[Order] = right_base.group_by([col("id")]).agg([approx_percentile(col("id"), 0.95)])
 
     # -- Act --
-    right_joined: PrismCursor[Order] = right_median.join(right_tail.clone(), true)
-    joined: PrismCursor[Order] = left.join(right_joined.clone(), true)
+    right_joined: PrismCursor[Order] = right_median.join(right_tail.clone(), always_true())
+    joined: PrismCursor[Order] = left.join(right_joined.clone(), always_true())
     plan = joined.to_substrait_plan()
 
     # -- Assert --
@@ -257,7 +257,7 @@ def test_prism__cursor_native_nodes_cover_current_method_surface() -> None:
     # -- Arrange --
     _register_projection_test_schema(str("orders"))
     _register_generator_test_schema(str("orders_generator_prism"))
-    projected: PrismCursor[Order] = prism_cursor_named_table(str("orders")).select()
+    projected: PrismCursor[Order] = prism_cursor_named_table[Order](str("orders")).select()
     grouped: PrismCursor[Order] = prism_cursor_named_table(str("orders")).group_by([col("id")])
 
     # -- Act --
@@ -318,7 +318,7 @@ def test_prism__rewrite_eliminates_filter_true_by_default() -> None:
 def test_prism__rewrite_collapses_adjacent_limits_projects_and_order_by() -> None:
     # -- Arrange --
     limited: PrismCursor[Order] = prism_cursor_named_table(str("orders")).limit(10).limit(3)
-    projected: PrismCursor[Order] = prism_cursor_named_table(str("orders")).select().select()
+    projected: PrismCursor[Order] = prism_cursor_named_table[Order](str("orders")).select[Order]().select[Order]()
 
     # -- Act --
     ordered: PrismCursor[Order] = prism_cursor_named_table(str("orders")).order_by([col("id")]).order_by([col("id")])
@@ -435,8 +435,11 @@ def test_prism__cursor_methods_match_apply_helpers() -> None:
     base: PrismCursor[Order] = prism_cursor_named_table(str("orders"))
 
     # -- Act --
-    via_methods = base.filter(always_false()).select().limit(3)
-    via_helpers = prism_cursor_apply_limit(prism_cursor_apply_select(prism_cursor_apply_filter(base, always_false())), 3)
+    via_methods: PrismCursor[Order] = base.filter(always_false()).select[Order]().limit(3)
+    via_helpers: PrismCursor[Order] = prism_cursor_apply_limit(
+        prism_cursor_apply_select[Order, Order](prism_cursor_apply_filter(base, always_false())),
+        3,
+    )
 
     # -- Assert --
     assert prism_cursor_tip_kind_name(via_methods) == prism_cursor_tip_kind_name(via_helpers), "method and helper paths should produce the same tip kind"

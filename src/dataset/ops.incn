@@ -17,8 +17,11 @@ from substrait.relations import (
     fetch_rel,
     filter_rel_of_columns,
     join_rel,
+    join_rel_of_columns,
     project_rel_of_columns,
+    select_project_rel_of_columns,
     sort_rel_of_columns,
+    SubstraitJoinKind,
     generator_rel_of_columns,
     window_rel_of_columns,
 )
@@ -43,7 +46,7 @@ pub def filter_ds_of_columns(rel: Rel, input_columns: list[str], predicate: Colu
     return filter_rel_of_columns(rel, input_columns, predicate)
 
 
-pub def join_ds(left_rel: Rel, right_rel: Rel, on: bool) -> Rel:
+pub def join_ds(left_rel: Rel, right_rel: Rel, on: ColumnExpr) -> Rel:
     """
     Apply dataset-level join intent to two relations.
 
@@ -56,6 +59,51 @@ pub def join_ds(left_rel: Rel, right_rel: Rel, on: bool) -> Rel:
         A relation shaped as a join over the two input relations.
     """
     return join_rel(left_rel, right_rel, on)
+
+
+pub def join_ds_of_columns(
+    left_rel: Rel,
+    left_columns: list[str],
+    right_rel: Rel,
+    right_columns: list[str],
+    on: ColumnExpr,
+    right_relation_name: str = "",
+) -> Rel:
+    """Apply dataset-level inner join intent using explicit input-column names."""
+    return join_rel_of_columns(
+        left_rel,
+        left_columns,
+        right_rel,
+        _qualified_right_columns(right_columns, right_relation_name),
+        on,
+        SubstraitJoinKind.Inner,
+    )
+
+
+pub def left_join_ds_of_columns(
+    left_rel: Rel,
+    left_columns: list[str],
+    right_rel: Rel,
+    right_columns: list[str],
+    on: ColumnExpr,
+    right_relation_name: str = "",
+) -> Rel:
+    """Apply dataset-level left join intent using explicit input-column names."""
+    return join_rel_of_columns(
+        left_rel,
+        left_columns,
+        right_rel,
+        _qualified_right_columns(right_columns, right_relation_name),
+        on,
+        SubstraitJoinKind.Left,
+    )
+
+
+def _qualified_right_columns(columns: list[str], relation_name: str) -> list[str]:
+    """Return right-side join predicate names using a relation prefix when provided."""
+    if len(relation_name) == 0:
+        return columns
+    return [f"{relation_name}.{column}" for column in columns]
 
 
 pub def select_ds(rel: Rel) -> Rel:
@@ -84,6 +132,15 @@ pub def with_column_ds(rel: Rel, input_columns: list[str], name: str, expr: Colu
 pub def project_ds_of_columns(rel: Rel, input_columns: list[str], assignments: list[ProjectionAssignment]) -> Rel:
     """Apply dataset-level ordered projection assignments using explicit input-column names."""
     return project_rel_of_columns(rel, input_columns, assignments)
+
+
+pub def select_project_ds_of_columns(
+    rel: Rel,
+    input_columns: list[str],
+    assignments: list[ProjectionAssignment],
+) -> Rel:
+    """Apply dataset-level exclusive projection assignments using explicit input-column names."""
+    return select_project_rel_of_columns(rel, input_columns, assignments)
 
 
 pub def group_by_ds(rel: Rel, columns: list[ColumnExpr]) -> Rel:

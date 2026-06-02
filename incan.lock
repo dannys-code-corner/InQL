@@ -3,7 +3,7 @@
 
 [incan]
 format = 1
-incan-version = "0.3.0-rc28"
+incan-version = "0.3.0-rc42"
 deps-fingerprint = "sha256:c857db33615865c432fa4c9b3947975ccb4255249143ecc1676c26e85981aafb"
 cargo-features = []
 cargo-no-default-features = false
@@ -1824,14 +1824,14 @@ dependencies = [
 
 [[package]]
 name = "incan_core"
-version = "0.3.0-rc28"
+version = "0.3.0-rc42"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "incan_derive"
-version = "0.3.0-rc28"
+version = "0.3.0-rc42"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1840,7 +1840,7 @@ dependencies = [
 
 [[package]]
 name = "incan_stdlib"
-version = "0.3.0-rc28"
+version = "0.3.0-rc42"
 dependencies = [
  "incan_core",
  "incan_derive",
@@ -1864,7 +1864,7 @@ dependencies = [
 
 [[package]]
 name = "inql"
-version = "0.3.0-rc28"
+version = "0.3.0-rc42"
 dependencies = [
  "blake2",
  "blake3",
@@ -3169,9 +3169,9 @@ checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 
 [[package]]
 name = "unicode-segmentation"
-version = "1.13.2"
+version = "1.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9629274872b2bfaf8d66f5f15725007f635594914870f65218920345aa11aa8c"
+checksum = "c6f5d3c3b1bf09027a88a6bc961fc00497d651009560b5463668dc81b0fa87a8"
 
 [[package]]
 name = "unicode-width"

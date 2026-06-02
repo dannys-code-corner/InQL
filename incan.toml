@@ -15,3 +15,6 @@ datafusion_expr = { package = "datafusion-expr", version = "53" }
 datafusion-substrait = { version = "53", features = ["protoc"] }
 crc32fast = "1.5"
 url = "2.5"
+
+[vocab]
+crate = "vocab_companion"

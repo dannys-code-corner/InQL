@@ -390,6 +390,14 @@ def _rel_uses_scalar_function_anchor(rel: Rel, expected_anchor: u32) -> bool:
             for window_function in window_rel.window_functions:
                 if _window_function_uses_scalar_function_anchor(window_function, expected_anchor):
                     return true
+        Some(RelType.Join(join_rel)) =>
+            join = join_rel.as_ref().clone()
+            if let Some(condition) = join.expression:
+                if _expr_uses_scalar_function_anchor(condition.as_ref().clone(), expected_anchor):
+                    return true
+            if let Some(condition) = join.post_join_filter:
+                if _expr_uses_scalar_function_anchor(condition.as_ref().clone(), expected_anchor):
+                    return true
         Some(RelType.ExtensionSingle(extension_rel)) =>
             if _generator_extension_uses_scalar_function_anchor(extension_rel.as_ref().clone(), expected_anchor):
                 return true
@@ -432,6 +440,14 @@ def _rel_uses_if_then(rel: Rel) -> bool:
                     return true
             for window_function in window_rel.window_functions:
                 if _window_function_uses_if_then(window_function):
+                    return true
+        Some(RelType.Join(join_rel)) =>
+            join = join_rel.as_ref().clone()
+            if let Some(condition) = join.expression:
+                if _expr_uses_if_then(condition.as_ref().clone()):
+                    return true
+            if let Some(condition) = join.post_join_filter:
+                if _expr_uses_if_then(condition.as_ref().clone()):
                     return true
         Some(RelType.ExtensionSingle(extension_rel)) =>
             if _generator_extension_uses_if_then(extension_rel.as_ref().clone()):

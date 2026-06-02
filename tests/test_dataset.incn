@@ -37,7 +37,7 @@ from functions import (
     stack,
     window,
 )
-from projection_builders import ColumnExprKind, column_expr_kind, column_expr_name
+from projection_builders import ColumnExprKind, column_expr_kind, column_expr_name, with_column_assignment
 from substrait.function_extensions import (
     EXPLODE_EXTENSION_URI,
     EXPLODE_OUTER_EXTENSION_URI,
@@ -59,6 +59,11 @@ from substrait.schema import RowColumnSpec, SubstraitPrimitiveKind
 @derive(Clone)
 model Order:
     id: int
+
+
+@derive(Clone)
+model OrderProjection:
+    order_id: int
 
 
 @derive(Clone)
@@ -143,6 +148,10 @@ def _order_witness() -> list[Order]:
     return [Order(id=0)]
 
 
+def _event_witness() -> list[Event]:
+    return [Event(id=0)]
+
+
 def _preview_materialization(columns: list[str], row_count: int, preview_text: str) -> DataFrameMaterialization:
     """Build one structured materialization fixture for direct DataFrame tests."""
     return DataFrameMaterialization(resolved_columns=columns, row_count=row_count, preview_text=preview_text)
@@ -213,9 +222,13 @@ def test_type_contracts__signature_tiers_compile() -> None:
         _type_witness=_order_witness(),
         _materialization=DataFrameMaterialization.empty(),
         _substrait_rel=read_named_table_rel("orders"),
+        _planned_columns=[],
     )
-    ev = Event(id=2)
-    st: DataStream[Event] = DataStream(_row_schema_marker=ev, _substrait_rel=read_named_table_rel("events"))
+    st: DataStream[Event] = DataStream(
+        _type_witness=_event_witness(),
+        _substrait_rel=read_named_table_rel("events"),
+        _planned_columns=[],
+    )
 
     # -- Act --
     any_df = _accept_data_set_generic(df)
@@ -238,10 +251,14 @@ def test_type_contracts__concrete_carriers_compile() -> None:
         _type_witness=_order_witness(),
         _materialization=DataFrameMaterialization.empty(),
         _substrait_rel=read_named_table_rel("orders"),
+        _planned_columns=[],
     )
     lf: LazyFrame[Order] = lazy_frame_named_table("orders")
-    ev = Event(id=4)
-    st: DataStream[Event] = DataStream(_row_schema_marker=ev, _substrait_rel=read_named_table_rel("events"))
+    st: DataStream[Event] = DataStream(
+        _type_witness=_event_witness(),
+        _substrait_rel=read_named_table_rel("events"),
+        _planned_columns=[],
+    )
 
     # -- Act --
     concrete_df = _accept_data_frame_concrete(df)
@@ -261,10 +278,14 @@ def test_hierarchy__concrete_and_supertrait_assignability() -> None:
         _type_witness=_order_witness(),
         _materialization=DataFrameMaterialization.empty(),
         _substrait_rel=read_named_table_rel("orders"),
+        _planned_columns=[],
     )
     lf: LazyFrame[Order] = lazy_frame_named_table("orders")
-    ev = Event(id=6)
-    st: DataStream[Event] = DataStream(_row_schema_marker=ev, _substrait_rel=read_named_table_rel("events"))
+    st: DataStream[Event] = DataStream(
+        _type_witness=_event_witness(),
+        _substrait_rel=read_named_table_rel("events"),
+        _planned_columns=[],
+    )
 
     # -- Act --
     _compile_hierarchy_assignability(df, lf, st)
@@ -282,10 +303,14 @@ def test_type_contracts__concrete_and_trait_types_match_generic_arguments() -> N
         _type_witness=_order_witness(),
         _materialization=DataFrameMaterialization.empty(),
         _substrait_rel=read_named_table_rel("orders"),
+        _planned_columns=[],
     )
     lf: LazyFrame[Order] = lazy_frame_named_table("orders")
-    ev = Event(id=8)
-    st: DataStream[Event] = DataStream(_row_schema_marker=ev, _substrait_rel=read_named_table_rel("events"))
+    st: DataStream[Event] = DataStream(
+        _type_witness=_event_witness(),
+        _substrait_rel=read_named_table_rel("events"),
+        _planned_columns=[],
+    )
 
     # -- Act --
     bounded_df = _accept_bounded_generic(df)
@@ -317,6 +342,7 @@ def test_dataset_ops__method_wrapper_matches_canonical_function() -> None:
         _type_witness=_order_witness(),
         _materialization=DataFrameMaterialization.empty(),
         _substrait_rel=read_named_table_rel("orders"),
+        _planned_columns=[],
     )
 
     # -- Act --
@@ -336,6 +362,7 @@ def test_dataset_ops__data_frame_transforms_invalidate_stale_materialization() -
         _type_witness=_order_witness(),
         _materialization=_preview_materialization(["id"], 1, "| id |\n| 1 |"),
         _substrait_rel=read_named_table_rel("orders"),
+        _planned_columns=[],
     )
 
     # -- Act --
@@ -354,9 +381,10 @@ def test_dataset_ops__all_carriers_emit_real_plans() -> None:
         _type_witness=_order_witness(),
         _materialization=DataFrameMaterialization.empty(),
         _substrait_rel=read_named_table_rel("orders"),
+        _planned_columns=[],
     )
     lf: LazyFrame[Order] = lazy_frame_named_table("orders")
-    st = DataStream(_row_schema_marker=Event(id=12), _substrait_rel=read_named_table_rel("events"))
+    st = DataStream(_type_witness=_event_witness(), _substrait_rel=read_named_table_rel("events"), _planned_columns=[])
 
     # -- Act --
     df_plan = df.to_substrait_plan()
@@ -390,13 +418,42 @@ def test_dataset_ops__with_column_updates_lazy_planned_columns_with_add_or_repla
     assert replaced_cols[1] == "double_id", "later projected columns should keep their relative order after replacement"
 
 
+def test_dataset_ops__select_retargets_output_row_type_while_preserving_carrier_kind() -> None:
+    """SELECT is the schema-changing boundary used by RFC003 query blocks."""
+    # -- Arrange --
+    _register_projection_test_schema("orders_projection_types")
+    assignments = [with_column_assignment("order_id", col("id"))]
+    base_df: DataFrame[Order] = DataFrame(
+        _type_witness=_order_witness(),
+        _materialization=DataFrameMaterialization.empty(),
+        _substrait_rel=read_named_table_rel("orders_projection_types"),
+        _planned_columns=[],
+    )
+    base_lazy: LazyFrame[Order] = lazy_frame_named_table("orders_projection_types")
+    base_stream: DataStream[Event] = DataStream(
+        _type_witness=_event_witness(),
+        _substrait_rel=read_named_table_rel("orders_projection_types"),
+        _planned_columns=[],
+    )
+
+    # -- Act --
+    projected_df: DataFrame[OrderProjection] = base_df.select(assignments)
+    projected_lazy: LazyFrame[OrderProjection] = base_lazy.select(assignments)
+    projected_stream: DataStream[OrderProjection] = base_stream.select(assignments)
+
+    # -- Assert --
+    assert projected_df.planned_columns() == ["order_id"], "DataFrame SELECT should expose the projected row shape"
+    assert projected_lazy.planned_columns() == ["order_id"], "LazyFrame SELECT should expose the projected row shape"
+    assert projected_stream.planned_columns() == ["order_id"], "DataStream SELECT should expose the projected row shape"
+
+
 def test_dataset_ops__api_lowered_boundary_facts_stay_stable() -> None:
     # -- Arrange --
     left = read_named_table_rel("orders")
     right = read_named_table_rel("orders_archive")
 
     # -- Act --
-    joined_plan = plan_from_root_relation(join_ds(left, right, true), ["id"])
+    joined_plan = plan_from_root_relation(join_ds(left, right, always_true()), ["id"])
 
     # -- Assert --
     assert relation_kind_name(root_rel(joined_plan)) == "JoinRel", "canonical join function should still lower to a JoinRel root"
@@ -421,7 +478,7 @@ def test_lazy_frame__independent_roots_can_join_and_lower() -> None:
     right: LazyFrame[Order] = lazy_frame_named_table("orders_archive").filter(always_false())
 
     # -- Act --
-    joined: LazyFrame[Order] = left.join(right, true)
+    joined: LazyFrame[Order] = left.join(right, always_true())
     plan = joined.to_substrait_plan()
 
     # -- Assert --
@@ -443,7 +500,7 @@ def test_lazy_frame__native_prism_ops_preserve_current_boundary_shapes() -> None
     )
 
     # -- Act --
-    projected: LazyFrame[Order] = lazy_frame_named_table("orders").select()
+    projected: LazyFrame[Order] = lazy_frame_named_table[Order]("orders").select()
     grouped: LazyFrame[Order] = lazy_frame_named_table("orders").group_by([col("id")])
 
     aggregated = grouped.agg([count()])
@@ -509,9 +566,9 @@ def test_lazy_frame__deeper_independent_roots_still_lower_with_stable_shapes() -
     # -- Act --
     right_joined: LazyFrame[Order] = right_base.filter(always_false()).order_by([col("id")]).join(
         right_base.filter(always_false()).order_by([col("id")]),
-        true,
+        always_true(),
     )
-    joined: LazyFrame[Order] = left.join(right_joined, true)
+    joined: LazyFrame[Order] = left.join(right_joined, always_true())
     plan = joined.to_substrait_plan()
 
     # -- Assert --

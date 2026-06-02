@@ -15,7 +15,7 @@ from projection_builders import (
     ScalarFunctionOption,
     StringLiteralExpr,
 )
-from prism.types import PrismNode, PrismNodeKind, PrismStoreAdoption, PrismStoreId
+from prism.types import PrismJoinKind, PrismNode, PrismNodeKind, PrismStoreAdoption, PrismStoreId
 
 
 model PrismStoredNode:
@@ -49,17 +49,19 @@ pub def allocate_prism_store_id() -> PrismStoreId:
 pub def append_node(
     store_id: PrismStoreId,
     kind: PrismNodeKind,
-    input_ids: list[int],
-    named_table: str,
-    join_predicate: bool,
+    join_predicate: ColumnExpr,
     filter_predicate: ColumnExpr,
-    limit_count: int,
-    group_columns: list[ColumnExpr],
-    sort_columns: list[ColumnExpr],
-    aggregate_measures: list[AggregateMeasure],
-    generator_applications: list[GeneratorApplication],
-    window_projections: list[WindowProjection],
-    projection_assignments: list[ProjectionAssignment],
+    input_ids: list[int] = [],
+    named_table: str = "",
+    join_kind: PrismJoinKind = PrismJoinKind.Inner,
+    join_relation_name: str = "",
+    limit_count: int = 0,
+    group_columns: list[ColumnExpr] = [],
+    sort_columns: list[ColumnExpr] = [],
+    aggregate_measures: list[AggregateMeasure] = [],
+    generator_applications: list[GeneratorApplication] = [],
+    window_projections: list[WindowProjection] = [],
+    projection_assignments: list[ProjectionAssignment] = [],
 ) -> int:
     """
     Append one immutable node to the target store.
@@ -73,6 +75,8 @@ pub def append_node(
         kind=kind,
         input_ids=input_ids,
         named_table=named_table,
+        join_kind=join_kind,
+        join_relation_name=join_relation_name,
         join_predicate=join_predicate,
         filter_predicate=filter_predicate,
         limit_count=limit_count,
@@ -176,6 +180,8 @@ pub def adopt_cursor_subgraph(
                 kind=source_node.kind,
                 input_ids=remapped_input_ids,
                 named_table=source_node.named_table,
+                join_kind=source_node.join_kind,
+                join_relation_name=source_node.join_relation_name,
                 join_predicate=source_node.join_predicate,
                 filter_predicate=source_node.filter_predicate.clone(),
                 limit_count=source_node.limit_count,
@@ -192,6 +198,8 @@ pub def adopt_cursor_subgraph(
                     kind=source_node.kind,
                     input_ids=remapped_input_ids,
                     named_table=source_node.named_table,
+                    join_kind=source_node.join_kind,
+                    join_relation_name=source_node.join_relation_name,
                     join_predicate=source_node.join_predicate,
                     filter_predicate=source_node.filter_predicate.clone(),
                     limit_count=source_node.limit_count,
@@ -271,7 +279,11 @@ def _nodes_structurally_equal(candidate: PrismNode, source_node: PrismNode, rema
         return false
     if candidate.named_table != source_node.named_table:
         return false
-    if candidate.join_predicate != source_node.join_predicate:
+    if candidate.join_kind != source_node.join_kind:
+        return false
+    if candidate.join_relation_name != source_node.join_relation_name:
+        return false
+    if not _filter_predicates_structurally_equal(candidate.join_predicate, source_node.join_predicate):
         return false
     if not _filter_predicates_structurally_equal(candidate.filter_predicate, source_node.filter_predicate):
         return false
@@ -321,6 +333,10 @@ def _aggregate_measures_structurally_equal(left: AggregateMeasure, right: Aggreg
     if left.is_distinct != right.is_distinct:
         return false
     if left.has_filter != right.has_filter:
+        return false
+    if left.has_output_name != right.has_output_name:
+        return false
+    if left.output_name != right.output_name:
         return false
     if not _column_exprs_structurally_equal(left.expr, right.expr):
         return false

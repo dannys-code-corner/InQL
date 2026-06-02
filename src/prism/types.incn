@@ -17,12 +17,21 @@ pub enum PrismNodeKind(str):
     Filter = "Filter"
     Join = "Join"
     Project = "Project"
+    SelectProject = "SelectProject"
     GroupBy = "GroupBy"
     Aggregate = "Aggregate"
     Generate = "Generate"
     Window = "Window"
     OrderBy = "OrderBy"
     Limit = "Limit"
+
+
+@derive(Clone)
+pub enum PrismJoinKind(str):
+    """Logical join variants Prism carries before Substrait lowering."""
+
+    Inner = "inner"
+    Left = "left"
 
 
 @derive(Clone)
@@ -38,7 +47,9 @@ pub model PrismNode:
     pub kind: PrismNodeKind
     pub input_ids: list[int]
     pub named_table: str
-    pub join_predicate: bool
+    pub join_kind: PrismJoinKind
+    pub join_relation_name: str
+    pub join_predicate: ColumnExpr
     pub filter_predicate: ColumnExpr
     pub limit_count: int
     pub group_columns: list[ColumnExpr]

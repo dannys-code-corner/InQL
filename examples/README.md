@@ -59,5 +59,5 @@ These RFCs provide the trait and interop foundation InQL builds on.
 ## Scope boundaries
 
 - **Materialized row access** — Session collection exposes typed `DataFrame[T]` materialization metadata and preview text; row iteration/accessor design belongs to the DataFrame API work.
-- **Output row retargeting** — projection and aggregate methods currently preserve the carrier type parameter while planned columns expose shape changes.
+- **Output row retargeting** — `select[U](...)` preserves the carrier kind while allowing the projected row model to change.
 - **Convenience authoring** — these examples use the explicit builder surface that concise query and operator surfaces lower into.

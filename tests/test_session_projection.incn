@@ -424,7 +424,7 @@ def test_session_projection__collect_executes_identity_select() -> None:
         session.read_csv("aggregate_orders", AGGREGATE_ORDERS_CSV_FIXTURE),
         "aggregate orders fixture should load",
     )
-    selected = lazy.select()
+    selected: LazyFrame[AggregateOrder] = lazy.select()
     df = assert_is_ok(session.collect(selected), "identity select collect should execute")
     resolved = df.resolved_columns()
 

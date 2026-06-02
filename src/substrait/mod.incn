@@ -29,6 +29,7 @@ pub from substrait.relations import (
     generator_rel,
     generator_rel_of_columns,
     join_rel,
+    join_rel_of_columns,
     join_rel_of_kind,
     project_rel,
     project_rel_of_columns,
@@ -40,6 +41,7 @@ pub from substrait.relations import (
     reference_rel,
     set_rel,
     set_rel_of_kind,
+    select_project_rel_of_columns,
     sort_rel,
     sort_rel_of_columns,
 )

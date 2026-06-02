@@ -271,3 +271,23 @@ def test_session_generators__generate_after_window_materializes_nested_window() 
     assert df.row_count() == 6, "generate above a window should execute the nested window first"
     assert resolved == ["customer_id", "amount", "row_num", "tag"], "generated window output columns should stay stable"
     _assert_preview_row_contains(payload, ["A", "10", "1", "paid"], "generated rows should retain window values")
+
+
+def test_session_generators__window_after_generate_materializes_nested_generator() -> None:
+    # -- Arrange --
+    mut session = Session.default()
+    lazy = _aggregate_orders(session)
+    spec = window().partition_by([col("tag")]).order_by([col("amount")])
+
+    # -- Act --
+    df = _collect_or_fail(
+        session,
+        lazy.generate(explode(_tags(), "tag")).with_window_column("row_num", row_number().over(spec)),
+    )
+    payload = df.preview_text()
+    resolved = df.resolved_columns()
+
+    # -- Assert --
+    assert df.row_count() == 6, "window above generate should execute the nested generator first"
+    assert resolved == ["customer_id", "amount", "tag", "row_num"], "window output should append after generated columns"
+    _assert_preview_row_contains(payload, ["B", "7", "B", "1"], "window functions should see generated columns")

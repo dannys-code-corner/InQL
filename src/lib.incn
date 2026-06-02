@@ -15,10 +15,11 @@ pub from dataset.ops import (
     join_ds,
     limit_ds,
     order_by_ds,
+    select_project_ds_of_columns,
     select_ds,
     with_window_column_ds,
 )
-pub from aggregate_builders import AggregateKind, AggregateMeasure
+pub from aggregate_builders import AggregateKind, AggregateMeasure, aggregate_as
 pub from sketch_types import (
     SKETCH_FAMILY_OPTION,
     SKETCH_FORMAT_OPTION,
@@ -88,6 +89,8 @@ pub from projection_builders import (
     column_expr_kind,
     column_expr_name,
     column_expr_option_value,
+    select_project_output_columns,
+    with_column_assignment,
 )
 pub from functions.registry import function_registry
 pub from functions import (
@@ -351,6 +354,7 @@ pub from substrait.relations import (
     generator_rel,
     generator_rel_of_columns,
     join_rel,
+    join_rel_of_columns,
     join_rel_of_kind,
     project_rel,
     read_local_files_rel,
@@ -359,6 +363,7 @@ pub from substrait.relations import (
     reference_rel,
     set_rel,
     set_rel_of_kind,
+    select_project_rel_of_columns,
     sort_rel,
     sort_rel_of_columns,
     window_rel,

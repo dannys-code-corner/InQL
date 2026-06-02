@@ -54,6 +54,8 @@ pub model AggregateMeasure:
     pub has_filter: bool
     pub ordering: list[ColumnExpr]
     pub sketch_type: Option[SketchLogicalType]
+    pub output_name: str
+    pub has_output_name: bool
 
     def distinct(self) -> Self:
         """Return this aggregate measure with `DISTINCT` input semantics."""
@@ -69,6 +71,8 @@ pub model AggregateMeasure:
             has_filter=self.has_filter,
             ordering=self.ordering,
             sketch_type=self.sketch_type,
+            output_name=self.output_name,
+            has_output_name=self.has_output_name,
         )
 
     def filter(self, predicate: ColumnExpr) -> Self:
@@ -85,6 +89,8 @@ pub model AggregateMeasure:
             has_filter=true,
             ordering=self.ordering,
             sketch_type=self.sketch_type,
+            output_name=self.output_name,
+            has_output_name=self.has_output_name,
         )
 
     def order_by(self, ordering: list[ColumnExpr]) -> Self:
@@ -101,6 +107,8 @@ pub model AggregateMeasure:
             has_filter=self.has_filter,
             ordering=ordering,
             sketch_type=self.sketch_type,
+            output_name=self.output_name,
+            has_output_name=self.has_output_name,
         )
 
     def over(self, spec: WindowSpec) -> WindowFunctionApplication:
@@ -133,6 +141,8 @@ pub def sum(expr: ColumnExpr) -> AggregateMeasure:
         has_filter=false,
         ordering=[],
         sketch_type=None,
+        output_name="",
+        has_output_name=false,
     )
 
 
@@ -151,6 +161,8 @@ pub def count(expr: ColumnExpr = col_expr(COUNT_NO_ARGUMENT_SENTINEL)) -> Aggreg
             has_filter=false,
             ordering=[],
             sketch_type=None,
+            output_name="",
+            has_output_name=false,
         )
     return AggregateMeasure(
         kind=AggregateKind.Count,
@@ -164,6 +176,8 @@ pub def count(expr: ColumnExpr = col_expr(COUNT_NO_ARGUMENT_SENTINEL)) -> Aggreg
         has_filter=false,
         ordering=[],
         sketch_type=None,
+        output_name="",
+        has_output_name=false,
     )
 
 
@@ -186,6 +200,8 @@ pub def avg(expr: ColumnExpr) -> AggregateMeasure:
         has_filter=false,
         ordering=[],
         sketch_type=None,
+        output_name="",
+        has_output_name=false,
     )
 
 
@@ -203,6 +219,8 @@ pub def min(expr: ColumnExpr) -> AggregateMeasure:
         has_filter=false,
         ordering=[],
         sketch_type=None,
+        output_name="",
+        has_output_name=false,
     )
 
 
@@ -220,6 +238,8 @@ pub def max(expr: ColumnExpr) -> AggregateMeasure:
         has_filter=false,
         ordering=[],
         sketch_type=None,
+        output_name="",
+        has_output_name=false,
     )
 
 
@@ -237,6 +257,8 @@ pub def approx_count_distinct(expr: ColumnExpr) -> AggregateMeasure:
         has_filter=false,
         ordering=[],
         sketch_type=None,
+        output_name="",
+        has_output_name=false,
     )
 
 
@@ -258,6 +280,8 @@ pub def approx_percentile(expr: ColumnExpr, percentile: float, accuracy: int = 1
         has_filter=false,
         ordering=[],
         sketch_type=None,
+        output_name="",
+        has_output_name=false,
     )
 
 
@@ -280,6 +304,8 @@ pub def hll_sketch(
         has_filter=false,
         ordering=[],
         sketch_type=Some(sketch_type),
+        output_name="",
+        has_output_name=false,
     )
 
 
@@ -298,11 +324,34 @@ pub def hll_merge(sketch: SketchExpr) -> AggregateMeasure:
         has_filter=false,
         ordering=[],
         sketch_type=Some(checked.sketch_type),
+        output_name="",
+        has_output_name=false,
+    )
+
+
+pub def aggregate_as(measure: AggregateMeasure, output_name: str) -> AggregateMeasure:
+    """Return this aggregate measure with an explicit logical output column name."""
+    return AggregateMeasure(
+        kind=measure.kind,
+        function_ref=measure.function_ref,
+        canonical_name=measure.canonical_name,
+        expr=measure.expr,
+        arguments=measure.arguments,
+        has_expr=measure.has_expr,
+        is_distinct=measure.is_distinct,
+        filter_expr=measure.filter_expr,
+        has_filter=measure.has_filter,
+        ordering=measure.ordering,
+        sketch_type=measure.sketch_type,
+        output_name=output_name,
+        has_output_name=true,
     )
 
 
 pub def aggregate_measure_output_name(measure: AggregateMeasure) -> str:
     """Return the logical output column name for one aggregate measure."""
+    if measure.has_output_name:
+        return measure.output_name
     mut output_name = measure.kind.value()
     if measure.is_distinct and measure.has_expr:
         output_name = output_name + "_distinct_" + scalar_expr_output_name(measure.expr, "expr")

@@ -971,7 +971,7 @@ def test_plan__enum_backed_join_and_set_builders_expose_boundary_facts() -> None
     left_join_rel = join_rel_of_kind(
         read_named_table_rel("orders"),
         read_named_table_rel("customers"),
-        true,
+        always_true(),
         SubstraitJoinKind.Left,
     )
     union_distinct_rel = set_rel_of_kind(
@@ -1099,7 +1099,7 @@ def test_conformance__core_scenarios_validate_emission_output() -> None:
                     join_rel_of_kind(
                         read_named_table_rel(_fixture_table_main()),
                         read_named_table_rel(_fixture_table_aux()),
-                        true,
+                        always_true(),
                         SubstraitJoinKind.Left,
                     ),
                     [_fixture_col_primary()],

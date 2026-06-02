@@ -32,7 +32,7 @@ from session.backend_dispatch import backend_collect_plan, backend_execute_plan,
 from session.backend_types import BackendError, BackendErrorKind, BackendRegistration
 from substrait.errors import SubstraitLoweringError, SubstraitLoweringErrorKind
 from substrait.schema_registry import register_named_table_schema
-from substrait.inspect import root_rel, read_named_table_name
+from substrait.inspect import relation_output_columns, root_rel, read_named_table_name
 
 
 @derive(Clone)
@@ -182,7 +182,12 @@ pub class Session:
         match backend_collect_plan(self._backend, _to_backend_registrations(self._registrations), plan):
             Ok(materialization) =>
                 return Ok(
-                    DataFrame(_type_witness=_empty_type_witness(), _materialization=materialization, _substrait_rel=rel),
+                    DataFrame(
+                        _type_witness=_empty_type_witness(),
+                        _materialization=materialization,
+                        _substrait_rel=rel,
+                        _planned_columns=relation_output_columns(rel.clone()),
+                    ),
                 )
             Err(err) => return Err(_session_error_from_backend_error(err))
 

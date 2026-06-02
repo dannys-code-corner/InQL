@@ -470,6 +470,39 @@ pub def lower_project(
     )
 
 
+pub def lower_select_project(
+    input_columns: list[str],
+    assignments: list[ProjectionAssignment],
+) -> Result[LoweredProject, SubstraitLoweringError]:
+    """Lower one exclusive projection, preserving lateral aliases for later expressions in the same list."""
+    input_column_count = len(input_columns)
+    mut bindings = _resolved_projection_bindings_for_input_columns(input_columns)
+    mut expressions: list[ResolvedProjectExpression] = []
+    mut mapping_indexes: list[int] = []
+    for assignment in assignments:
+        resolved_expr = _resolved_projection_expr(bindings, assignment.expr)?
+        expressions.append(ResolvedProjectExpression(expr=resolved_expr.clone()))
+        output_index = input_column_count + len(expressions) - 1
+        mapping_indexes.append(output_index)
+        existing_idx = _index_of_binding(bindings, assignment.output_name)
+        if existing_idx >= 0:
+            bindings[existing_idx] = ResolvedProjectionBinding(
+                name=assignment.output_name,
+                expr=resolved_expr,
+                output_index=output_index,
+            )
+        else:
+            bindings.append(
+                ResolvedProjectionBinding(name=assignment.output_name, expr=resolved_expr, output_index=output_index),
+            )
+    return Ok(
+        LoweredProject(
+            expressions=[resolved.expr.clone() for resolved in expressions],
+            output_mapping=[to_rust_i32(index) for index in mapping_indexes],
+        ),
+    )
+
+
 pub def scalar_expr(input_columns: list[str], expr: ColumnExpr) -> Result[Expression, SubstraitLoweringError]:
     """Lower one scalar-expression builder against an input-column list."""
     return _resolved_projection_expr(_resolved_projection_bindings_for_input_columns(input_columns), expr)

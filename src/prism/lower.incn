@@ -5,19 +5,21 @@ from rust::incan_stdlib::errors import raise_value_error
 from prism.output_columns import rewritten_output_columns
 from substrait.plans import plan_from_root_relation
 from substrait.relations import (
+    SubstraitJoinKind,
     fetch_rel,
-    join_rel,
     read_named_table_rel,
     try_generator_rel_of_columns,
+    try_join_rel_of_columns,
     sort_rel_of_columns,
     try_aggregate_rel_of_columns,
     try_filter_rel_of_columns,
     try_project_rel_of_columns,
+    try_select_project_rel_of_columns,
     try_window_rel_of_columns,
 )
 from substrait.errors import SubstraitLoweringError
 from prism.rewrite import derive_rewritten_view, rewritten_node_at
-from prism.types import PrismNodeKind, PrismOptimizedView, PrismStoreId
+from prism.types import PrismJoinKind, PrismNodeKind, PrismOptimizedView, PrismStoreId
 
 
 pub def lower_prism_tip(store_id: PrismStoreId, tip_id: int) -> Rel:
@@ -83,15 +85,22 @@ def _try_lower_node(view: PrismOptimizedView, node_id: int) -> Result[Rel, Subst
                 node.filter_predicate,
             )
         PrismNodeKind.Join =>
-            return Ok(
-                join_rel(
-                    _try_lower_node(view, node.input_ids[0])?,
-                    _try_lower_node(view, node.input_ids[1])?,
-                    node.join_predicate,
-                ),
+            return try_join_rel_of_columns(
+                _try_lower_node(view, node.input_ids[0])?,
+                rewritten_output_columns(view, node.input_ids[0]),
+                _try_lower_node(view, node.input_ids[1])?,
+                _right_join_predicate_columns(rewritten_output_columns(view, node.input_ids[1]), node.join_relation_name),
+                node.join_predicate,
+                _substrait_join_kind(node.join_kind),
             )
         PrismNodeKind.Project =>
             return try_project_rel_of_columns(
+                _try_lower_node(view, node.input_ids[0])?,
+                rewritten_output_columns(view, node.input_ids[0]),
+                node.projection_assignments,
+            )
+        PrismNodeKind.SelectProject =>
+            return try_select_project_rel_of_columns(
                 _try_lower_node(view, node.input_ids[0])?,
                 rewritten_output_columns(view, node.input_ids[0]),
                 node.projection_assignments,
@@ -146,3 +155,17 @@ def _try_lower_node(view: PrismOptimizedView, node_id: int) -> Result[Rel, Subst
                 ),
             )
         PrismNodeKind.Limit => return Ok(fetch_rel(_try_lower_node(view, node.input_ids[0])?, 0, node.limit_count))
+
+
+def _right_join_predicate_columns(columns: list[str], relation_name: str) -> list[str]:
+    """Return right-side join columns using relation-qualified names when a query relation alias is available."""
+    if len(relation_name) == 0:
+        return columns
+    return [f"{relation_name}.{column}" for column in columns]
+
+
+def _substrait_join_kind(kind: PrismJoinKind) -> SubstraitJoinKind:
+    """Map Prism logical join variants to Substrait join variants."""
+    match kind:
+        PrismJoinKind.Left => return SubstraitJoinKind.Left
+        _ => return SubstraitJoinKind.Inner
