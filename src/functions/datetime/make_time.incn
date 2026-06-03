@@ -9,8 +9,8 @@ from function_registry import (
     v0_1,
 )
 from functions.inputs import IntValueOrColumn, int_value_or_column_expr
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.registry import register_function, registered_temporal_application
+from projection_builders import TemporalColumnExpr
 from substrait.function_extensions import MAKE_TIME_FUNCTION_ANCHOR
 
 
@@ -20,7 +20,7 @@ from substrait.function_extensions import MAKE_TIME_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("make_time", MAKE_TIME_FUNCTION_ANCHOR),
 ))
-pub def make_time(hour: IntValueOrColumn, minute: IntValueOrColumn, second: IntValueOrColumn) -> ColumnExpr:
+pub def make_time(hour: IntValueOrColumn, minute: IntValueOrColumn, second: IntValueOrColumn) -> TemporalColumnExpr:
     """
     Build a time construction expression.
 
@@ -33,7 +33,7 @@ pub def make_time(hour: IntValueOrColumn, minute: IntValueOrColumn, second: IntV
         minute: Minute expression or integer literal.
         second: Second expression or integer literal.
     """
-    return registered_application(
+    return registered_temporal_application(
         "make_time",
         [int_value_or_column_expr(hour), int_value_or_column_expr(minute), int_value_or_column_expr(second)],
     )

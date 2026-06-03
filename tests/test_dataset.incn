@@ -2,7 +2,7 @@
 
 from std.testing import fail_t, parametrize
 from metadata import inql_version
-from aggregate_builders import COUNT_NO_ARGUMENT_SENTINEL, AggregateKind
+from aggregate_builders import AggregateKind
 from dataset import DataSet, BoundedDataSet, UnboundedDataSet, DataFrame, LazyFrame, DataStream, lazy_frame_named_table
 from dataset.materialization import DataFrameMaterialization
 from dataset.ops import filter_ds, join_ds
@@ -183,7 +183,8 @@ def test_smoke__dataset_types_are_published() -> None:
 
     # -- Assert --
     assert column_expr_name(sum_result.expr) == "amount", "sum should preserve the selected input column expression"
-    assert column_expr_name(count_result.expr) == COUNT_NO_ARGUMENT_SENTINEL, "count should preserve row-count measures when called without an expression"
+    assert not count_result.has_expr, "count should preserve row-count measures when called without an expression"
+    assert len(count_result.arguments) == 0, "row-count measures should not carry synthetic expression arguments"
     assert expression_count_result.has_expr, "count(expr) should mark expression-count measures explicitly"
     assert column_expr_name(expression_count_result.expr) == "amount", "count(expr) should preserve the selected input column expression"
     assert distinct_count_result.is_distinct, "count_distinct should build a distinct aggregate measure"
@@ -376,7 +377,7 @@ def test_dataset_ops__with_column_updates_lazy_planned_columns_with_add_or_repla
     base: LazyFrame[Order] = lazy_frame_named_table("orders_projection")
 
     # -- Act --
-    augmented = base.with_column("double_id", mul(col("id"), lit(2)))
+    augmented = base.with_column("double_id", mul(col("id"), 2))
     replaced = augmented.with_column("id", lit(0))
 
     # -- Assert --

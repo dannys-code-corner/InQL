@@ -8,28 +8,29 @@ from function_registry import (
     rewrite_mapping,
     v0_1,
 )
+from functions.inputs import ScalarValueOrColumn
 from functions.nested.cardinality import cardinality
 from functions.nested.map_extract import map_extract
 from functions.operators.gt import gt
 from functions.registry import register_function
-from projection_builders import ColumnExpr, int_expr
+from projection_builders import BoolColumnExpr, ColumnExpr
 
 
 @register_function(deterministic_spec(
     function_class=FunctionClass.Scalar,
     lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
     null_behavior=FunctionNullBehavior.DependsOnInputs,
-    substrait=rewrite_mapping("gt(cardinality(map_extract(map_expr, key)), int_expr(0))"),
+    substrait=rewrite_mapping("gt(cardinality(map_extract(map_expr, key)), 0)"),
 ))
-pub def map_contains_key(map_expr: ColumnExpr, key: ColumnExpr) -> ColumnExpr:
+pub def map_contains_key(map_expr: ColumnExpr, key: ScalarValueOrColumn) -> BoolColumnExpr:
     """
     Return whether a map contains a key.
 
     Examples:
-        has_status = map_contains_key(col("attributes"), str_lit("status"))
+        has_status = map_contains_key(col("attributes"), "status")
 
     Parameters:
         map_expr: Map expression to inspect.
         key: Key expression to look up.
     """
-    return gt(cardinality(map_extract(map_expr, key)), int_expr(0))
+    return gt(cardinality(map_extract(map_expr, key)), 0)

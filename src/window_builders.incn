@@ -8,9 +8,7 @@ diagnosable as the query surface grows.
 
 from rust::incan_stdlib::errors import raise_value_error
 from function_registry import function_ref_for
-from projection_builders import ColumnExpr, col as col_expr, column_expr_name, int_expr
-
-const NO_DEFAULT_COLUMN_SENTINEL: str = "__inql_no_window_default__"
+from projection_builders import ColumnExpr, int_expr
 
 
 @derive(Clone)
@@ -263,20 +261,12 @@ pub def ntile(bucket_count: int) -> WindowFunctionCall:
     return _window_call("ntile", WindowFunctionKind.Ntile, [_int_literal(bucket_count)], true)
 
 
-pub def lag(
-    expr: ColumnExpr,
-    offset: int = 1,
-    default_value: ColumnExpr = col_expr(NO_DEFAULT_COLUMN_SENTINEL),
-) -> WindowFunctionCall:
+pub def lag(expr: ColumnExpr, offset: int = 1, default_value: Option[ColumnExpr] = None) -> WindowFunctionCall:
     """Build a `lag` offset window function call."""
     return _offset_call("lag", WindowFunctionKind.Lag, expr, offset, default_value)
 
 
-pub def lead(
-    expr: ColumnExpr,
-    offset: int = 1,
-    default_value: ColumnExpr = col_expr(NO_DEFAULT_COLUMN_SENTINEL),
-) -> WindowFunctionCall:
+pub def lead(expr: ColumnExpr, offset: int = 1, default_value: Option[ColumnExpr] = None) -> WindowFunctionCall:
     """Build a `lead` offset window function call."""
     return _offset_call("lead", WindowFunctionKind.Lead, expr, offset, default_value)
 
@@ -381,15 +371,15 @@ def _offset_call(
     kind: WindowFunctionKind,
     expr: ColumnExpr,
     offset: int,
-    default_value: ColumnExpr,
+    default_value: Option[ColumnExpr],
 ) -> WindowFunctionCall:
     """Build one lag/lead call after validating the offset."""
     if offset <= 0:
         message = f"{canonical_name} offset must be positive"
         return raise_value_error(message)
     mut arguments = [expr, _int_literal(offset)]
-    if column_expr_name(default_value) != NO_DEFAULT_COLUMN_SENTINEL:
-        arguments.append(default_value)
+    if let Some(value) = default_value:
+        arguments.append(value)
     return _window_call(canonical_name, kind, arguments, true)
 
 

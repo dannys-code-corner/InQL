@@ -8,9 +8,14 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.inputs import StrValueOrColumn, str_value_or_column_expr
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.inputs import (
+    StrValueOrColumn,
+    TemporalValueOrColumn,
+    str_value_or_column_expr,
+    temporal_value_or_column_expr,
+)
+from functions.registry import register_function, registered_temporal_application
+from projection_builders import TemporalColumnExpr
 from substrait.function_extensions import TIME_TRUNC_FUNCTION_ANCHOR
 
 
@@ -20,7 +25,7 @@ from substrait.function_extensions import TIME_TRUNC_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("time_trunc", TIME_TRUNC_FUNCTION_ANCHOR),
 ))
-pub def time_trunc(part: StrValueOrColumn, expr: ColumnExpr) -> ColumnExpr:
+pub def time_trunc(part: StrValueOrColumn, expr: TemporalValueOrColumn) -> TemporalColumnExpr:
     """
     Build a time truncation expression.
 
@@ -31,7 +36,10 @@ pub def time_trunc(part: StrValueOrColumn, expr: ColumnExpr) -> ColumnExpr:
         part: Date or time part expression.
         expr: Input scalar expression.
     """
-    return registered_application("time_trunc", [str_value_or_column_expr(part), expr])
+    return registered_temporal_application(
+        "time_trunc",
+        [str_value_or_column_expr(part), temporal_value_or_column_expr(expr)],
+    )
 
 
 module tests:

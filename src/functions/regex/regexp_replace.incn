@@ -9,8 +9,8 @@ from function_registry import (
     v0_1,
 )
 from functions.inputs import StrValueOrColumn, str_value_or_column_expr
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.registry import register_function, registered_string_application
+from projection_builders import StringColumnExpr
 from substrait.function_extensions import REGEXP_REPLACE_FUNCTION_ANCHOR
 
 
@@ -21,11 +21,11 @@ from substrait.function_extensions import REGEXP_REPLACE_FUNCTION_ANCHOR
     substrait=extension_mapping("regexp_replace", REGEXP_REPLACE_FUNCTION_ANCHOR),
 ))
 pub def regexp_replace(
-    expr: ColumnExpr,
+    expr: StrValueOrColumn,
     pattern: StrValueOrColumn,
     replacement: StrValueOrColumn,
     flags: Option[StrValueOrColumn] = None,
-) -> ColumnExpr:
+) -> StringColumnExpr:
     """
     Build a regex replacement expression.
 
@@ -38,14 +38,15 @@ pub def regexp_replace(
         replacement: Replacement expression.
         flags: Optional regex flags expression.
     """
+    expr_value = str_value_or_column_expr(expr)
     pattern_expr = str_value_or_column_expr(pattern)
     replacement_expr = str_value_or_column_expr(replacement)
     if let Some(value) = flags:
-        return registered_application(
+        return registered_string_application(
             "regexp_replace",
-            [expr, pattern_expr, replacement_expr, str_value_or_column_expr(value)],
+            [expr_value, pattern_expr, replacement_expr, str_value_or_column_expr(value)],
         )
-    return registered_application("regexp_replace", [expr, pattern_expr, replacement_expr])
+    return registered_string_application("regexp_replace", [expr_value, pattern_expr, replacement_expr])
 
 
 module tests:

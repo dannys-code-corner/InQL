@@ -35,7 +35,7 @@ Aggregate measures support method-style modifiers:
 from pub::inql.functions import add, approx_count_distinct, approx_percentile, avg, col, count, count_distinct, count_if, eq, lit, max, min, str_lit, sum
 
 grouped = orders.group_by([col("customer_id")]).agg([
-    sum(add(col("amount"), lit(5))),
+    sum(add(col("amount"), 5)),
     count(),
     count(col("discount_code")),
     count_distinct(col("product_id")),

@@ -9,8 +9,8 @@ from function_registry import (
     v0_1,
 )
 from functions.inputs import StrValueOrColumn, str_value_or_column_expr
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.registry import register_function, registered_string_application
+from projection_builders import StringColumnExpr
 from substrait.function_extensions import TRIM_FUNCTION_ANCHOR
 
 
@@ -20,7 +20,7 @@ from substrait.function_extensions import TRIM_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("btrim", TRIM_FUNCTION_ANCHOR),
 ))
-pub def trim(expr: StrValueOrColumn, characters: Option[StrValueOrColumn] = None) -> ColumnExpr:
+pub def trim(expr: StrValueOrColumn, characters: Option[StrValueOrColumn] = None) -> StringColumnExpr:
     """
     Build a both-side trim expression.
 
@@ -33,8 +33,8 @@ pub def trim(expr: StrValueOrColumn, characters: Option[StrValueOrColumn] = None
     """
     expr_value = str_value_or_column_expr(expr)
     if let Some(value) = characters:
-        return registered_application("trim", [expr_value, str_value_or_column_expr(value)])
-    return registered_application("trim", [expr_value])
+        return registered_string_application("trim", [expr_value, str_value_or_column_expr(value)])
+    return registered_string_application("trim", [expr_value])
 
 
 module tests:
@@ -45,7 +45,7 @@ module tests:
         column_expr_function_name,
         column_expr_kind,
     )
-    def test_trim_builds_registered_application() -> None:
+    def test_trim_builds_registered_string_application() -> None:
         expr = trim(col("name"))
         assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
         assert column_expr_function_name(expr) == "trim"

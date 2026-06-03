@@ -46,8 +46,8 @@ projected = (
     events
         .with_column("tags", array([lit("paid"), col("source")]))
         .with_column("tag_count", cardinality(col("tags")))
-        .with_column("has_paid_tag", array_contains(col("tags"), lit("paid")))
-        .with_column("first_tag", element_at(col("tags"), lit(1)))
+        .with_column("has_paid_tag", array_contains(col("tags"), "paid"))
+        .with_column("first_tag", element_at(col("tags"), 1))
 )
 ```
 

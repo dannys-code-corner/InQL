@@ -9,8 +9,8 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.registry import register_function, registered_timestamp_application
+from projection_builders import TimestampColumnExpr
 from substrait.function_extensions import CURRENT_TIMESTAMP_FUNCTION_ANCHOR
 
 
@@ -21,14 +21,14 @@ from substrait.function_extensions import CURRENT_TIMESTAMP_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.NonNullLiteral,
     substrait=extension_mapping("now", CURRENT_TIMESTAMP_FUNCTION_ANCHOR),
 ))
-pub def current_timestamp() -> ColumnExpr:
+pub def current_timestamp() -> TimestampColumnExpr:
     """
     Build a current-timestamp expression.
 
     Examples:
         processed_at = current_timestamp()
     """
-    return registered_application("current_timestamp", [])
+    return registered_timestamp_application("current_timestamp", [])
 
 
 module tests:

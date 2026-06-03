@@ -8,9 +8,14 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.inputs import StrValueOrColumn, str_value_or_column_expr
-from functions.registry import register_function, register_function_alias, registered_application
-from projection_builders import ColumnExpr
+from functions.inputs import (
+    StrValueOrColumn,
+    TemporalValueOrColumn,
+    str_value_or_column_expr,
+    temporal_value_or_column_expr,
+)
+from functions.registry import register_function, register_function_alias, registered_int_application
+from projection_builders import IntColumnExpr
 from substrait.function_extensions import DATE_PART_FUNCTION_ANCHOR
 
 
@@ -20,7 +25,7 @@ from substrait.function_extensions import DATE_PART_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("date_part", DATE_PART_FUNCTION_ANCHOR),
 ))
-pub def date_part(part: StrValueOrColumn, expr: ColumnExpr) -> ColumnExpr:
+pub def date_part(part: StrValueOrColumn, expr: TemporalValueOrColumn) -> IntColumnExpr:
     """
     Build a date/time field extraction expression.
 
@@ -31,7 +36,7 @@ pub def date_part(part: StrValueOrColumn, expr: ColumnExpr) -> ColumnExpr:
         part: Date or time part expression.
         expr: Input scalar expression.
     """
-    return registered_application("date_part", [str_value_or_column_expr(part), expr])
+    return registered_int_application("date_part", [str_value_or_column_expr(part), temporal_value_or_column_expr(expr)])
 
 
 static _extract_alias_registration: None = register_function_alias("date_part", "extract")

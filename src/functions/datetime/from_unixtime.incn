@@ -9,8 +9,8 @@ from function_registry import (
     v0_1,
 )
 from functions.inputs import IntValueOrColumn, int_value_or_column_expr
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.registry import register_function, registered_timestamp_application
+from projection_builders import TimestampColumnExpr
 from substrait.function_extensions import FROM_UNIXTIME_FUNCTION_ANCHOR
 
 
@@ -20,7 +20,7 @@ from substrait.function_extensions import FROM_UNIXTIME_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("from_unixtime", FROM_UNIXTIME_FUNCTION_ANCHOR),
 ))
-pub def from_unixtime(seconds: IntValueOrColumn) -> ColumnExpr:
+pub def from_unixtime(seconds: IntValueOrColumn) -> TimestampColumnExpr:
     """
     Build a UTC timestamp expression from Unix seconds.
 
@@ -30,7 +30,7 @@ pub def from_unixtime(seconds: IntValueOrColumn) -> ColumnExpr:
     Parameters:
         seconds: Unix-seconds expression or integer literal.
     """
-    return registered_application("from_unixtime", [int_value_or_column_expr(seconds)])
+    return registered_timestamp_application("from_unixtime", [int_value_or_column_expr(seconds)])
 
 
 module tests:

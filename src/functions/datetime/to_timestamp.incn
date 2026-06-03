@@ -9,8 +9,8 @@ from function_registry import (
     v0_1,
 )
 from functions.inputs import StrValueOrColumn, str_value_or_column_expr
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.registry import register_function, registered_timestamp_application
+from projection_builders import TimestampColumnExpr
 from substrait.function_extensions import TO_TIMESTAMP_FUNCTION_ANCHOR
 
 
@@ -20,7 +20,7 @@ from substrait.function_extensions import TO_TIMESTAMP_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("to_timestamp", TO_TIMESTAMP_FUNCTION_ANCHOR),
 ))
-pub def to_timestamp(expr: ColumnExpr, format: Option[StrValueOrColumn] = None) -> ColumnExpr:
+pub def to_timestamp(expr: StrValueOrColumn, format: Option[StrValueOrColumn] = None) -> TimestampColumnExpr:
     """
     Build a timestamp parsing expression.
 
@@ -31,9 +31,10 @@ pub def to_timestamp(expr: ColumnExpr, format: Option[StrValueOrColumn] = None) 
         expr: Input scalar expression.
         format: Format selector expression or string literal.
     """
+    expr_value = str_value_or_column_expr(expr)
     if let Some(value) = format:
-        return registered_application("to_timestamp", [expr, str_value_or_column_expr(value)])
-    return registered_application("to_timestamp", [expr])
+        return registered_timestamp_application("to_timestamp", [expr_value, str_value_or_column_expr(value)])
+    return registered_timestamp_application("to_timestamp", [expr_value])
 
 
 module tests:

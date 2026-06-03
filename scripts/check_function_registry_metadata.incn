@@ -136,10 +136,15 @@ def declarations_by_name(module: JsonValue, kind: str) -> dict[str, JsonValue]:
 def declaration_named(module: JsonValue, name: str) -> Option[JsonValue]:
     """Return one declaration by name from a module."""
     items = require_array(require_field(module, "declarations", "module"), "module.declarations")
+    mut fallback: Option[JsonValue] = None
     for declaration in items:
         if require_string_field(declaration, "name", "declaration") == name:
-            return Some(declaration)
-    return None
+            if let None = fallback:
+                fallback = Some(declaration)
+            declaration_kind = require_string_field(declaration, "kind", "declaration")
+            if declaration_kind == "function" and len(registry_decorators(declaration)) > 0:
+                return Some(declaration)
+    return fallback
 
 
 def resolve_declaration_path(

@@ -13,8 +13,9 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.inputs import BoolValueOrColumn, bool_value_or_column_expr
+from functions.registry import register_function, registered_bool_application
+from projection_builders import BoolColumnExpr
 from substrait.function_extensions import AND_FUNCTION_ANCHOR
 
 
@@ -24,20 +25,20 @@ from substrait.function_extensions import AND_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.Predicate,
     substrait=extension_mapping("and", AND_FUNCTION_ANCHOR),
 ))
-pub def and_(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
+pub def and_(left: BoolValueOrColumn, right: BoolValueOrColumn) -> BoolColumnExpr:
     """
     Build a boolean conjunction.
 
     Use `and_` instead of `and` because `and` is reserved by the host language.
 
     Examples:
-        eligible = and_(gt(col("amount"), lit(1000)), eq(col("status"), lit("paid")))
+        eligible = and_(gt(col("amount"), 1000), eq(col("status"), "paid"))
 
     Parameters:
         left: Predicate expression on the left side.
         right: Predicate expression that must also be true.
     """
-    return registered_application("and_", [left, right])
+    return registered_bool_application("and_", [bool_value_or_column_expr(left), bool_value_or_column_expr(right)])
 
 
 module tests:

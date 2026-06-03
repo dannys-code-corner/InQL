@@ -8,8 +8,9 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.inputs import ScalarValueOrColumn, scalar_value_or_column_expr
+from functions.registry import register_function, registered_int_application
+from projection_builders import ColumnExpr, IntColumnExpr
 from substrait.function_extensions import ARRAY_POSITION_FUNCTION_ANCHOR
 
 
@@ -19,15 +20,15 @@ from substrait.function_extensions import ARRAY_POSITION_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("array_position", ARRAY_POSITION_FUNCTION_ANCHOR),
 ))
-pub def array_position(array_expr: ColumnExpr, value: ColumnExpr) -> ColumnExpr:
+pub def array_position(array_expr: ColumnExpr, value: ScalarValueOrColumn) -> IntColumnExpr:
     """
     Return the one-based first position of a value in an array, or null when absent.
 
     Examples:
-        first_paid = array_position(col("tags"), str_lit("paid"))
+        first_paid = array_position(col("tags"), "paid")
 
     Parameters:
         array_expr: Array expression to search.
         value: Value expression to find.
     """
-    return registered_application("array_position", [array_expr, value])
+    return registered_int_application("array_position", [array_expr, scalar_value_or_column_expr(value)])

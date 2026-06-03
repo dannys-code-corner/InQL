@@ -8,8 +8,8 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.registry import register_function, registered_bool_application
+from projection_builders import BoolColumnExpr, ColumnExpr
 from substrait.function_extensions import ARRAY_HAS_ANY_FUNCTION_ANCHOR
 
 
@@ -19,7 +19,7 @@ from substrait.function_extensions import ARRAY_HAS_ANY_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("array_has_any", ARRAY_HAS_ANY_FUNCTION_ANCHOR),
 ))
-pub def arrays_overlap(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
+pub def arrays_overlap(left: ColumnExpr, right: ColumnExpr) -> BoolColumnExpr:
     """
     Return whether two arrays have any elements in common.
 
@@ -30,4 +30,4 @@ pub def arrays_overlap(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
         left: First array expression.
         right: Second array expression.
     """
-    return registered_application("arrays_overlap", [left, right])
+    return registered_bool_application("arrays_overlap", [left, right])

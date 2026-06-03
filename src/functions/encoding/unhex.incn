@@ -9,8 +9,9 @@ from function_registry import (
     v0_1,
 )
 from functions.encoding.decode import decode
+from functions.inputs import StrValueOrColumn
 from functions.registry import register_function
-from projection_builders import ColumnExpr
+from projection_builders import StringColumnExpr
 
 
 @register_function(deterministic_spec(
@@ -19,7 +20,7 @@ from projection_builders import ColumnExpr
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=rewrite_mapping("unhex(expr) -> decode(expr, 'hex')"),
 ))
-pub def unhex(expr: ColumnExpr) -> ColumnExpr:
+pub def unhex(expr: StrValueOrColumn) -> StringColumnExpr:
     """
     Build a hexadecimal decoding expression.
 

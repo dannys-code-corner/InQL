@@ -13,7 +13,7 @@ from function_registry import (
     v0_1,
 )
 from functions.registry import register_function
-from projection_builders import ColumnExpr, float_expr as float_expr_builder
+from projection_builders import FloatLiteralExpr, float_expr as float_expr_builder
 
 
 @register_function(deterministic_spec(
@@ -22,7 +22,7 @@ from projection_builders import ColumnExpr, float_expr as float_expr_builder
     null_behavior=FunctionNullBehavior.NonNullLiteral,
     substrait=rewrite_mapping("typed floating-point literal expression"),
 ))
-pub def float_expr(value: float) -> ColumnExpr:
+pub def float_expr(value: float) -> FloatLiteralExpr:
     """
     Build a floating-point literal expression.
 

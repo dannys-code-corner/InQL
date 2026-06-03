@@ -9,8 +9,8 @@ from function_registry import (
     v0_1,
 )
 from functions.inputs import IntValueOrColumn, int_value_or_column_expr
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.registry import register_function, registered_temporal_application
+from projection_builders import TemporalColumnExpr
 from substrait.function_extensions import MAKE_DATE_FUNCTION_ANCHOR
 
 
@@ -20,7 +20,7 @@ from substrait.function_extensions import MAKE_DATE_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("make_date", MAKE_DATE_FUNCTION_ANCHOR),
 ))
-pub def make_date(year: IntValueOrColumn, month: IntValueOrColumn, day: IntValueOrColumn) -> ColumnExpr:
+pub def make_date(year: IntValueOrColumn, month: IntValueOrColumn, day: IntValueOrColumn) -> TemporalColumnExpr:
     """
     Build a date construction expression.
 
@@ -33,7 +33,7 @@ pub def make_date(year: IntValueOrColumn, month: IntValueOrColumn, day: IntValue
         month: Month expression or integer literal.
         day: Day expression or integer literal.
     """
-    return registered_application(
+    return registered_temporal_application(
         "make_date",
         [int_value_or_column_expr(year), int_value_or_column_expr(month), int_value_or_column_expr(day)],
     )

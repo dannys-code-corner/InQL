@@ -8,17 +8,24 @@ conversion helpers needed by proto fields along that path.
 from rust::incan_stdlib::errors import raise_value_error
 from rust::std::boxed import Box
 from rust::std::primitive import i32 as RustI32, u32 as RustU32
-from function_registry import FunctionRegistryEntry, SubstraitMappingKind
+from function_registry import FunctionInputType, FunctionRegistryEntry, SubstraitMappingKind
 from functions.registry import function_registry_entry
 from projection_builders import (
+    BoolColumnExpr,
     BoolLiteralExpr,
     ColumnExpr,
     ColumnRefExpr,
+    FloatColumnExpr,
     FloatLiteralExpr,
+    IntColumnExpr,
     IntLiteralExpr,
+    NumberColumnExpr,
     ProjectionAssignment,
     ScalarFunctionApplicationExpr,
+    StringColumnExpr,
     StringLiteralExpr,
+    TemporalColumnExpr,
+    TimestampColumnExpr,
 )
 from rust::substrait::proto import Expression, FunctionArgument, ProjectRel, Type
 from rust::substrait::proto::expression import (
@@ -43,8 +50,10 @@ from rust::substrait::proto::expression::reference_segment import ReferenceType 
 from rust::substrait::proto::function_argument import ArgType
 from rust::substrait::proto::rel_common import EmitKind
 from rust::substrait::proto::type import Boolean, Fp64, I64, Kind, Nullability, String as SubstraitString
+from scalar_schema import ScalarColumnSpec, scalar_columns_from_names, scalar_columns_from_row_columns
 from substrait.errors import SubstraitLoweringError, invalid_scalar_expression, unknown_scalar_column
 from substrait.extensions import scalar_function_name_from_anchor
+from substrait.schema import RowColumnSpec, SubstraitPrimitiveKind
 
 
 pub def bool_expr(value: bool) -> Expression:
@@ -191,6 +200,8 @@ model ResolvedProjectionBinding:
     name: str
     expr: Expression
     output_index: int
+    kind: Option[SubstraitPrimitiveKind]
+    nullable: bool
 
 
 @derive(Clone)
@@ -209,9 +220,24 @@ pub model LoweredProject:
 
 def _resolved_projection_bindings_for_input_columns(input_columns: list[str]) -> list[ResolvedProjectionBinding]:
     """Build identity bindings for one input column list."""
+    return _resolved_projection_bindings_for_column_specs(scalar_columns_from_names(input_columns))
+
+
+def _resolved_projection_bindings_for_column_specs(
+    input_columns: list[ScalarColumnSpec],
+) -> list[ResolvedProjectionBinding]:
+    """Build identity bindings for one typed-or-name-only input column list."""
     mut bindings: list[ResolvedProjectionBinding] = []
-    for idx, name in enumerate(input_columns):
-        bindings.append(ResolvedProjectionBinding(name=name, expr=field_ref_expr(idx), output_index=idx))
+    for idx, column in enumerate(input_columns):
+        bindings.append(
+            ResolvedProjectionBinding(
+                name=column.name,
+                expr=field_ref_expr(idx),
+                output_index=idx,
+                kind=column.kind,
+                nullable=column.nullable,
+            ),
+        )
     return bindings
 
 
@@ -242,6 +268,27 @@ def _resolved_projection_expr(
 ) -> Result[Expression, SubstraitLoweringError]:
     """Lower one scalar expression against the current resolved binding set."""
     match expr:
+        BoolColumnExpr(typed) =>
+            _validate_typed_column_expr(bindings, typed.expr, FunctionInputType.Bool, "boolean expression")?
+            return _resolved_projection_expr(bindings, typed.expr)
+        IntColumnExpr(typed) =>
+            _validate_typed_column_expr(bindings, typed.expr, FunctionInputType.Int, "integer expression")?
+            return _resolved_projection_expr(bindings, typed.expr)
+        FloatColumnExpr(typed) =>
+            _validate_typed_column_expr(bindings, typed.expr, FunctionInputType.Float, "floating-point expression")?
+            return _resolved_projection_expr(bindings, typed.expr)
+        NumberColumnExpr(typed) =>
+            _validate_typed_column_expr(bindings, typed.expr, FunctionInputType.Number, "numeric expression")?
+            return _resolved_projection_expr(bindings, typed.expr)
+        StringColumnExpr(typed) =>
+            _validate_typed_column_expr(bindings, typed.expr, FunctionInputType.String, "string expression")?
+            return _resolved_projection_expr(bindings, typed.expr)
+        TemporalColumnExpr(typed) =>
+            _validate_typed_column_expr(bindings, typed.expr, FunctionInputType.Temporal, "temporal expression")?
+            return _resolved_projection_expr(bindings, typed.expr)
+        TimestampColumnExpr(typed) =>
+            _validate_typed_column_expr(bindings, typed.expr, FunctionInputType.Timestamp, "timestamp expression")?
+            return _resolved_projection_expr(bindings, typed.expr)
         ColumnRefExpr(column) =>
             binding_idx = _index_of_binding(bindings, column.column_name)
             if binding_idx >= 0:
@@ -271,6 +318,7 @@ def _resolved_scalar_function_application_expr(
 ) -> Result[Expression, SubstraitLoweringError]:
     """Lower one scalar-function expression through its registry-owned Substrait mapping."""
     entry = _registry_entry_for_application(application)?
+    _validate_typed_application_arguments(bindings, application)?
     match entry.substrait.kind:
         SubstraitMappingKind.ExtensionFunction =>
             lowered_arguments = [_resolved_projection_expr(bindings, argument)? for argument in application.arguments]
@@ -382,6 +430,229 @@ def _resolved_core_function_application_expr(
     )
 
 
+def _scalar_type_matches_input_type(actual: FunctionInputType, expected: FunctionInputType) -> bool:
+    """Return whether one known scalar type category satisfies one function argument contract."""
+    match expected:
+        FunctionInputType.Any => return true
+        FunctionInputType.Bool => return actual == FunctionInputType.Bool
+        FunctionInputType.Int => return actual == FunctionInputType.Int
+        FunctionInputType.Float => return actual == FunctionInputType.Float
+        FunctionInputType.Number =>
+            return actual == FunctionInputType.Int or actual == FunctionInputType.Float or actual == FunctionInputType.Number
+        FunctionInputType.String => return actual == FunctionInputType.String
+        FunctionInputType.Timestamp => return actual == FunctionInputType.Timestamp
+        FunctionInputType.Temporal => return actual == FunctionInputType.String or actual == FunctionInputType.Timestamp
+
+
+def _function_input_type_name(kind: FunctionInputType) -> str:
+    """Return the compact diagnostic spelling for a function argument contract."""
+    match kind:
+        FunctionInputType.Any => return "any"
+        FunctionInputType.Bool => return "bool"
+        FunctionInputType.Int => return "int"
+        FunctionInputType.Float => return "float"
+        FunctionInputType.Number => return "number"
+        FunctionInputType.String => return "string"
+        FunctionInputType.Timestamp => return "timestamp"
+        FunctionInputType.Temporal => return "temporal"
+
+
+def _schema_kind_scalar_type(kind: SubstraitPrimitiveKind) -> FunctionInputType:
+    """Convert one concrete schema kind into the matching scalar type category."""
+    match kind:
+        SubstraitPrimitiveKind.Bool => return FunctionInputType.Bool
+        SubstraitPrimitiveKind.I64 => return FunctionInputType.Int
+        SubstraitPrimitiveKind.F64 => return FunctionInputType.Float
+        SubstraitPrimitiveKind.Timestamp => return FunctionInputType.Timestamp
+        SubstraitPrimitiveKind.String => return FunctionInputType.String
+
+
+def _argument_kind_context(bindings: list[ResolvedProjectionBinding], expr: ColumnExpr) -> str:
+    """Return a compact source description for one typed scalar argument."""
+    match expr:
+        BoolColumnExpr(_) => return "boolean expression"
+        IntColumnExpr(_) => return "integer expression"
+        FloatColumnExpr(_) => return "floating-point expression"
+        NumberColumnExpr(_) => return "numeric expression"
+        StringColumnExpr(_) => return "string expression"
+        TemporalColumnExpr(_) => return "temporal expression"
+        TimestampColumnExpr(_) => return "timestamp expression"
+        ColumnRefExpr(column) => return f"column `{column.column_name}`"
+        IntLiteralExpr(_) => return "int literal"
+        FloatLiteralExpr(_) => return "float literal"
+        StringLiteralExpr(_) => return "string literal"
+        BoolLiteralExpr(_) => return "bool literal"
+        ScalarFunctionApplicationExpr(application) => return f"{application.canonical_name} expression"
+
+
+def _known_expression_kind(
+    bindings: list[ResolvedProjectionBinding],
+    expr: ColumnExpr,
+) -> Result[Option[SubstraitPrimitiveKind], SubstraitLoweringError]:
+    """Return a known primitive expression kind, or `None` when InQL cannot infer it honestly."""
+    match expr:
+        BoolColumnExpr(_) => return Ok(Some(SubstraitPrimitiveKind.Bool))
+        IntColumnExpr(_) => return Ok(Some(SubstraitPrimitiveKind.I64))
+        FloatColumnExpr(_) => return Ok(Some(SubstraitPrimitiveKind.F64))
+        NumberColumnExpr(_) => return Ok(None)
+        StringColumnExpr(_) => return Ok(Some(SubstraitPrimitiveKind.String))
+        TemporalColumnExpr(_) => return Ok(None)
+        TimestampColumnExpr(_) => return Ok(Some(SubstraitPrimitiveKind.Timestamp))
+        ColumnRefExpr(column) =>
+            binding_idx = _index_of_binding(bindings, column.column_name)
+            if binding_idx < 0:
+                return Err(unknown_scalar_column(column.column_name))
+            return Ok(bindings[binding_idx].kind)
+        IntLiteralExpr(_) => return Ok(Some(SubstraitPrimitiveKind.I64))
+        FloatLiteralExpr(_) => return Ok(Some(SubstraitPrimitiveKind.F64))
+        StringLiteralExpr(_) => return Ok(Some(SubstraitPrimitiveKind.String))
+        BoolLiteralExpr(_) => return Ok(Some(SubstraitPrimitiveKind.Bool))
+        ScalarFunctionApplicationExpr(_) => return Ok(None)
+
+
+def _known_expression_scalar_type(
+    bindings: list[ResolvedProjectionBinding],
+    expr: ColumnExpr,
+) -> Result[Option[FunctionInputType], SubstraitLoweringError]:
+    """Return a known scalar type category, including broad registry result categories."""
+    match expr:
+        BoolColumnExpr(_) => return Ok(Some(FunctionInputType.Bool))
+        IntColumnExpr(_) => return Ok(Some(FunctionInputType.Int))
+        FloatColumnExpr(_) => return Ok(Some(FunctionInputType.Float))
+        NumberColumnExpr(_) => return Ok(Some(FunctionInputType.Number))
+        StringColumnExpr(_) => return Ok(Some(FunctionInputType.String))
+        TemporalColumnExpr(_) => return Ok(Some(FunctionInputType.Temporal))
+        TimestampColumnExpr(_) => return Ok(Some(FunctionInputType.Timestamp))
+        ScalarFunctionApplicationExpr(_) => return Ok(None)
+        _ =>
+            if let Some(kind) = _known_expression_kind(bindings, expr)?:
+                return Ok(Some(_schema_kind_scalar_type(kind)))
+            return Ok(None)
+
+
+def _validate_typed_column_expr(
+    bindings: list[ResolvedProjectionBinding],
+    expr: ColumnExpr,
+    expected: FunctionInputType,
+    context: str,
+) -> Result[None, SubstraitLoweringError]:
+    """Validate one helper-surface typed expression wrapper against known schema/literal facts."""
+    if expected == FunctionInputType.Any:
+        return Ok(None)
+    match _known_expression_scalar_type(bindings, expr)?:
+        Some(actual) =>
+            if _scalar_type_matches_input_type(actual, expected):
+                return Ok(None)
+            expected_name = _function_input_type_name(expected)
+            actual_name = _function_input_type_name(actual)
+            return Err(
+                invalid_scalar_expression(f"{context} expects {expected_name} input, but found {actual_name} type"),
+            )
+        None => return Ok(None)
+
+
+def _validate_typed_application_argument(
+    bindings: list[ResolvedProjectionBinding],
+    application: ScalarFunctionApplicationExpr,
+    index: int,
+    argument: ColumnExpr,
+) -> Result[None, SubstraitLoweringError]:
+    """Validate one typed wrapper argument carried by a helper signature."""
+    match argument:
+        BoolColumnExpr(typed) =>
+            return _validate_typed_application_argument_inner(
+                bindings,
+                application,
+                index,
+                typed.expr,
+                FunctionInputType.Bool,
+            )
+        IntColumnExpr(typed) =>
+            return _validate_typed_application_argument_inner(
+                bindings,
+                application,
+                index,
+                typed.expr,
+                FunctionInputType.Int,
+            )
+        FloatColumnExpr(typed) =>
+            return _validate_typed_application_argument_inner(
+                bindings,
+                application,
+                index,
+                typed.expr,
+                FunctionInputType.Float,
+            )
+        NumberColumnExpr(typed) =>
+            return _validate_typed_application_argument_inner(
+                bindings,
+                application,
+                index,
+                typed.expr,
+                FunctionInputType.Number,
+            )
+        StringColumnExpr(typed) =>
+            return _validate_typed_application_argument_inner(
+                bindings,
+                application,
+                index,
+                typed.expr,
+                FunctionInputType.String,
+            )
+        TemporalColumnExpr(typed) =>
+            return _validate_typed_application_argument_inner(
+                bindings,
+                application,
+                index,
+                typed.expr,
+                FunctionInputType.Temporal,
+            )
+        TimestampColumnExpr(typed) =>
+            return _validate_typed_application_argument_inner(
+                bindings,
+                application,
+                index,
+                typed.expr,
+                FunctionInputType.Timestamp,
+            )
+        _ => return Ok(None)
+
+
+def _validate_typed_application_argument_inner(
+    bindings: list[ResolvedProjectionBinding],
+    application: ScalarFunctionApplicationExpr,
+    index: int,
+    expr: ColumnExpr,
+    expected: FunctionInputType,
+) -> Result[None, SubstraitLoweringError]:
+    """Validate the underlying expression inside one typed application argument."""
+    if expected == FunctionInputType.Any or index >= len(application.arguments):
+        return Ok(None)
+    match _known_expression_scalar_type(bindings, expr)?:
+        Some(actual) =>
+            if _scalar_type_matches_input_type(actual, expected):
+                return Ok(None)
+            expected_name = _function_input_type_name(expected)
+            actual_name = _function_input_type_name(actual)
+            context = _argument_kind_context(bindings, expr)
+            return Err(
+                invalid_scalar_expression(
+                    f"{application.canonical_name} argument {index + 1} expects {expected_name} input, but {context} has {actual_name} type",
+                ),
+            )
+        None => return Ok(None)
+
+
+def _validate_typed_application_arguments(
+    bindings: list[ResolvedProjectionBinding],
+    application: ScalarFunctionApplicationExpr,
+) -> Result[None, SubstraitLoweringError]:
+    """Validate typed expression arguments carried by public helper signatures."""
+    for idx in range(len(application.arguments)):
+        _validate_typed_application_argument(bindings, application, idx, application.arguments[idx])?
+    return Ok(None)
+
+
 def _apply_projection_assignments_to_bindings(
     input_columns: list[str],
     assignments: list[ProjectionAssignment],
@@ -398,6 +669,8 @@ def _apply_projection_assignments_to_bindings(
                 name=assignment.output_name,
                 expr=resolved_expr,
                 output_index=next_output_index,
+                kind=_known_expression_kind(bindings, assignment.expr)?,
+                nullable=true,
             )
         else:
             bindings.append(
@@ -405,6 +678,8 @@ def _apply_projection_assignments_to_bindings(
                     name=assignment.output_name,
                     expr=resolved_expr,
                     output_index=next_output_index,
+                    kind=_known_expression_kind(bindings, assignment.expr)?,
+                    nullable=true,
                 ),
             )
         next_output_index += 1
@@ -416,12 +691,29 @@ pub def lower_project(
     assignments: list[ProjectionAssignment],
 ) -> Result[LoweredProject, SubstraitLoweringError]:
     """Lower one add-or-replace projection into explicit project expressions plus emit mapping."""
+    return lower_project_for_columns(scalar_columns_from_names(input_columns), assignments)
+
+
+pub def lower_project_of_schema(
+    input_schema: list[RowColumnSpec],
+    assignments: list[ProjectionAssignment],
+) -> Result[LoweredProject, SubstraitLoweringError]:
+    """Lower one projection against concrete input schema facts."""
+    return lower_project_for_columns(scalar_columns_from_row_columns(input_schema), assignments)
+
+
+pub def lower_project_for_columns(
+    input_columns: list[ScalarColumnSpec],
+    assignments: list[ProjectionAssignment],
+) -> Result[LoweredProject, SubstraitLoweringError]:
+    """Lower one projection against typed-or-name-only input column facts."""
     input_column_count = len(input_columns)
-    mut bindings = _resolved_projection_bindings_for_input_columns(input_columns)
+    mut bindings = _resolved_projection_bindings_for_column_specs(input_columns)
     mut expressions: list[ResolvedProjectExpression] = []
     mut mapping_indexes: list[int] = []
     for assignment in assignments:
         resolved_expr = _resolved_projection_expr(bindings, assignment.expr)?
+        output_kind = _known_expression_kind(bindings, assignment.expr)?
         expressions.append(ResolvedProjectExpression(expr=resolved_expr.clone()))
         next_output_index = input_column_count + len(expressions) - 1
         existing_idx = _index_of_binding(bindings, assignment.output_name)
@@ -430,6 +722,8 @@ pub def lower_project(
                 name=assignment.output_name,
                 expr=resolved_expr,
                 output_index=next_output_index,
+                kind=output_kind,
+                nullable=true,
             )
         else:
             bindings.append(
@@ -437,6 +731,8 @@ pub def lower_project(
                     name=assignment.output_name,
                     expr=resolved_expr,
                     output_index=next_output_index,
+                    kind=output_kind,
+                    nullable=true,
                 ),
             )
     for binding in bindings:
@@ -454,12 +750,36 @@ pub def scalar_expr(input_columns: list[str], expr: ColumnExpr) -> Result[Expres
     return _resolved_projection_expr(_resolved_projection_bindings_for_input_columns(input_columns), expr)
 
 
+pub def scalar_expr_of_schema(
+    input_schema: list[RowColumnSpec],
+    expr: ColumnExpr,
+) -> Result[Expression, SubstraitLoweringError]:
+    """Lower one scalar expression against concrete input schema facts."""
+    return scalar_expr_for_columns(scalar_columns_from_row_columns(input_schema), expr)
+
+
+pub def scalar_expr_for_columns(
+    input_columns: list[ScalarColumnSpec],
+    expr: ColumnExpr,
+) -> Result[Expression, SubstraitLoweringError]:
+    """Lower one scalar expression against typed-or-name-only input column facts."""
+    return _resolved_projection_expr(_resolved_projection_bindings_for_column_specs(input_columns), expr)
+
+
 pub def filter_predicate_expr(
     input_columns: list[str],
     predicate: ColumnExpr,
 ) -> Result[Expression, SubstraitLoweringError]:
     """Lower one filter predicate through the shared scalar-expression path."""
     return scalar_expr(input_columns, predicate)
+
+
+pub def filter_predicate_expr_for_columns(
+    input_columns: list[ScalarColumnSpec],
+    predicate: ColumnExpr,
+) -> Result[Expression, SubstraitLoweringError]:
+    """Lower one filter predicate through the typed scalar-expression path."""
+    return scalar_expr_for_columns(input_columns, predicate)
 
 
 pub def to_rust_i32(value: int) -> RustI32:

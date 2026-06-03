@@ -12,8 +12,9 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.inputs import BoolValueOrColumn, bool_value_or_column_expr
+from functions.registry import register_function, registered_bool_application
+from projection_builders import BoolColumnExpr
 from substrait.function_extensions import NOT_FUNCTION_ANCHOR
 
 
@@ -23,19 +24,19 @@ from substrait.function_extensions import NOT_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.Predicate,
     substrait=extension_mapping("not", NOT_FUNCTION_ANCHOR),
 ))
-pub def not_(expr: ColumnExpr) -> ColumnExpr:
+pub def not_(expr: BoolValueOrColumn) -> BoolColumnExpr:
     """
     Build a boolean negation.
 
     Use `not_` instead of `not` because `not` is reserved by the host language.
 
     Examples:
-        active = not_(eq(col("status"), lit("archived")))
+        active = not_(eq(col("status"), "archived"))
 
     Parameters:
         expr: Predicate expression to negate.
     """
-    return registered_application("not_", [expr])
+    return registered_bool_application("not_", [bool_value_or_column_expr(expr)])
 
 
 module tests:

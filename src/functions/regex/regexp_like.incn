@@ -9,8 +9,8 @@ from function_registry import (
     v0_1,
 )
 from functions.inputs import StrValueOrColumn, str_value_or_column_expr
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.registry import register_function, registered_bool_application
+from projection_builders import BoolColumnExpr
 from substrait.function_extensions import REGEXP_LIKE_FUNCTION_ANCHOR
 
 
@@ -20,7 +20,11 @@ from substrait.function_extensions import REGEXP_LIKE_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.Predicate,
     substrait=extension_mapping("regexp_like", REGEXP_LIKE_FUNCTION_ANCHOR),
 ))
-pub def regexp_like(expr: ColumnExpr, pattern: StrValueOrColumn, flags: Option[StrValueOrColumn] = None) -> ColumnExpr:
+pub def regexp_like(
+    expr: StrValueOrColumn,
+    pattern: StrValueOrColumn,
+    flags: Option[StrValueOrColumn] = None,
+) -> BoolColumnExpr:
     """
     Build a regex match predicate.
 
@@ -34,10 +38,11 @@ pub def regexp_like(expr: ColumnExpr, pattern: StrValueOrColumn, flags: Option[S
         pattern: Regex pattern expression.
         flags: Optional regex flags expression.
     """
+    expr_value = str_value_or_column_expr(expr)
     pattern_expr = str_value_or_column_expr(pattern)
     if let Some(value) = flags:
-        return registered_application("regexp_like", [expr, pattern_expr, str_value_or_column_expr(value)])
-    return registered_application("regexp_like", [expr, pattern_expr])
+        return registered_bool_application("regexp_like", [expr_value, pattern_expr, str_value_or_column_expr(value)])
+    return registered_bool_application("regexp_like", [expr_value, pattern_expr])
 
 
 module tests:

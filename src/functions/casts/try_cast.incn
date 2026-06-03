@@ -13,7 +13,62 @@ from function_registry import (
     v0_1,
 )
 from functions.registry import register_function, register_function_alias, registered_application_with_options
-from projection_builders import ColumnExpr, scalar_function_option
+from projection_builders import (
+    BoolColumnExpr,
+    ColumnExpr,
+    FloatColumnExpr,
+    IntColumnExpr,
+    StringColumnExpr,
+    bool_column_expr,
+    float_column_expr,
+    int_column_expr,
+    scalar_function_option,
+    str_column_expr,
+)
+
+
+def _try_cast_application(expr: ColumnExpr, target_type: str) -> ColumnExpr:
+    return registered_application_with_options("try_cast", [expr], [scalar_function_option("target_type", target_type)])
+
+
+pub def try_cast(expr: ColumnExpr, target_type: Type[bool]) -> BoolColumnExpr:
+    """
+    Build a null-on-failure cast to a boolean expression.
+
+    Examples:
+        active = try_cast(col("active_text"), bool)
+    """
+    return bool_column_expr(_try_cast_application(expr, "bool"))
+
+
+pub def try_cast(expr: ColumnExpr, target_type: Type[int]) -> IntColumnExpr:
+    """
+    Build a null-on-failure cast to an integer expression.
+
+    Examples:
+        quantity = try_cast(col("quantity_text"), int)
+    """
+    return int_column_expr(_try_cast_application(expr, "int"))
+
+
+pub def try_cast(expr: ColumnExpr, target_type: Type[float]) -> FloatColumnExpr:
+    """
+    Build a null-on-failure cast to a floating-point expression.
+
+    Examples:
+        amount = try_cast(col("amount_text"), float)
+    """
+    return float_column_expr(_try_cast_application(expr, "float"))
+
+
+pub def try_cast(expr: ColumnExpr, target_type: Type[str]) -> StringColumnExpr:
+    """
+    Build a null-on-failure cast to a string expression.
+
+    Examples:
+        amount_text = try_cast(col("amount"), str)
+    """
+    return str_column_expr(_try_cast_application(expr, "str"))
 
 
 @register_function(deterministic_spec(
@@ -29,16 +84,18 @@ pub def try_cast(expr: ColumnExpr, target_type: str) -> ColumnExpr:
     `try_cast` represents a best-effort conversion where invalid values become null instead of failing the query.
 
     Examples:
-        parsed_amount = try_cast(col("amount_text"), "float")
+        parsed_amount = try_cast(col("amount_text"), float)
 
     Parameters:
         expr: Expression to convert.
-        target_type: InQL type spelling to cast to.
+        target_type: InQL type spelling to cast to. Prefer primitive type tokens such as `int`, `float`, `str`, and
+            `bool` when the target is a common scalar primitive.
     """
-    return registered_application_with_options("try_cast", [expr], [scalar_function_option("target_type", target_type)])
+    return _try_cast_application(expr, target_type)
 
 
 static _safe_cast_alias_registration: None = register_function_alias("try_cast", "safe_cast")
+pub safe_cast = alias try_cast
 
 
 module tests:
@@ -50,9 +107,27 @@ module tests:
         column_expr_kind,
         column_expr_option_value,
     )
-    def test_try_cast_records_target_type_option() -> None:
+    def test_try_cast_records_string_target_type_option() -> None:
         expr = try_cast(col("amount"), "float64")
         assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
         assert column_expr_function_name(expr) == "try_cast"
         assert column_expr_argument_count(expr) == 1
         assert column_expr_option_value(expr, "target_type") == "float64"
+    def test_try_cast_type_tokens_record_primitive_target_type_options() -> None:
+        int_expr = try_cast(col("quantity_text"), int)
+        float_expr = try_cast(col("amount_text"), float)
+        str_expr = try_cast(col("amount"), str)
+        bool_expr = try_cast(col("active_text"), bool)
+        assert column_expr_option_value(int_expr, "target_type") == "int"
+        assert column_expr_option_value(float_expr, "target_type") == "float"
+        assert column_expr_option_value(str_expr, "target_type") == "str"
+        assert column_expr_option_value(bool_expr, "target_type") == "bool"
+    def test_safe_cast_rewrites_to_try_cast() -> None:
+        expr = safe_cast(col("amount_text"), "float64")
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "try_cast"
+    def test_safe_cast_type_token_rewrites_to_try_cast() -> None:
+        expr = safe_cast(col("amount_text"), float)
+        assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+        assert column_expr_function_name(expr) == "try_cast"
+        assert column_expr_option_value(expr, "target_type") == "float"

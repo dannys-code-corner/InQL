@@ -9,8 +9,8 @@ from function_registry import (
     v0_1,
 )
 from functions.inputs import StrValueOrColumn, str_value_or_column_expr
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.registry import register_function, registered_int_application
+from projection_builders import IntColumnExpr
 from substrait.function_extensions import POSITION_FUNCTION_ANCHOR
 
 
@@ -20,7 +20,7 @@ from substrait.function_extensions import POSITION_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("strpos", POSITION_FUNCTION_ANCHOR),
 ))
-pub def position(expr: StrValueOrColumn, substring: StrValueOrColumn) -> ColumnExpr:
+pub def position(expr: StrValueOrColumn, substring: StrValueOrColumn) -> IntColumnExpr:
     """
     Build a one-based substring-position expression that returns zero when absent.
 
@@ -31,7 +31,7 @@ pub def position(expr: StrValueOrColumn, substring: StrValueOrColumn) -> ColumnE
         expr: Input scalar expression.
         substring: Substring expression to search for.
     """
-    return registered_application("position", [str_value_or_column_expr(expr), str_value_or_column_expr(substring)])
+    return registered_int_application("position", [str_value_or_column_expr(expr), str_value_or_column_expr(substring)])
 
 
 module tests:
@@ -42,7 +42,7 @@ module tests:
         column_expr_function_name,
         column_expr_kind,
     )
-    def test_position_builds_registered_application() -> None:
+    def test_position_builds_registered_int_application() -> None:
         expr = position(col("sku"), "-")
         assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
         assert column_expr_function_name(expr) == "position"

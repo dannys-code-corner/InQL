@@ -9,8 +9,8 @@ from function_registry import (
     v0_1,
 )
 from functions.inputs import IntValueOrColumn, StrValueOrColumn, int_value_or_column_expr, str_value_or_column_expr
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.registry import register_function, registered_string_application
+from projection_builders import StringColumnExpr
 from substrait.function_extensions import REGEXP_EXTRACT_FUNCTION_ANCHOR
 
 
@@ -20,7 +20,11 @@ from substrait.function_extensions import REGEXP_EXTRACT_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("regexp_extract", REGEXP_EXTRACT_FUNCTION_ANCHOR),
 ))
-pub def regexp_extract(expr: ColumnExpr, pattern: StrValueOrColumn, group_index: IntValueOrColumn = 1) -> ColumnExpr:
+pub def regexp_extract(
+    expr: StrValueOrColumn,
+    pattern: StrValueOrColumn,
+    group_index: IntValueOrColumn = 1,
+) -> StringColumnExpr:
     """
     Build a regex capture extraction expression.
 
@@ -34,9 +38,9 @@ pub def regexp_extract(expr: ColumnExpr, pattern: StrValueOrColumn, group_index:
         pattern: Regex pattern expression.
         group_index: Capture group index expression.
     """
-    return registered_application(
+    return registered_string_application(
         "regexp_extract",
-        [expr, str_value_or_column_expr(pattern), int_value_or_column_expr(group_index)],
+        [str_value_or_column_expr(expr), str_value_or_column_expr(pattern), int_value_or_column_expr(group_index)],
     )
 
 

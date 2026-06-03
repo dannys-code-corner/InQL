@@ -14,7 +14,7 @@ from function_registry import (
     v0_1,
 )
 from functions.registry import register_function
-from projection_builders import ColumnExpr, int_expr as int_expr_builder
+from projection_builders import IntLiteralExpr, int_expr as int_expr_builder
 
 
 @register_function(deterministic_spec(
@@ -23,7 +23,7 @@ from projection_builders import ColumnExpr, int_expr as int_expr_builder
     null_behavior=FunctionNullBehavior.NonNullLiteral,
     substrait=rewrite_mapping("typed integer literal expression"),
 ))
-pub def int_expr(value: int) -> ColumnExpr:
+pub def int_expr(value: int) -> IntLiteralExpr:
     """
     Build an integer literal expression.
 

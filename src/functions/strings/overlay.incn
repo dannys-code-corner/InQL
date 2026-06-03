@@ -9,8 +9,8 @@ from function_registry import (
     v0_1,
 )
 from functions.inputs import IntValueOrColumn, StrValueOrColumn, int_value_or_column_expr, str_value_or_column_expr
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.registry import register_function, registered_string_application
+from projection_builders import StringColumnExpr
 from substrait.function_extensions import OVERLAY_FUNCTION_ANCHOR
 
 
@@ -25,7 +25,7 @@ pub def overlay(
     replacement: StrValueOrColumn,
     start: IntValueOrColumn,
     length: Option[IntValueOrColumn] = None,
-) -> ColumnExpr:
+) -> StringColumnExpr:
     """
     Build an overlay expression using one-based start positions.
 
@@ -42,11 +42,11 @@ pub def overlay(
     replacement_value = str_value_or_column_expr(replacement)
     start_value = int_value_or_column_expr(start)
     if let Some(value) = length:
-        return registered_application(
+        return registered_string_application(
             "overlay",
             [expr_value, replacement_value, start_value, int_value_or_column_expr(value)],
         )
-    return registered_application("overlay", [expr_value, replacement_value, start_value])
+    return registered_string_application("overlay", [expr_value, replacement_value, start_value])
 
 
 module tests:
@@ -57,7 +57,7 @@ module tests:
         column_expr_function_name,
         column_expr_kind,
     )
-    def test_overlay_builds_registered_application() -> None:
+    def test_overlay_builds_registered_string_application() -> None:
         expr = overlay(col("sku"), "XX", 2, 2)
         assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
         assert column_expr_function_name(expr) == "overlay"

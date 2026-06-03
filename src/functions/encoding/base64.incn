@@ -9,8 +9,9 @@ from function_registry import (
     v0_1,
 )
 from functions.encoding.encode import encode
+from functions.inputs import StrValueOrColumn
 from functions.registry import register_function
-from projection_builders import ColumnExpr
+from projection_builders import StringColumnExpr
 
 
 @register_function(deterministic_spec(
@@ -19,7 +20,7 @@ from projection_builders import ColumnExpr
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=rewrite_mapping("base64(expr) -> encode(expr, 'base64')"),
 ))
-pub def base64(expr: ColumnExpr) -> ColumnExpr:
+pub def base64(expr: StrValueOrColumn) -> StringColumnExpr:
     """
     Build a base64 encoding expression.
 

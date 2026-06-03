@@ -12,7 +12,7 @@ from functions.nested.array import array
 from functions.nested.array_range import array_range
 from functions.nested.cardinality import cardinality
 from functions.nested.named_struct import named_struct
-from projection_builders import ColumnExpr, int_expr
+from projection_builders import ColumnExpr
 
 
 @derive(Clone)
@@ -221,7 +221,7 @@ def _stack_row_exprs(row_count: int, values: list[ColumnExpr], output_columns: l
 def _position_range_expr(expr: ColumnExpr) -> ColumnExpr:
     """Build the zero-based position array paired with positional generators."""
     # Positional generators lower as two equally sized arrays: generated positions and original values.
-    return array_range(int_expr(0), cardinality(expr))
+    return array_range(0, cardinality(expr))
 
 
 def _contains_text(values: list[str], expected: str) -> bool:

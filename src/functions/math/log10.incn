@@ -8,8 +8,9 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.inputs import NumberValueOrColumn, number_value_or_column_expr
+from functions.registry import register_function, registered_number_application
+from projection_builders import NumberColumnExpr
 from substrait.function_extensions import LOG10_FUNCTION_ANCHOR
 
 
@@ -19,7 +20,7 @@ from substrait.function_extensions import LOG10_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("log10", LOG10_FUNCTION_ANCHOR),
 ))
-pub def log10(expr: ColumnExpr) -> ColumnExpr:
+pub def log10(expr: NumberValueOrColumn) -> NumberColumnExpr:
     """
     Build a base-10 logarithm expression.
 
@@ -29,7 +30,7 @@ pub def log10(expr: ColumnExpr) -> ColumnExpr:
     Parameters:
         expr: Input scalar expression.
     """
-    return registered_application("log10", [expr])
+    return registered_number_application("log10", [number_value_or_column_expr(expr)])
 
 
 module tests:

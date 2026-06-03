@@ -9,8 +9,8 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.registry import register_function, registered_temporal_application
+from projection_builders import TemporalColumnExpr
 from substrait.function_extensions import CURRENT_TIME_FUNCTION_ANCHOR
 
 
@@ -21,14 +21,14 @@ from substrait.function_extensions import CURRENT_TIME_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.NonNullLiteral,
     substrait=extension_mapping("current_time", CURRENT_TIME_FUNCTION_ANCHOR),
 ))
-pub def current_time() -> ColumnExpr:
+pub def current_time() -> TemporalColumnExpr:
     """
     Build a current-time expression.
 
     Examples:
         now_time = current_time()
     """
-    return registered_application("current_time", [])
+    return registered_temporal_application("current_time", [])
 
 
 module tests:

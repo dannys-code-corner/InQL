@@ -71,6 +71,20 @@ pub enum FunctionErrorBehavior(str):
 
 
 @derive(Clone)
+pub enum FunctionInputType(str):
+    """Primitive input contract used to validate value-or-column helper arguments."""
+
+    Any = "any"
+    Bool = "bool"
+    Int = "int"
+    Float = "float"
+    Number = "number"
+    String = "string"
+    Timestamp = "timestamp"
+    Temporal = "temporal"
+
+
+@derive(Clone)
 pub enum SubstraitMappingKind(str):
     """Substrait interchange category for one portable InQL function."""
 

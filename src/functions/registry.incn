@@ -16,7 +16,24 @@ from function_registry import (
     SubstraitMapping,
     SubstraitMappingKind,
 )
-from projection_builders import ColumnExpr, ScalarFunctionOption, scalar_function_application
+from projection_builders import (
+    BoolColumnExpr,
+    ColumnExpr,
+    FloatColumnExpr,
+    IntColumnExpr,
+    NumberColumnExpr,
+    ScalarFunctionOption,
+    StringColumnExpr,
+    TemporalColumnExpr,
+    TimestampColumnExpr,
+    bool_column_expr,
+    int_column_expr,
+    number_column_expr,
+    scalar_function_application,
+    str_column_expr,
+    temporal_column_expr,
+    timestamp_column_expr,
+)
 
 pub static function_registry: FunctionRegistry = FunctionRegistry.new()
 static _pending_function_specs: list[FunctionSpec] = []
@@ -76,6 +93,78 @@ pub def registered_application_with_options(
     """Build one scalar application with non-expression options using decorator-owned registry metadata."""
     entry = registered_function_entry(canonical_name)
     return scalar_function_application(entry.canonical_name, arguments, options)
+
+
+pub def registered_bool_application(canonical_name: str, arguments: list[ColumnExpr]) -> BoolColumnExpr:
+    """Build one scalar application that produces boolean values."""
+    return registered_bool_application_with_options(canonical_name, arguments, [])
+
+
+pub def registered_bool_application_with_options(
+    canonical_name: str,
+    arguments: list[ColumnExpr],
+    options: list[ScalarFunctionOption],
+) -> BoolColumnExpr:
+    """Build one boolean-producing scalar application with non-expression options."""
+    entry = registered_function_entry(canonical_name)
+    return bool_column_expr(scalar_function_application(entry.canonical_name, arguments, options))
+
+
+pub def registered_int_application(canonical_name: str, arguments: list[ColumnExpr]) -> IntColumnExpr:
+    """Build one scalar application that produces integer values."""
+    return registered_int_application_with_options(canonical_name, arguments, [])
+
+
+pub def registered_int_application_with_options(
+    canonical_name: str,
+    arguments: list[ColumnExpr],
+    options: list[ScalarFunctionOption],
+) -> IntColumnExpr:
+    """Build one integer-producing scalar application with non-expression options."""
+    entry = registered_function_entry(canonical_name)
+    return int_column_expr(scalar_function_application(entry.canonical_name, arguments, options))
+
+
+pub def registered_number_application(canonical_name: str, arguments: list[ColumnExpr]) -> NumberColumnExpr:
+    """Build one scalar application that produces numeric values."""
+    return registered_number_application_with_options(canonical_name, arguments, [])
+
+
+pub def registered_number_application_with_options(
+    canonical_name: str,
+    arguments: list[ColumnExpr],
+    options: list[ScalarFunctionOption],
+) -> NumberColumnExpr:
+    """Build one numeric scalar application with non-expression options."""
+    entry = registered_function_entry(canonical_name)
+    return number_column_expr(scalar_function_application(entry.canonical_name, arguments, options))
+
+
+pub def registered_string_application(canonical_name: str, arguments: list[ColumnExpr]) -> StringColumnExpr:
+    """Build one scalar application that produces string values."""
+    return registered_string_application_with_options(canonical_name, arguments, [])
+
+
+pub def registered_string_application_with_options(
+    canonical_name: str,
+    arguments: list[ColumnExpr],
+    options: list[ScalarFunctionOption],
+) -> StringColumnExpr:
+    """Build one string-producing scalar application with non-expression options."""
+    entry = registered_function_entry(canonical_name)
+    return str_column_expr(scalar_function_application(entry.canonical_name, arguments, options))
+
+
+pub def registered_timestamp_application(canonical_name: str, arguments: list[ColumnExpr]) -> TimestampColumnExpr:
+    """Build one scalar application that produces timestamp values."""
+    entry = registered_function_entry(canonical_name)
+    return timestamp_column_expr(scalar_function_application(entry.canonical_name, arguments, []))
+
+
+pub def registered_temporal_application(canonical_name: str, arguments: list[ColumnExpr]) -> TemporalColumnExpr:
+    """Build one scalar application that produces date/time values that are not yet modeled as a specific primitive."""
+    entry = registered_function_entry(canonical_name)
+    return temporal_column_expr(scalar_function_application(entry.canonical_name, arguments, []))
 
 
 pub def function_registry_entries() -> list[FunctionRegistryEntry]:

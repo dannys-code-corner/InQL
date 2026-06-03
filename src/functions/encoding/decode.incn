@@ -9,8 +9,8 @@ from function_registry import (
     v0_1,
 )
 from functions.inputs import StrValueOrColumn, str_value_or_column_expr
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.registry import register_function, registered_string_application
+from projection_builders import StringColumnExpr
 from substrait.function_extensions import DECODE_FUNCTION_ANCHOR
 
 
@@ -20,7 +20,7 @@ from substrait.function_extensions import DECODE_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("decode", DECODE_FUNCTION_ANCHOR),
 ))
-pub def decode(expr: ColumnExpr, format: StrValueOrColumn) -> ColumnExpr:
+pub def decode(expr: StrValueOrColumn, format: StrValueOrColumn) -> StringColumnExpr:
     """
     Build a decoding expression.
 
@@ -33,7 +33,7 @@ pub def decode(expr: ColumnExpr, format: StrValueOrColumn) -> ColumnExpr:
         expr: Input scalar expression.
         format: Format selector expression.
     """
-    return registered_application("decode", [expr, str_value_or_column_expr(format)])
+    return registered_string_application("decode", [str_value_or_column_expr(expr), str_value_or_column_expr(format)])
 
 
 module tests:
@@ -44,7 +44,7 @@ module tests:
         column_expr_function_name,
         column_expr_kind,
     )
-    def test_decode_builds_registered_application() -> None:
+    def test_decode_builds_registered_string_application() -> None:
         expr = decode(col("payload"), "base64")
         assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
         assert column_expr_function_name(expr) == "decode"

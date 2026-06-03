@@ -1,6 +1,6 @@
 """Tests for RFC 002 proto-backed Substrait emission and conformance alignment."""
 
-from std.testing import assert_is_err, fail_t
+from std.testing import assert_is_err, fail_t, parametrize
 from functions import (
     abs,
     acos,
@@ -187,7 +187,7 @@ from functions import (
 )
 from projection_builders import ColumnExpr, with_column_assignment
 from substrait.errors import SubstraitLoweringErrorKind
-from substrait.expr_lowering import scalar_expr
+from substrait.expr_lowering import scalar_expr, scalar_expr_of_schema
 from substrait.function_extensions import (
     EXPLODE_EXTENSION_URI,
     EXPLODE_OUTER_EXTENSION_URI,
@@ -472,10 +472,7 @@ def test_plan__project_rel_supports_projection_expression_payloads() -> None:
     projected = project_rel_of_columns(
         base,
         ["id"],
-        [with_column_assignment("double_id", mul(col("id"), lit(2))), with_column_assignment(
-            "id_plus_one",
-            add(col("id"), lit(1)),
-        )],
+        [with_column_assignment("double_id", mul(col("id"), 2)), with_column_assignment("id_plus_one", add(col("id"), 1))],
     )
 
     # -- Act --
@@ -533,36 +530,127 @@ def _assert_scalar_expr_lowers(expr: ColumnExpr) -> None:
         Err(err) => return fail_t(err.error_message())
 
 
+def _typed_scalar_fixture_schema() -> list[RowColumnSpec]:
+    """Return the shared scalar fixture columns with concrete primitive kinds."""
+    return [RowColumnSpec(name="id", kind=SubstraitPrimitiveKind.I64, nullable=false), RowColumnSpec(
+        name="amount",
+        kind=SubstraitPrimitiveKind.I64,
+        nullable=false,
+    ), RowColumnSpec(name="ratio", kind=SubstraitPrimitiveKind.F64, nullable=false), RowColumnSpec(
+        name="status",
+        kind=SubstraitPrimitiveKind.String,
+        nullable=false,
+    )]
+
+
+def _typed_scalar_accept_expr(case_name: str) -> ColumnExpr:
+    """Return one schema-compatible scalar expression for typed argument validation."""
+    if case_name == "date_from_int_column":
+        return make_date(col("amount"), 5, 30)
+    if case_name == "number_accepts_int_column":
+        return sqrt(col("amount"))
+    if case_name == "number_accepts_float_column":
+        return sqrt(col("ratio"))
+    if case_name == "round_precision_accepts_int_column":
+        return round(col("ratio"), col("amount"))
+    if case_name == "string_unary_accepts_string_column":
+        return upper(col("status"))
+    if case_name == "string_variadic_accepts_string_columns":
+        return concat(col("status"), "-ok")
+    if case_name == "regex_accepts_string_and_int_inputs":
+        return regexp_extract(col("status"), "^([a-z]+)", 1)
+    if case_name == "encoding_accepts_string_inputs":
+        return encode(col("status"), "base64")
+    if case_name == "nested_string_accepts_string_result":
+        return upper(lower(col("status")))
+    if case_name == "nested_number_accepts_number_result":
+        return sqrt(abs(col("amount")))
+    return fail_t(f"unknown typed scalar acceptance case `{case_name}`")
+
+
+def _typed_scalar_mismatch_expr(case_name: str) -> ColumnExpr:
+    """Return one schema-incompatible scalar expression for typed argument validation."""
+    if case_name == "date_rejects_string_column":
+        return make_date(col("status"), 5, 30)
+    if case_name == "number_rejects_string_column":
+        return sqrt(col("status"))
+    if case_name == "round_precision_rejects_string_column":
+        return round(col("ratio"), col("status"))
+    if case_name == "string_unary_rejects_int_column":
+        return upper(col("amount"))
+    if case_name == "substring_position_rejects_string_column":
+        return substring(col("status"), col("status"), 2)
+    if case_name == "regex_group_rejects_string_column":
+        return regexp_extract(col("status"), "^([a-z]+)", col("status"))
+    if case_name == "encoding_rejects_int_column":
+        return encode(col("amount"), "base64")
+    return fail_t(f"unknown typed scalar mismatch case `{case_name}`")
+
+
+@parametrize("case_name", ["date_from_int_column", "number_accepts_int_column", "number_accepts_float_column", "round_precision_accepts_int_column", "string_unary_accepts_string_column", "string_variadic_accepts_string_columns", "regex_accepts_string_and_int_inputs", "encoding_accepts_string_inputs", "nested_string_accepts_string_result", "nested_number_accepts_number_result"])
+def test_plan__typed_value_or_column_accepts_matching_column_kind(case_name: str) -> None:
+    """Assert typed literal-or-column helper inputs accept schema-compatible columns."""
+    # -- Arrange --
+    schema = _typed_scalar_fixture_schema()
+    expr = _typed_scalar_accept_expr(case_name)
+
+    # -- Act --
+    result = scalar_expr_of_schema(schema, expr)
+
+    # -- Assert --
+    match result:
+        Ok(_) => pass
+        Err(err) => return fail_t(err.error_message())
+
+
+@parametrize("case_name", ["date_rejects_string_column", "number_rejects_string_column", "round_precision_rejects_string_column", "string_unary_rejects_int_column", "substring_position_rejects_string_column", "regex_group_rejects_string_column", "encoding_rejects_int_column"])
+def test_plan__typed_value_or_column_rejects_mismatched_column_kind(case_name: str) -> None:
+    """Assert typed literal-or-column helper inputs reject schema-incompatible columns."""
+    # -- Arrange --
+    schema = _typed_scalar_fixture_schema()
+    expr = _typed_scalar_mismatch_expr(case_name)
+
+    # -- Act --
+    result = scalar_expr_of_schema(schema, expr)
+
+    # -- Assert --
+    match result:
+        Err(err) =>
+            assert err.kind == SubstraitLoweringErrorKind.InvalidScalarExpression, "typed argument mismatches should be scalar-expression diagnostics"
+            assert err.message.contains("argument"), "diagnostic should identify the invalid argument"
+        Ok(_) => return fail_t("typed value-or-column helper should reject a schema-incompatible column")
+
+
 def test_plan__core_scalar_extension_mappings_lower_to_substrait() -> None:
     """Assert RFC 015 core scalar helpers emit Substrait scalar functions."""
     # -- Arrange / Act / Assert --
-    _assert_scalar_expr_lowers(ne(col("id"), lit(1)))
-    _assert_scalar_expr_lowers(cast(col("id"), "string"))
-    _assert_scalar_expr_lowers(try_cast(col("status"), "int64"))
-    _assert_scalar_expr_lowers(lt(col("id"), lit(10)))
-    _assert_scalar_expr_lowers(lte(col("id"), lit(10)))
-    _assert_scalar_expr_lowers(gte(col("id"), lit(1)))
-    _assert_scalar_expr_lowers(equal_null(col("status"), lit("open")))
-    _assert_scalar_expr_lowers(and_(gt(col("id"), lit(1)), eq(col("status"), lit("open"))))
-    _assert_scalar_expr_lowers(or_(eq(col("status"), lit("open")), eq(col("status"), lit("closed"))))
-    _assert_scalar_expr_lowers(not_(eq(col("status"), lit("void"))))
+    _assert_scalar_expr_lowers(ne(col("id"), 1))
+    _assert_scalar_expr_lowers(cast(col("id"), str))
+    _assert_scalar_expr_lowers(try_cast(col("status"), int))
+    _assert_scalar_expr_lowers(lt(col("id"), 10))
+    _assert_scalar_expr_lowers(lte(col("id"), 10))
+    _assert_scalar_expr_lowers(gte(col("id"), 1))
+    _assert_scalar_expr_lowers(equal_null(col("status"), "open"))
+    _assert_scalar_expr_lowers(and_(gt(col("id"), 1), eq(col("status"), "open")))
+    _assert_scalar_expr_lowers(or_(eq(col("status"), "open"), eq(col("status"), "closed")))
+    _assert_scalar_expr_lowers(not_(eq(col("status"), "void")))
     _assert_scalar_expr_lowers(is_null(col("status")))
     _assert_scalar_expr_lowers(is_not_null(col("status")))
     _assert_scalar_expr_lowers(is_nan(col("amount")))
     _assert_scalar_expr_lowers(is_not_nan(col("amount")))
     _assert_scalar_expr_lowers(in_(col("status"), [lit("open"), lit("closed")]))
-    _assert_scalar_expr_lowers(case_when([gt(col("amount"), lit(10))], [lit("large")], lit("small")))
-    _assert_scalar_expr_lowers(sub(col("amount"), lit(1)))
-    _assert_scalar_expr_lowers(div(col("amount"), lit(2)))
-    _assert_scalar_expr_lowers(modulo(col("amount"), lit(2)))
+    _assert_scalar_expr_lowers(case_when([gt(col("amount"), 10)], [lit("large")], lit("small")))
+    _assert_scalar_expr_lowers(sub(col("amount"), 1))
+    _assert_scalar_expr_lowers(div(col("amount"), 2))
+    _assert_scalar_expr_lowers(modulo(col("amount"), 2))
     _assert_scalar_expr_lowers(neg(col("amount")))
     _assert_scalar_expr_lowers(coalesce([col("status"), lit("unknown")]))
     _assert_scalar_expr_lowers(nullif(col("status"), lit("")))
-    _assert_scalar_expr_lowers(between(col("amount"), lit(1), lit(10)))
+    _assert_scalar_expr_lowers(between(col("amount"), 1, 10))
     _assert_scalar_expr_lowers(abs(col("amount")))
-    _assert_scalar_expr_lowers(ceil(div(col("amount"), lit(4.0))))
-    _assert_scalar_expr_lowers(floor(div(col("amount"), lit(4.0))))
-    _assert_scalar_expr_lowers(round(div(col("amount"), lit(4.0))))
+    _assert_scalar_expr_lowers(ceil(div(col("amount"), 4.0)))
+    _assert_scalar_expr_lowers(floor(div(col("amount"), 4.0)))
+    _assert_scalar_expr_lowers(round(div(col("amount"), 4.0)))
     _assert_scalar_expr_lowers(md5(col("status")))
     _assert_scalar_expr_lowers(sha224(col("status")))
     _assert_scalar_expr_lowers(sha256(col("status")))
@@ -595,26 +683,26 @@ def test_plan__common_scalar_extension_mappings_lower_to_substrait() -> None:
     """Assert the full RFC 018 scalar catalog emits registry-backed Substrait functions."""
     # -- Arrange / Act / Assert --
     _assert_scalar_expr_lowers(abs(col("amount")))
-    _assert_scalar_expr_lowers(ceil(div(col("amount"), lit(4.0))))
-    _assert_scalar_expr_lowers(floor(div(col("amount"), lit(4.0))))
-    _assert_scalar_expr_lowers(round(div(col("amount"), lit(4.0))))
-    _assert_scalar_expr_lowers(round(div(col("amount"), lit(4.0)), lit(1)))
+    _assert_scalar_expr_lowers(ceil(div(col("amount"), 4.0)))
+    _assert_scalar_expr_lowers(floor(div(col("amount"), 4.0)))
+    _assert_scalar_expr_lowers(round(div(col("amount"), 4.0)))
+    _assert_scalar_expr_lowers(round(div(col("amount"), 4.0), 1))
     _assert_scalar_expr_lowers(sqrt(col("amount")))
-    _assert_scalar_expr_lowers(power(col("amount"), lit(2)))
+    _assert_scalar_expr_lowers(power(col("amount"), 2))
     _assert_scalar_expr_lowers(exp(col("amount")))
     _assert_scalar_expr_lowers(ln(col("amount")))
-    _assert_scalar_expr_lowers(log(lit(10), col("amount")))
+    _assert_scalar_expr_lowers(log(10, col("amount")))
     _assert_scalar_expr_lowers(log10(col("amount")))
     _assert_scalar_expr_lowers(sign(col("amount")))
-    _assert_scalar_expr_lowers(least(col("amount"), lit(1), lit(2)))
-    _assert_scalar_expr_lowers(greatest(col("amount"), lit(1), lit(2)))
+    _assert_scalar_expr_lowers(least(col("amount"), 1, 2))
+    _assert_scalar_expr_lowers(greatest(col("amount"), 1, 2))
     _assert_scalar_expr_lowers(sin(col("amount")))
     _assert_scalar_expr_lowers(cos(col("amount")))
     _assert_scalar_expr_lowers(tan(col("amount")))
-    _assert_scalar_expr_lowers(asin(div(col("amount"), lit(100.0))))
-    _assert_scalar_expr_lowers(acos(div(col("amount"), lit(100.0))))
+    _assert_scalar_expr_lowers(asin(div(col("amount"), 100.0)))
+    _assert_scalar_expr_lowers(acos(div(col("amount"), 100.0)))
     _assert_scalar_expr_lowers(atan(col("amount")))
-    _assert_scalar_expr_lowers(atan2(col("amount"), lit(1)))
+    _assert_scalar_expr_lowers(atan2(col("amount"), 1))
     _assert_scalar_expr_lowers(degrees(col("amount")))
     _assert_scalar_expr_lowers(radians(col("amount")))
 
@@ -627,44 +715,44 @@ def test_plan__common_scalar_extension_mappings_lower_to_substrait() -> None:
     _assert_scalar_expr_lowers(trim(col("status")))
     _assert_scalar_expr_lowers(ltrim(col("status")))
     _assert_scalar_expr_lowers(rtrim(col("status")))
-    _assert_scalar_expr_lowers(substring(col("status"), lit(1), lit(2)))
-    _assert_scalar_expr_lowers(substr(col("status"), lit(1), lit(2)))
-    _assert_scalar_expr_lowers(position(col("status"), lit("a")))
-    _assert_scalar_expr_lowers(overlay(col("status"), lit("z"), lit(1), lit(1)))
-    _assert_scalar_expr_lowers(concat(col("status"), lit("-x")))
-    _assert_scalar_expr_lowers(concat_ws(lit("-"), col("status"), lit("x")))
-    _assert_scalar_expr_lowers(replace(col("status"), lit("a"), lit("b")))
-    _assert_scalar_expr_lowers(translate(col("status"), lit("ab"), lit("xy")))
-    _assert_scalar_expr_lowers(repeat(col("status"), lit(2)))
-    _assert_scalar_expr_lowers(left(col("status"), lit(2)))
-    _assert_scalar_expr_lowers(right(col("status"), lit(2)))
-    _assert_scalar_expr_lowers(lpad(col("status"), lit(5), lit("0")))
-    _assert_scalar_expr_lowers(rpad(col("status"), lit(5), lit("0")))
-    _assert_scalar_expr_lowers(split_part(col("status"), lit("-"), lit(1)))
+    _assert_scalar_expr_lowers(substring(col("status"), 1, 2))
+    _assert_scalar_expr_lowers(substr(col("status"), 1, 2))
+    _assert_scalar_expr_lowers(position(col("status"), "a"))
+    _assert_scalar_expr_lowers(overlay(col("status"), "z", 1, 1))
+    _assert_scalar_expr_lowers(concat(col("status"), "-x"))
+    _assert_scalar_expr_lowers(concat_ws("-", col("status"), "x"))
+    _assert_scalar_expr_lowers(replace(col("status"), "a", "b"))
+    _assert_scalar_expr_lowers(translate(col("status"), "ab", "xy"))
+    _assert_scalar_expr_lowers(repeat(col("status"), 2))
+    _assert_scalar_expr_lowers(left(col("status"), 2))
+    _assert_scalar_expr_lowers(right(col("status"), 2))
+    _assert_scalar_expr_lowers(lpad(col("status"), 5, "0"))
+    _assert_scalar_expr_lowers(rpad(col("status"), 5, "0"))
+    _assert_scalar_expr_lowers(split_part(col("status"), "-", 1))
 
-    _assert_scalar_expr_lowers(encode(col("status"), lit("base64")))
-    _assert_scalar_expr_lowers(decode(col("status"), lit("base64")))
+    _assert_scalar_expr_lowers(encode(col("status"), "base64"))
+    _assert_scalar_expr_lowers(decode(col("status"), "base64"))
     _assert_scalar_expr_lowers(base64(col("status")))
     _assert_scalar_expr_lowers(unbase64(col("status")))
     _assert_scalar_expr_lowers(hex(col("status")))
     _assert_scalar_expr_lowers(unhex(col("status")))
-    _assert_scalar_expr_lowers(regexp_like(col("status"), lit("^a")))
-    _assert_scalar_expr_lowers(regexp_replace(col("status"), lit("a"), lit("b")))
-    _assert_scalar_expr_lowers(regexp_extract(col("status"), lit("([a-z]+)"), lit(1)))
+    _assert_scalar_expr_lowers(regexp_like(col("status"), "^a"))
+    _assert_scalar_expr_lowers(regexp_replace(col("status"), "a", "b"))
+    _assert_scalar_expr_lowers(regexp_extract(col("status"), "([a-z]+)", 1))
 
     _assert_scalar_expr_lowers(current_date())
     _assert_scalar_expr_lowers(current_time())
     _assert_scalar_expr_lowers(current_timestamp())
-    _assert_scalar_expr_lowers(date_part(lit("year"), col("status")))
-    _assert_scalar_expr_lowers(extract(lit("year"), col("status")))
-    _assert_scalar_expr_lowers(date_trunc(lit("month"), col("status")))
-    _assert_scalar_expr_lowers(time_trunc(lit("hour"), col("status")))
-    _assert_scalar_expr_lowers(date_add(lit("day"), lit(1), col("status")))
-    _assert_scalar_expr_lowers(dateadd(lit("day"), lit(1), col("status")))
-    _assert_scalar_expr_lowers(date_sub(lit("day"), lit(1), col("status")))
-    _assert_scalar_expr_lowers(date_diff(lit("day"), col("status"), lit("2026-05-31")))
-    _assert_scalar_expr_lowers(datediff(lit("day"), col("status"), lit("2026-05-31")))
-    _assert_scalar_expr_lowers(timestamp_diff(lit("second"), col("status"), lit("2026-05-31T00:00:00")))
+    _assert_scalar_expr_lowers(date_part("year", col("status")))
+    _assert_scalar_expr_lowers(extract("year", col("status")))
+    _assert_scalar_expr_lowers(date_trunc("month", col("status")))
+    _assert_scalar_expr_lowers(time_trunc("hour", col("status")))
+    _assert_scalar_expr_lowers(date_add("day", 1, col("status")))
+    _assert_scalar_expr_lowers(dateadd("day", 1, col("status")))
+    _assert_scalar_expr_lowers(date_sub("day", 1, col("status")))
+    _assert_scalar_expr_lowers(date_diff("day", col("status"), "2026-05-31"))
+    _assert_scalar_expr_lowers(datediff("day", col("status"), "2026-05-31"))
+    _assert_scalar_expr_lowers(timestamp_diff("second", col("status"), "2026-05-31T00:00:00"))
     _assert_scalar_expr_lowers(to_date(col("status")))
     _assert_scalar_expr_lowers(to_time(col("status")))
     _assert_scalar_expr_lowers(to_timestamp(col("status")))
@@ -672,11 +760,11 @@ def test_plan__common_scalar_extension_mappings_lower_to_substrait() -> None:
     _assert_scalar_expr_lowers(unix_seconds(col("status")))
     _assert_scalar_expr_lowers(unix_millis(col("status")))
     _assert_scalar_expr_lowers(unix_micros(col("status")))
-    _assert_scalar_expr_lowers(make_date(lit(2026), lit(5), lit(30)))
-    _assert_scalar_expr_lowers(make_time(lit(12), lit(34), lit(56)))
-    _assert_scalar_expr_lowers(make_timestamp(lit(2026), lit(5), lit(30), lit(12), lit(34), lit(56)))
+    _assert_scalar_expr_lowers(make_date(2026, 5, 30))
+    _assert_scalar_expr_lowers(make_time(12, 34, 56))
+    _assert_scalar_expr_lowers(make_timestamp(2026, 5, 30, 12, 34, 56))
     _assert_scalar_expr_lowers(last_day(col("status")))
-    _assert_scalar_expr_lowers(safe_cast(col("status"), "int64"))
+    _assert_scalar_expr_lowers(safe_cast(col("status"), int))
 
 
 def test_plan__nested_scalar_extension_mappings_lower_to_substrait() -> None:
@@ -689,9 +777,9 @@ def test_plan__nested_scalar_extension_mappings_lower_to_substrait() -> None:
     # -- Act / Assert --
     _assert_scalar_expr_lowers(tags)
     _assert_scalar_expr_lowers(cardinality(tags))
-    _assert_scalar_expr_lowers(array_contains(tags, lit("paid")))
-    _assert_scalar_expr_lowers(array_position(tags, lit("paid")))
-    _assert_scalar_expr_lowers(element_at(tags, lit(1)))
+    _assert_scalar_expr_lowers(array_contains(tags, "paid"))
+    _assert_scalar_expr_lowers(array_position(tags, "paid"))
+    _assert_scalar_expr_lowers(element_at(tags, 1))
     _assert_scalar_expr_lowers(array_sort(tags))
     _assert_scalar_expr_lowers(array_distinct(tags))
     _assert_scalar_expr_lowers(array_except(tags, other_tags))
@@ -699,15 +787,15 @@ def test_plan__nested_scalar_extension_mappings_lower_to_substrait() -> None:
     _assert_scalar_expr_lowers(array_intersect(tags, other_tags))
     _assert_scalar_expr_lowers(array_union(tags, other_tags))
     _assert_scalar_expr_lowers(arrays_overlap(tags, other_tags))
-    _assert_scalar_expr_lowers(array_join(tags, lit("|")))
-    _assert_scalar_expr_lowers(array_slice(tags, lit(1), lit(2)))
+    _assert_scalar_expr_lowers(array_join(tags, "|"))
+    _assert_scalar_expr_lowers(array_slice(tags, 1, 2))
     _assert_scalar_expr_lowers(array_reverse(tags))
     _assert_scalar_expr_lowers(attr_map)
     _assert_scalar_expr_lowers(map_entries(attr_map))
-    _assert_scalar_expr_lowers(map_extract(attr_map, lit("status")))
+    _assert_scalar_expr_lowers(map_extract(attr_map, "status"))
     _assert_scalar_expr_lowers(map_keys(attr_map))
     _assert_scalar_expr_lowers(map_values(attr_map))
-    _assert_scalar_expr_lowers(map_contains_key(attr_map, lit("status")))
+    _assert_scalar_expr_lowers(map_contains_key(attr_map, "status"))
     _assert_scalar_expr_lowers(named_struct(["status", "amount"], [col("status"), col("amount")]))
 
 
@@ -746,10 +834,10 @@ def test_plan__aggregate_rel_accepts_scalar_group_and_measure_expressions() -> N
     base = read_named_table_rel("orders")
     aggregated = aggregate_rel(
         base,
-        [add(col("id"), lit(1))],
-        [sum(add(col("id"), lit(2))), count(add(col("id"), lit(3))), avg(add(col("id"), lit(4))), min(
-            add(col("id"), lit(5)),
-        ), max(add(col("id"), lit(6)))],
+        [add(col("id"), 1)],
+        [sum(add(col("id"), 2)), count(add(col("id"), 3)), avg(add(col("id"), 4)), min(add(col("id"), 5)), max(
+            add(col("id"), 6),
+        )],
     )
 
     # -- Act --
@@ -773,9 +861,7 @@ def test_plan__aggregate_rel_lowers_distinct_and_filter_modifiers() -> None:
     aggregated = aggregate_rel(
         base,
         [col("id")],
-        [count_distinct(col("id")), count_if(gt(col("id"), lit(1))), sum(col("id")).distinct().filter(
-            gt(col("id"), lit(0)),
-        )],
+        [count_distinct(col("id")), count_if(gt(col("id"), 1)), sum(col("id")).distinct().filter(gt(col("id"), 0))],
     )
     plan = plan_from_root_relation(aggregated, ["id", "count_distinct_id", "count_filtered", "sum_distinct_id_filtered"])
 
@@ -923,7 +1009,7 @@ def test_plan__window_rel_declares_scalar_extensions_from_window_expressions() -
     _register_window_orders_schema()
     base = read_named_table_rel("orders_window")
     spec = window().partition_by([coalesce([col("customer_id"), lit("unknown")])]).order_by([col("amount")])
-    projection = window_projection("adjusted_sum", sum(add(col("amount"), lit(1))).over(spec))
+    projection = window_projection("adjusted_sum", sum(add(col("amount"), 1)).over(spec))
 
     # -- Act --
     windowed = window_rel_of_columns(base, ["customer_id", "amount"], [projection])
@@ -954,8 +1040,8 @@ def test_plan__window_rel_rejects_scalar_expression_boundary_mismatch() -> None:
     # -- Arrange --
     _register_window_orders_schema()
     base = read_named_table_rel("orders_window")
-    first_spec = window().partition_by([add(col("amount"), lit(1))]).order_by([col("amount")])
-    second_spec = window().partition_by([sub(col("amount"), lit(1))]).order_by([col("amount")])
+    first_spec = window().partition_by([add(col("amount"), 1)]).order_by([col("amount")])
+    second_spec = window().partition_by([sub(col("amount"), 1)]).order_by([col("amount")])
     first = window_projection("row_num", row_number().over(first_spec))
     second = window_projection("amount_rank", rank().over(second_spec))
 
@@ -1071,7 +1157,7 @@ def test_plan__generator_payload_declares_scalar_extension_dependencies() -> Non
     # -- Arrange --
     _register_orders_schema()
     base = read_named_table_rel("orders")
-    generated = generator_rel_of_columns(base, ["id"], explode(array([add(col("id"), lit(1))]), "generated_id"))
+    generated = generator_rel_of_columns(base, ["id"], explode(array([add(col("id"), 1)]), "generated_id"))
 
     # -- Act --
     plan = plan_from_root_relation(generated, ["id", "generated_id"])

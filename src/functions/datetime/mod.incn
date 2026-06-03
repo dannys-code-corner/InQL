@@ -12,7 +12,7 @@ pub from functions.datetime.dateadd import dateadd
 pub from functions.datetime.datediff import datediff
 pub from functions.datetime.extract import extract
 pub from functions.datetime.from_unixtime import from_unixtime
-pub from functions.inputs import IntValueOrColumn, StrValueOrColumn
+pub from functions.inputs import IntValueOrColumn, StrValueOrColumn, TemporalValueOrColumn
 pub from functions.datetime.last_day import last_day
 pub from functions.datetime.make_date import make_date
 pub from functions.datetime.make_time import make_time

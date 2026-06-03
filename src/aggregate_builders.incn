@@ -16,11 +16,10 @@ from projection_builders import (
     IntLiteralExpr,
     int_expr,
     scalar_expr_output_name,
+    untyped_column_expr,
 )
 from rust::incan_stdlib::errors import raise_value_error
 from window_builders import WindowFunctionApplication, WindowSpec, aggregate_window_call
-
-pub const COUNT_NO_ARGUMENT_SENTINEL: str = "__inql_count_no_argument__"
 
 
 @derive(Clone)
@@ -128,16 +127,16 @@ pub def sum(expr: ColumnExpr) -> AggregateMeasure:
     )
 
 
-pub def count(expr: ColumnExpr = col_expr(COUNT_NO_ARGUMENT_SENTINEL)) -> AggregateMeasure:
+pub def count(expr: Option[ColumnExpr] = None) -> AggregateMeasure:
     """Build one `count` aggregate measure, counting rows without an expression and non-null values with one."""
-    if column_expr_name(expr) == COUNT_NO_ARGUMENT_SENTINEL:
+    if let Some(value) = expr:
         return AggregateMeasure(
             kind=AggregateKind.Count,
             function_ref=function_ref_for("count"),
             canonical_name="count",
-            expr=expr,
-            arguments=[],
-            has_expr=false,
+            expr=value,
+            arguments=[value],
+            has_expr=true,
             is_distinct=false,
             filter_expr=col_expr(""),
             has_filter=false,
@@ -147,9 +146,9 @@ pub def count(expr: ColumnExpr = col_expr(COUNT_NO_ARGUMENT_SENTINEL)) -> Aggreg
         kind=AggregateKind.Count,
         function_ref=function_ref_for("count"),
         canonical_name="count",
-        expr=expr,
-        arguments=[expr],
-        has_expr=true,
+        expr=col_expr(""),
+        arguments=[],
+        has_expr=false,
         is_distinct=false,
         filter_expr=col_expr(""),
         has_filter=false,
@@ -273,7 +272,7 @@ def _approx_percentile_output_suffix(measure: AggregateMeasure) -> str:
 
 def _aggregate_literal_name(expr: ColumnExpr) -> str:
     """Return one output-name-safe literal label for aggregate parameters."""
-    match expr:
+    match untyped_column_expr(expr):
         IntLiteralExpr(literal) => return f"{literal.value}"
         FloatLiteralExpr(literal) => return f"{literal.value}".replace(".", "_")
         _ => return scalar_expr_output_name(expr, "expr")

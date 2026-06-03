@@ -9,8 +9,8 @@ from function_registry import (
     v0_1,
 )
 from functions.inputs import StrValueOrColumn, str_value_or_column_expr
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.registry import register_function, registered_string_application
+from projection_builders import StringColumnExpr
 from substrait.function_extensions import CONCAT_WS_FUNCTION_ANCHOR
 
 
@@ -20,7 +20,7 @@ from substrait.function_extensions import CONCAT_WS_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("concat_ws", CONCAT_WS_FUNCTION_ANCHOR),
 ))
-pub def concat_ws(separator: StrValueOrColumn, first: StrValueOrColumn, *rest: StrValueOrColumn) -> ColumnExpr:
+pub def concat_ws(separator: StrValueOrColumn, first: StrValueOrColumn, *rest: StrValueOrColumn) -> StringColumnExpr:
     """
     Build a separator-aware string concatenation expression.
 
@@ -35,7 +35,7 @@ pub def concat_ws(separator: StrValueOrColumn, first: StrValueOrColumn, *rest: S
     mut arguments = [str_value_or_column_expr(separator), str_value_or_column_expr(first)]
     for argument in rest:
         arguments.append(str_value_or_column_expr(argument))
-    return registered_application("concat_ws", arguments)
+    return registered_string_application("concat_ws", arguments)
 
 
 module tests:
@@ -46,7 +46,7 @@ module tests:
         column_expr_function_name,
         column_expr_kind,
     )
-    def test_concat_ws_builds_registered_application() -> None:
+    def test_concat_ws_builds_registered_string_application() -> None:
         expr = concat_ws("-", col("country"), col("city"))
         assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
         assert column_expr_function_name(expr) == "concat_ws"

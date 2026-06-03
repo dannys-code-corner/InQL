@@ -49,7 +49,7 @@ from pub::inql.functions import add, and_, cast, col, coalesce, gt, is_not_null,
 enriched = (
     orders
         .filter(and_(is_not_null(col("customer_id")), gt(col("amount"), lit(0))))
-        .with_column("amount_cents", mul(cast(col("amount"), "int"), lit(100)))
+        .with_column("amount_cents", mul(cast(col("amount"), int), lit(100)))
         .with_column("status_or_unknown", coalesce([col("status"), lit("unknown")]))
 )
 ```

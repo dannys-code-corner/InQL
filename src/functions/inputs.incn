@@ -1,49 +1,100 @@
 """Typed literal-or-column input aliases for public function helpers."""
 
-from projection_builders import ColumnExpr, bool_expr, float_expr, int_expr, str_expr
+from projection_builders import (
+    BoolColumnExpr,
+    BoolLiteralExpr,
+    ColumnExpr,
+    ColumnRefExpr,
+    FloatColumnExpr,
+    FloatLiteralExpr,
+    IntColumnExpr,
+    IntLiteralExpr,
+    NumberColumnExpr,
+    StringColumnExpr,
+    StringLiteralExpr,
+    TemporalColumnExpr,
+    TimestampColumnExpr,
+    bool_column_expr,
+    bool_expr,
+    float_column_expr,
+    float_expr,
+    int_column_expr,
+    int_expr,
+    number_column_expr,
+    str_column_expr,
+    str_expr,
+    temporal_column_expr,
+)
 
 
-pub type BoolValueOrColumn = Union[ColumnExpr, bool]
+pub type BoolValueOrColumn = Union[BoolColumnExpr, ColumnRefExpr, BoolLiteralExpr, bool]
 
 
-pub type FloatValueOrColumn = Union[ColumnExpr, float]
+pub type FloatValueOrColumn = Union[FloatColumnExpr, ColumnRefExpr, FloatLiteralExpr, float]
 
 
-pub type IntValueOrColumn = Union[ColumnExpr, int]
+pub type IntValueOrColumn = Union[IntColumnExpr, ColumnRefExpr, IntLiteralExpr, int]
 
 
-pub type StrValueOrColumn = Union[ColumnExpr, str]
+pub type NumberValueOrColumn = Union[NumberColumnExpr, IntColumnExpr, FloatColumnExpr, ColumnRefExpr, IntLiteralExpr, FloatLiteralExpr, int, float]
+
+
+pub type StrValueOrColumn = Union[StringColumnExpr, ColumnRefExpr, StringLiteralExpr, str]
 
 
 pub type ScalarValueOrColumn = Union[ColumnExpr, bool, float, int, str]
 
 
-pub def bool_value_or_column_expr(value: BoolValueOrColumn) -> ColumnExpr:
+pub type TemporalValueOrColumn = Union[TemporalColumnExpr, TimestampColumnExpr, ColumnRefExpr, StringColumnExpr, StringLiteralExpr, str]
+
+
+pub def bool_value_or_column_expr(value: BoolValueOrColumn) -> BoolColumnExpr:
     """Return a boolean literal or existing scalar expression as a scalar expression."""
     match value:
-        bool(flag) => return bool_expr(flag)
-        expr => return expr
+        bool(flag) => return bool_column_expr(bool_expr(flag))
+        BoolColumnExpr(expr) => return expr
+        ColumnRefExpr(expr) => return bool_column_expr(expr)
+        BoolLiteralExpr(expr) => return bool_column_expr(expr)
 
 
-pub def float_value_or_column_expr(value: FloatValueOrColumn) -> ColumnExpr:
+pub def float_value_or_column_expr(value: FloatValueOrColumn) -> FloatColumnExpr:
     """Return a floating-point literal or existing scalar expression as a scalar expression."""
     match value:
-        float(number) => return float_expr(number)
-        expr => return expr
+        float(number) => return float_column_expr(float_expr(number))
+        FloatColumnExpr(expr) => return expr
+        ColumnRefExpr(expr) => return float_column_expr(expr)
+        FloatLiteralExpr(expr) => return float_column_expr(expr)
 
 
-pub def int_value_or_column_expr(value: IntValueOrColumn) -> ColumnExpr:
+pub def int_value_or_column_expr(value: IntValueOrColumn) -> IntColumnExpr:
     """Return an integer literal or existing scalar expression as a scalar expression."""
     match value:
-        int(number) => return int_expr(number)
-        expr => return expr
+        int(number) => return int_column_expr(int_expr(number))
+        IntColumnExpr(expr) => return expr
+        ColumnRefExpr(expr) => return int_column_expr(expr)
+        IntLiteralExpr(expr) => return int_column_expr(expr)
 
 
-pub def str_value_or_column_expr(value: StrValueOrColumn) -> ColumnExpr:
+pub def number_value_or_column_expr(value: NumberValueOrColumn) -> NumberColumnExpr:
+    """Return a numeric literal or existing scalar expression as a scalar expression."""
+    match value:
+        int(number) => return number_column_expr(int_expr(number))
+        float(number) => return number_column_expr(float_expr(number))
+        NumberColumnExpr(expr) => return expr
+        IntColumnExpr(expr) => return number_column_expr(expr.expr)
+        FloatColumnExpr(expr) => return number_column_expr(expr.expr)
+        ColumnRefExpr(expr) => return number_column_expr(expr)
+        IntLiteralExpr(expr) => return number_column_expr(expr)
+        FloatLiteralExpr(expr) => return number_column_expr(expr)
+
+
+pub def str_value_or_column_expr(value: StrValueOrColumn) -> StringColumnExpr:
     """Return a string literal or existing scalar expression as a scalar expression."""
     match value:
-        str(text) => return str_expr(text)
-        expr => return expr
+        str(text) => return str_column_expr(str_expr(text))
+        StringColumnExpr(expr) => return expr
+        ColumnRefExpr(expr) => return str_column_expr(expr)
+        StringLiteralExpr(expr) => return str_column_expr(expr)
 
 
 pub def scalar_value_or_column_expr(value: ScalarValueOrColumn) -> ColumnExpr:
@@ -54,6 +105,17 @@ pub def scalar_value_or_column_expr(value: ScalarValueOrColumn) -> ColumnExpr:
         int(number) => return int_expr(number)
         str(text) => return str_expr(text)
         expr => return expr
+
+
+pub def temporal_value_or_column_expr(value: TemporalValueOrColumn) -> ColumnExpr:
+    """Return a temporal expression or date/time string literal as a scalar expression."""
+    match value:
+        str(text) => return temporal_column_expr(str_expr(text))
+        TemporalColumnExpr(expr) => return expr
+        TimestampColumnExpr(expr) => return temporal_column_expr(expr.expr)
+        ColumnRefExpr(expr) => return temporal_column_expr(expr)
+        StringColumnExpr(expr) => return temporal_column_expr(expr.expr)
+        StringLiteralExpr(expr) => return temporal_column_expr(expr)
 
 
 module tests:
@@ -68,3 +130,5 @@ module tests:
         assert column_expr_kind(bool_value_or_column_expr(true)) == ColumnExprKind.BoolLiteral
     def test_scalar_value_or_column_expr_preserves_column_expressions() -> None:
         assert column_expr_kind(scalar_value_or_column_expr(col("amount"))) == ColumnExprKind.Column
+    def test_temporal_value_or_column_expr_accepts_string_literals() -> None:
+        assert column_expr_kind(temporal_value_or_column_expr("2026-05-30")) == ColumnExprKind.StringLiteral

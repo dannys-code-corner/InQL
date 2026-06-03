@@ -12,8 +12,9 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.inputs import ScalarValueOrColumn, scalar_value_or_column_expr
+from functions.registry import register_function, registered_bool_application
+from projection_builders import BoolColumnExpr
 from substrait.function_extensions import EQUAL_FUNCTION_ANCHOR
 
 
@@ -23,19 +24,19 @@ from substrait.function_extensions import EQUAL_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.Predicate,
     substrait=extension_mapping("equal", EQUAL_FUNCTION_ANCHOR),
 ))
-pub def eq(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
+pub def eq(left: ScalarValueOrColumn, right: ScalarValueOrColumn) -> BoolColumnExpr:
     """
     Build an equality predicate.
 
     Examples:
-        paid = eq(col("status"), lit("paid"))
-        high_value_paid = and_(paid, gt(col("amount"), lit(100)))
+        paid = eq(col("status"), "paid")
+        high_value_paid = and_(paid, gt(col("amount"), 100))
 
     Parameters:
         left: Expression on the left side of the comparison.
         right: Expression to compare against `left`.
     """
-    return registered_application("eq", [left, right])
+    return registered_bool_application("eq", [scalar_value_or_column_expr(left), scalar_value_or_column_expr(right)])
 
 
 module tests:

@@ -400,9 +400,9 @@ def test_prism__with_column_tracks_output_columns_and_collapses_adjacent_project
     base: PrismCursor[Order] = prism_cursor_named_table(str("orders_projection_prism"))
 
     # -- Act --
-    projected: PrismCursor[Order] = base.with_column("double_id", mul(col("id"), lit(2))).with_column(
+    projected: PrismCursor[Order] = base.with_column("double_id", mul(col("id"), 2)).with_column(
         "triple_id",
-        mul(col("id"), lit(3)),
+        mul(col("id"), 3),
     )
     output_cols = prism_cursor_output_columns(projected)
     plan = projected.to_substrait_plan()

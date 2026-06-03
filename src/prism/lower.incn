@@ -2,18 +2,18 @@
 
 from rust::substrait::proto import Plan, Rel
 from rust::incan_stdlib::errors import raise_value_error
-from prism.output_columns import rewritten_output_columns
+from prism.output_columns import rewritten_output_schema
 from substrait.plans import plan_from_root_relation
 from substrait.relations import (
     fetch_rel,
     join_rel,
     read_named_table_rel,
-    try_generator_rel_of_columns,
-    sort_rel_of_columns,
-    try_aggregate_rel_of_columns,
-    try_filter_rel_of_columns,
-    try_project_rel_of_columns,
-    try_window_rel_of_columns,
+    try_sort_rel_for_columns,
+    try_aggregate_rel_for_columns,
+    try_filter_rel_for_columns,
+    try_generator_rel_for_columns,
+    try_project_rel_for_columns,
+    try_window_rel_for_columns,
 )
 from substrait.errors import SubstraitLoweringError
 from prism.rewrite import derive_rewritten_view, rewritten_node_at
@@ -77,9 +77,9 @@ def _try_lower_node(view: PrismOptimizedView, node_id: int) -> Result[Rel, Subst
     match node.kind:
         PrismNodeKind.ReadNamedTable => return Ok(read_named_table_rel(node.named_table))
         PrismNodeKind.Filter =>
-            return try_filter_rel_of_columns(
+            return try_filter_rel_for_columns(
                 _try_lower_node(view, node.input_ids[0])?,
-                rewritten_output_columns(view, node.input_ids[0]),
+                rewritten_output_schema(view, node.input_ids[0]),
                 node.filter_predicate,
             )
         PrismNodeKind.Join =>
@@ -91,58 +91,56 @@ def _try_lower_node(view: PrismOptimizedView, node_id: int) -> Result[Rel, Subst
                 ),
             )
         PrismNodeKind.Project =>
-            return try_project_rel_of_columns(
+            return try_project_rel_for_columns(
                 _try_lower_node(view, node.input_ids[0])?,
-                rewritten_output_columns(view, node.input_ids[0]),
+                rewritten_output_schema(view, node.input_ids[0]),
                 node.projection_assignments,
             )
         PrismNodeKind.GroupBy =>
-            return try_aggregate_rel_of_columns(
+            return try_aggregate_rel_for_columns(
                 _try_lower_node(view, node.input_ids[0])?,
-                rewritten_output_columns(view, node.input_ids[0]),
+                rewritten_output_schema(view, node.input_ids[0]),
                 node.group_columns,
                 [],
             )
         PrismNodeKind.Aggregate =>
             if len(node.group_columns) > 0:
-                return try_aggregate_rel_of_columns(
+                return try_aggregate_rel_for_columns(
                     _try_lower_node(view, node.input_ids[0])?,
-                    rewritten_output_columns(view, node.input_ids[0]),
+                    rewritten_output_schema(view, node.input_ids[0]),
                     node.group_columns,
                     node.aggregate_measures,
                 )
             input_node = rewritten_node_at(view, node.input_ids[0])
             if input_node.kind == PrismNodeKind.GroupBy:
-                return try_aggregate_rel_of_columns(
+                return try_aggregate_rel_for_columns(
                     _try_lower_node(view, input_node.input_ids[0])?,
-                    rewritten_output_columns(view, input_node.input_ids[0]),
+                    rewritten_output_schema(view, input_node.input_ids[0]),
                     input_node.group_columns,
                     node.aggregate_measures,
                 )
-            return try_aggregate_rel_of_columns(
+            return try_aggregate_rel_for_columns(
                 _try_lower_node(view, node.input_ids[0])?,
-                rewritten_output_columns(view, node.input_ids[0]),
+                rewritten_output_schema(view, node.input_ids[0]),
                 [],
                 node.aggregate_measures,
             )
         PrismNodeKind.Generate =>
-            return try_generator_rel_of_columns(
+            return try_generator_rel_for_columns(
                 _try_lower_node(view, node.input_ids[0])?,
-                rewritten_output_columns(view, node.input_ids[0]),
+                rewritten_output_schema(view, node.input_ids[0]),
                 node.generator_applications[0],
             )
         PrismNodeKind.Window =>
-            return try_window_rel_of_columns(
+            return try_window_rel_for_columns(
                 _try_lower_node(view, node.input_ids[0])?,
-                rewritten_output_columns(view, node.input_ids[0]),
+                rewritten_output_schema(view, node.input_ids[0]),
                 node.window_projections,
             )
         PrismNodeKind.OrderBy =>
-            return Ok(
-                sort_rel_of_columns(
-                    _try_lower_node(view, node.input_ids[0])?,
-                    rewritten_output_columns(view, node.input_ids[0]),
-                    node.sort_columns,
-                ),
+            return try_sort_rel_for_columns(
+                _try_lower_node(view, node.input_ids[0])?,
+                rewritten_output_schema(view, node.input_ids[0]),
+                node.sort_columns,
             )
         PrismNodeKind.Limit => return Ok(fetch_rel(_try_lower_node(view, node.input_ids[0])?, 0, node.limit_count))

@@ -252,8 +252,7 @@ pub from functions.operators.not_ import not_
 pub from functions.operators.or_ import or_
 pub from functions.operators.sub import sub
 pub from functions.casts.cast import cast
-pub from functions.casts.safe_cast import safe_cast
-pub from functions.casts.try_cast import try_cast
+pub from functions.casts.try_cast import safe_cast, try_cast
 pub from functions.predicates.between import between
 pub from functions.predicates.in_ import in_
 pub from functions.predicates.is_nan import is_nan

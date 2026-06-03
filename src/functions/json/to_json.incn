@@ -8,8 +8,9 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.inputs import ScalarValueOrColumn, scalar_value_or_column_expr
+from functions.registry import register_function, registered_string_application
+from projection_builders import StringColumnExpr
 from substrait.function_extensions import TO_JSON_FUNCTION_ANCHOR
 
 
@@ -19,7 +20,7 @@ from substrait.function_extensions import TO_JSON_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("to_json", TO_JSON_FUNCTION_ANCHOR),
 ))
-pub def to_json(expr: ColumnExpr) -> ColumnExpr:
+pub def to_json(expr: ScalarValueOrColumn) -> StringColumnExpr:
     """
     Serialize one scalar expression as JSON text.
 
@@ -29,7 +30,7 @@ pub def to_json(expr: ColumnExpr) -> ColumnExpr:
     Parameters:
         expr: String-backed scalar expression to serialize as JSON text.
     """
-    return registered_application("to_json", [expr])
+    return registered_string_application("to_json", [scalar_value_or_column_expr(expr)])
 
 
 module tests:

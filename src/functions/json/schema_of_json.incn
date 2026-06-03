@@ -9,8 +9,9 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.inputs import StrValueOrColumn, str_value_or_column_expr
+from functions.registry import register_function, registered_string_application
+from projection_builders import StringColumnExpr
 from substrait.function_extensions import SCHEMA_OF_JSON_FUNCTION_ANCHOR
 
 
@@ -21,7 +22,7 @@ from substrait.function_extensions import SCHEMA_OF_JSON_FUNCTION_ANCHOR
     error_behavior=FunctionErrorBehavior.InvalidInputDiagnostic,
     substrait=extension_mapping("schema_of_json", SCHEMA_OF_JSON_FUNCTION_ANCHOR),
 ))
-pub def schema_of_json(expr: ColumnExpr) -> ColumnExpr:
+pub def schema_of_json(expr: StrValueOrColumn) -> StringColumnExpr:
     """
     Infer a deterministic schema description from one JSON scalar payload.
 
@@ -31,7 +32,7 @@ pub def schema_of_json(expr: ColumnExpr) -> ColumnExpr:
     Parameters:
         expr: String expression containing a JSON payload.
     """
-    return registered_application("schema_of_json", [expr])
+    return registered_string_application("schema_of_json", [str_value_or_column_expr(expr)])
 
 
 module tests:

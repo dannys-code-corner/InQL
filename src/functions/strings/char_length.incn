@@ -9,8 +9,8 @@ from function_registry import (
     v0_1,
 )
 from functions.inputs import StrValueOrColumn, str_value_or_column_expr
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.registry import register_function, registered_int_application
+from projection_builders import IntColumnExpr
 from substrait.function_extensions import CHAR_LENGTH_FUNCTION_ANCHOR
 
 
@@ -20,7 +20,7 @@ from substrait.function_extensions import CHAR_LENGTH_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("character_length", CHAR_LENGTH_FUNCTION_ANCHOR),
 ))
-pub def char_length(expr: StrValueOrColumn) -> ColumnExpr:
+pub def char_length(expr: StrValueOrColumn) -> IntColumnExpr:
     """
     Build a Unicode character-count expression.
 
@@ -30,7 +30,7 @@ pub def char_length(expr: StrValueOrColumn) -> ColumnExpr:
     Parameters:
         expr: Input scalar expression.
     """
-    return registered_application("char_length", [str_value_or_column_expr(expr)])
+    return registered_int_application("char_length", [str_value_or_column_expr(expr)])
 
 
 module tests:
@@ -41,7 +41,7 @@ module tests:
         column_expr_function_name,
         column_expr_kind,
     )
-    def test_char_length_builds_registered_application() -> None:
+    def test_char_length_builds_registered_int_application() -> None:
         expr = char_length(col("name"))
         assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
         assert column_expr_function_name(expr) == "char_length"

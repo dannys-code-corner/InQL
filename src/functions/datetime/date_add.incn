@@ -8,9 +8,16 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.inputs import IntValueOrColumn, StrValueOrColumn, int_value_or_column_expr, str_value_or_column_expr
-from functions.registry import register_function, register_function_alias, registered_application
-from projection_builders import ColumnExpr
+from functions.inputs import (
+    IntValueOrColumn,
+    StrValueOrColumn,
+    TemporalValueOrColumn,
+    int_value_or_column_expr,
+    str_value_or_column_expr,
+    temporal_value_or_column_expr,
+)
+from functions.registry import register_function, register_function_alias, registered_temporal_application
+from projection_builders import TemporalColumnExpr
 from substrait.function_extensions import DATE_ADD_FUNCTION_ANCHOR
 
 
@@ -20,7 +27,7 @@ from substrait.function_extensions import DATE_ADD_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("date_add", DATE_ADD_FUNCTION_ANCHOR),
 ))
-pub def date_add(part: StrValueOrColumn, amount: IntValueOrColumn, expr: ColumnExpr) -> ColumnExpr:
+pub def date_add(part: StrValueOrColumn, amount: IntValueOrColumn, expr: TemporalValueOrColumn) -> TemporalColumnExpr:
     """
     Build a date/timestamp addition expression.
 
@@ -32,7 +39,10 @@ pub def date_add(part: StrValueOrColumn, amount: IntValueOrColumn, expr: ColumnE
         amount: Offset amount expression.
         expr: Input scalar expression.
     """
-    return registered_application("date_add", [str_value_or_column_expr(part), int_value_or_column_expr(amount), expr])
+    return registered_temporal_application(
+        "date_add",
+        [str_value_or_column_expr(part), int_value_or_column_expr(amount), temporal_value_or_column_expr(expr)],
+    )
 
 
 static _dateadd_alias_registration: None = register_function_alias("date_add", "dateadd")

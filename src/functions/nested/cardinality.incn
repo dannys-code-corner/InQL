@@ -8,8 +8,8 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.registry import register_function, registered_int_application
+from projection_builders import ColumnExpr, IntColumnExpr
 from substrait.function_extensions import CARDINALITY_FUNCTION_ANCHOR
 
 
@@ -19,7 +19,7 @@ from substrait.function_extensions import CARDINALITY_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("cardinality", CARDINALITY_FUNCTION_ANCHOR),
 ))
-pub def cardinality(value: ColumnExpr) -> ColumnExpr:
+pub def cardinality(value: ColumnExpr) -> IntColumnExpr:
     """
     Return the number of entries in an array or map expression.
 
@@ -29,4 +29,4 @@ pub def cardinality(value: ColumnExpr) -> ColumnExpr:
     Parameters:
         value: Array or map expression to size.
     """
-    return registered_application("cardinality", [value])
+    return registered_int_application("cardinality", [value])

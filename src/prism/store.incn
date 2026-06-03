@@ -14,6 +14,7 @@ from projection_builders import (
     ScalarFunctionApplicationExpr,
     ScalarFunctionOption,
     StringLiteralExpr,
+    untyped_column_expr,
 )
 from prism.types import PrismNode, PrismNodeKind, PrismStoreAdoption, PrismStoreId
 
@@ -473,29 +474,31 @@ def _column_expr_lists_structurally_equal(left: list[ColumnExpr], right: list[Co
 
 def _column_exprs_structurally_equal(left: ColumnExpr, right: ColumnExpr) -> bool:
     """Return whether two projection expressions are structurally equivalent."""
-    match left:
+    left_expr = untyped_column_expr(left)
+    right_expr = untyped_column_expr(right)
+    match left_expr:
         ColumnRefExpr(left_column) =>
-            match right:
+            match right_expr:
                 ColumnRefExpr(right_column) => return left_column.column_name == right_column.column_name
                 _ => return false
         IntLiteralExpr(left_literal) =>
-            match right:
+            match right_expr:
                 IntLiteralExpr(right_literal) => return left_literal.value == right_literal.value
                 _ => return false
         FloatLiteralExpr(left_literal) =>
-            match right:
+            match right_expr:
                 FloatLiteralExpr(right_literal) => return left_literal.value == right_literal.value
                 _ => return false
         StringLiteralExpr(left_literal) =>
-            match right:
+            match right_expr:
                 StringLiteralExpr(right_literal) => return left_literal.value == right_literal.value
                 _ => return false
         BoolLiteralExpr(left_literal) =>
-            match right:
+            match right_expr:
                 BoolLiteralExpr(right_literal) => return left_literal.value == right_literal.value
                 _ => return false
         ScalarFunctionApplicationExpr(left_application) =>
-            match right:
+            match right_expr:
                 ScalarFunctionApplicationExpr(right_application) =>
                     if left_application.function_ref != right_application.function_ref:
                         return false

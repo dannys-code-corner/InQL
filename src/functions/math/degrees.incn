@@ -8,8 +8,9 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.inputs import NumberValueOrColumn, number_value_or_column_expr
+from functions.registry import register_function, registered_number_application
+from projection_builders import NumberColumnExpr
 from substrait.function_extensions import DEGREES_FUNCTION_ANCHOR
 
 
@@ -19,7 +20,7 @@ from substrait.function_extensions import DEGREES_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("degrees", DEGREES_FUNCTION_ANCHOR),
 ))
-pub def degrees(expr: ColumnExpr) -> ColumnExpr:
+pub def degrees(expr: NumberValueOrColumn) -> NumberColumnExpr:
     """
     Build an expression converting radians to degrees.
 
@@ -29,7 +30,7 @@ pub def degrees(expr: ColumnExpr) -> ColumnExpr:
     Parameters:
         expr: Input scalar expression.
     """
-    return registered_application("degrees", [expr])
+    return registered_number_application("degrees", [number_value_or_column_expr(expr)])
 
 
 module tests:

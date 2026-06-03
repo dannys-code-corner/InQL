@@ -9,8 +9,9 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr, str_expr
+from functions.inputs import StrValueOrColumn, str_value_or_column_expr
+from functions.registry import register_function, registered_string_application
+from projection_builders import StringColumnExpr, str_expr
 from rust::incan_stdlib::errors import raise_value_error
 from substrait.function_extensions import PARSE_URL_FUNCTION_ANCHOR
 
@@ -22,7 +23,7 @@ from substrait.function_extensions import PARSE_URL_FUNCTION_ANCHOR
     error_behavior=FunctionErrorBehavior.InvalidInputDiagnostic,
     substrait=extension_mapping("parse_url", PARSE_URL_FUNCTION_ANCHOR),
 ))
-pub def parse_url(expr: ColumnExpr, key: str) -> ColumnExpr:
+pub def parse_url(expr: StrValueOrColumn, key: str) -> StringColumnExpr:
     """
     Extract the first query parameter value for a key.
 
@@ -35,7 +36,7 @@ pub def parse_url(expr: ColumnExpr, key: str) -> ColumnExpr:
     """
     if key == "":
         return raise_value_error("parse_url key must not be empty")
-    return registered_application("parse_url", [expr, str_expr(key)])
+    return registered_string_application("parse_url", [str_value_or_column_expr(expr), str_expr(key)])
 
 
 module tests:

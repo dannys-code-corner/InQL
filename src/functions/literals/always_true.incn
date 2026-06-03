@@ -14,7 +14,7 @@ from function_registry import (
     v0_1,
 )
 from functions.registry import register_function
-from projection_builders import ColumnExpr, bool_expr
+from projection_builders import BoolLiteralExpr, bool_expr
 
 
 @register_function(deterministic_spec(
@@ -23,7 +23,7 @@ from projection_builders import ColumnExpr, bool_expr
     null_behavior=FunctionNullBehavior.Predicate,
     substrait=rewrite_mapping("boolean true literal predicate"),
 ))
-pub def always_true() -> ColumnExpr:
+pub def always_true() -> BoolLiteralExpr:
     """
     Build a predicate that accepts every row.
 

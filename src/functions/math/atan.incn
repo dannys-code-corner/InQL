@@ -8,8 +8,9 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.inputs import NumberValueOrColumn, number_value_or_column_expr
+from functions.registry import register_function, registered_number_application
+from projection_builders import NumberColumnExpr
 from substrait.function_extensions import ATAN_FUNCTION_ANCHOR
 
 
@@ -19,7 +20,7 @@ from substrait.function_extensions import ATAN_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("atan", ATAN_FUNCTION_ANCHOR),
 ))
-pub def atan(expr: ColumnExpr) -> ColumnExpr:
+pub def atan(expr: NumberValueOrColumn) -> NumberColumnExpr:
     """
     Build an inverse-tangent expression.
 
@@ -29,7 +30,7 @@ pub def atan(expr: ColumnExpr) -> ColumnExpr:
     Parameters:
         expr: Input scalar expression.
     """
-    return registered_application("atan", [expr])
+    return registered_number_application("atan", [number_value_or_column_expr(expr)])
 
 
 module tests:

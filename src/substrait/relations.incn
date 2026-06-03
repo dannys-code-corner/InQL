@@ -59,7 +59,13 @@ from aggregate_builders import AggregateKind, AggregateMeasure
 from function_registry import FunctionClass, FunctionRegistryEntry, SubstraitMappingKind
 from functions.registry import function_registry_entry
 from generator_builders import GeneratorApplication
-from projection_builders import ColumnExpr, ProjectionAssignment, ScalarFunctionApplicationExpr, col
+from projection_builders import (
+    ColumnExpr,
+    ProjectionAssignment,
+    ScalarFunctionApplicationExpr,
+    col,
+    untyped_column_expr,
+)
 from window_builders import (
     WindowBound,
     WindowBoundKind,
@@ -73,10 +79,13 @@ from window_builders import (
 from substrait.expr_lowering import (
     bool_expr,
     field_index_from_expression,
+    filter_predicate_expr_for_columns,
     filter_predicate_expr,
     grouping_reference_indexes,
     i64_expr,
+    lower_project_for_columns,
     lower_project,
+    scalar_expr_for_columns,
     scalar_expr,
     string_expr,
 )
@@ -85,6 +94,7 @@ from substrait.generator_payload import encode_generator_extension_payload
 from substrait.window_metadata import WINDOW_NULL_TREATMENT_OPTION, WINDOW_OUTPUT_NAME_OPTION
 from substrait.inspect import relation_output_columns
 from substrait.schema_registry import named_table_base_schema, unknown_named_struct
+from scalar_schema import ScalarColumnSpec, scalar_column_names, scalar_columns_from_names
 
 
 @derive(Clone)
@@ -339,15 +349,15 @@ def _generator_registry_entry(generator: GeneratorApplication) -> Result[Functio
 
 def _resolved_generator(
     generator: GeneratorApplication,
-    input_columns: list[str],
+    input_columns: list[ScalarColumnSpec],
 ) -> Result[ResolvedGeneratorApplication, SubstraitLoweringError]:
-    """Resolve one generator application against input-column names."""
-    _validate_generator_output_columns(input_columns, generator.clone())?
+    """Resolve one generator application against input columns."""
+    _validate_generator_output_columns(scalar_column_names(input_columns), generator.clone())?
     return Ok(
         ResolvedGeneratorApplication(
             generator=generator.clone(),
             entry=_generator_registry_entry(generator.clone())?,
-            arguments=[scalar_expr(input_columns, argument)? for argument in generator.arguments],
+            arguments=[scalar_expr_for_columns(input_columns, argument)? for argument in generator.arguments],
         ),
     )
 
@@ -400,10 +410,10 @@ def _validate_window_aggregate_modifiers(
 
 
 def _resolved_window_projection(
-    input_columns: list[str],
+    input_columns: list[ScalarColumnSpec],
     projection: WindowProjection,
 ) -> Result[ResolvedWindowProjection, SubstraitLoweringError]:
-    """Resolve one window projection against input-column names."""
+    """Resolve one window projection against input columns."""
     if len(projection.output_name) == 0:
         return Err(invalid_scalar_expression("window output alias must be non-empty"))
     application = projection.application
@@ -416,9 +426,9 @@ def _resolved_window_projection(
             output_name=projection.output_name,
             application=application.clone(),
             entry=_window_registry_entry(application.clone())?,
-            arguments=[FunctionArgument(arg_type=Some(ArgType.Value(scalar_expr(input_columns, arg)?))) for arg in application.arguments],
-            partition_expressions=[scalar_expr(input_columns, column)? for column in application.spec.partition_columns],
-            sorts=[_sort_field(input_columns, column)? for column in application.spec.sort_columns],
+            arguments=[FunctionArgument(arg_type=Some(ArgType.Value(scalar_expr_for_columns(input_columns, arg)?))) for arg in application.arguments],
+            partition_expressions=[scalar_expr_for_columns(input_columns, column)? for column in application.spec.partition_columns],
+            sorts=[_sort_field_for_columns(input_columns, column)? for column in application.spec.sort_columns],
             lower_bound=_window_bound(frame.lower_bound),
             upper_bound=_window_bound(frame.upper_bound),
             bounds_type=_window_bounds_type(frame),
@@ -482,7 +492,7 @@ def _resolved_window_projection_to_substrait(
 
 
 def _resolved_window_projections(
-    input_columns: list[str],
+    input_columns: list[ScalarColumnSpec],
     projections: list[WindowProjection],
 ) -> Result[list[ResolvedWindowProjection], SubstraitLoweringError]:
     """Resolve and validate one consistent-partition window projection group."""
@@ -598,11 +608,11 @@ def _is_argument_free_count(measure: AggregateMeasure) -> bool:
 
 def _resolved_measure(
     measure: AggregateMeasure,
-    input_columns: list[str],
+    input_columns: list[ScalarColumnSpec],
 ) -> Result[ResolvedAggregateMeasure, SubstraitLoweringError]:
-    """Resolve one aggregate measure against the current input-column list."""
+    """Resolve one aggregate measure against the current input columns."""
     filter_expr = _resolved_measure_filter_expr(measure.clone(), input_columns)?
-    ordering = [_sort_field(input_columns, key)? for key in measure.ordering]
+    ordering = [_sort_field_for_columns(input_columns, key)? for key in measure.ordering]
     if _is_argument_free_count(measure):
         return Ok(
             ResolvedAggregateMeasure(
@@ -623,8 +633,8 @@ def _resolved_measure(
             kind=measure.kind,
             function_ref=measure.function_ref,
             canonical_name=measure.canonical_name,
-            expr=scalar_expr(input_columns, measure.expr)?,
-            arguments=[scalar_expr(input_columns, argument)? for argument in measure.arguments],
+            expr=scalar_expr_for_columns(input_columns, measure.expr)?,
+            arguments=[scalar_expr_for_columns(input_columns, argument)? for argument in measure.arguments],
             has_expr=true,
             is_distinct=measure.is_distinct,
             filter_expr=filter_expr,
@@ -636,11 +646,11 @@ def _resolved_measure(
 
 def _resolved_measure_filter_expr(
     measure: AggregateMeasure,
-    input_columns: list[str],
+    input_columns: list[ScalarColumnSpec],
 ) -> Result[Expression, SubstraitLoweringError]:
     """Resolve one aggregate-local filter expression or a harmless placeholder."""
     if measure.has_filter:
-        return Ok(filter_predicate_expr(input_columns, measure.filter_expr)?)
+        return Ok(filter_predicate_expr_for_columns(input_columns, measure.filter_expr)?)
     return Ok(bool_expr(true))
 
 
@@ -676,7 +686,16 @@ def _sort_field_direction_detail(application: ScalarFunctionApplicationExpr) -> 
 
 def _sort_field(input_columns: list[str], key: ColumnExpr) -> Result[SortField, SubstraitLoweringError]:
     """Lower one InQL sort-key expression into a Substrait SortField."""
-    match key:
+    return _sort_field_for_columns(scalar_columns_from_names(input_columns), key)
+
+
+def _sort_field_for_columns(
+    input_columns: list[ScalarColumnSpec],
+    key: ColumnExpr,
+) -> Result[SortField, SubstraitLoweringError]:
+    """Lower one InQL sort-key expression against typed-or-name-only input columns."""
+    key_expr = untyped_column_expr(key)
+    match key_expr:
         ScalarFunctionApplicationExpr(application) =>
             direction_detail = _sort_field_direction_detail(application)
             if direction_detail != "":
@@ -686,20 +705,20 @@ def _sort_field(input_columns: list[str], key: ColumnExpr) -> Result[SortField, 
                     )
                 return Ok(
                     SortField(
-                        expr=Some(scalar_expr(input_columns, application.arguments[0])?),
+                        expr=Some(scalar_expr_for_columns(input_columns, application.arguments[0])?),
                         sort_kind=Some(SortKind.Direction(_sort_direction_for_mapping_detail(direction_detail)?.into())),
                     ),
                 )
             return Ok(
                 SortField(
-                    expr=Some(scalar_expr(input_columns, key)?),
+                    expr=Some(scalar_expr_for_columns(input_columns, key_expr)?),
                     sort_kind=Some(SortKind.Direction(SortDirection.AscNullsFirst.into())),
                 ),
             )
         _ =>
             return Ok(
                 SortField(
-                    expr=Some(scalar_expr(input_columns, key)?),
+                    expr=Some(scalar_expr_for_columns(input_columns, key_expr)?),
                     sort_kind=Some(SortKind.Direction(SortDirection.AscNullsFirst.into())),
                 ),
             )
@@ -781,7 +800,16 @@ pub def try_filter_rel_of_columns(
     predicate: ColumnExpr,
 ) -> Result[Rel, SubstraitLoweringError]:
     """Fallibly wrap a child relation in `FilterRel` using explicit input-column names."""
-    condition = filter_predicate_expr(input_columns, predicate)?
+    return try_filter_rel_for_columns(input, scalar_columns_from_names(input_columns), predicate)
+
+
+pub def try_filter_rel_for_columns(
+    input: Rel,
+    input_columns: list[ScalarColumnSpec],
+    predicate: ColumnExpr,
+) -> Result[Rel, SubstraitLoweringError]:
+    """Fallibly wrap a child relation in `FilterRel` using typed-or-name-only input columns."""
+    condition = filter_predicate_expr_for_columns(input_columns, predicate)?
     return Ok(
         _rel_filter(
             FilterRel(
@@ -815,7 +843,16 @@ pub def try_project_rel_of_columns(
     assignments: list[ProjectionAssignment],
 ) -> Result[Rel, SubstraitLoweringError]:
     """Fallibly wrap a child relation in `ProjectRel` using explicit input-column names and assignments."""
-    lowered = lower_project(input_columns, assignments)?
+    return try_project_rel_for_columns(input, scalar_columns_from_names(input_columns), assignments)
+
+
+pub def try_project_rel_for_columns(
+    input: Rel,
+    input_columns: list[ScalarColumnSpec],
+    assignments: list[ProjectionAssignment],
+) -> Result[Rel, SubstraitLoweringError]:
+    """Fallibly wrap a child relation in `ProjectRel` using typed-or-name-only input columns."""
+    lowered = lower_project_for_columns(input_columns, assignments)?
     common = RelCommon(
         hint=None,
         advanced_extension=None,
@@ -909,9 +946,19 @@ pub def try_aggregate_rel_of_columns(
     measures: list[AggregateMeasure],
 ) -> Result[Rel, SubstraitLoweringError]:
     """Fallibly wrap a child relation in `AggregateRel` using explicit input-column names."""
+    return try_aggregate_rel_for_columns(input, scalar_columns_from_names(input_columns), grouping_columns, measures)
+
+
+pub def try_aggregate_rel_for_columns(
+    input: Rel,
+    input_columns: list[ScalarColumnSpec],
+    grouping_columns: list[ColumnExpr],
+    measures: list[AggregateMeasure],
+) -> Result[Rel, SubstraitLoweringError]:
+    """Fallibly wrap a child relation in `AggregateRel` using typed-or-name-only input columns."""
     mut resolved_grouping_exprs: list[ResolvedRelationExpression] = []
     for column in grouping_columns:
-        grouping_expr = scalar_expr(input_columns, column)?
+        grouping_expr = scalar_expr_for_columns(input_columns, column)?
         resolved_grouping_exprs.append(ResolvedRelationExpression(expr=grouping_expr.clone()))
     grouping_exprs = [resolved.expr.clone() for resolved in resolved_grouping_exprs]
     grouping_expr_copies = [expr.clone() for expr in grouping_exprs]
@@ -955,6 +1002,15 @@ pub def try_generator_rel_of_columns(
     generator: GeneratorApplication,
 ) -> Result[Rel, SubstraitLoweringError]:
     """Fallibly wrap a child relation in a generator relation-extension node using explicit input-column names."""
+    return try_generator_rel_for_columns(input, scalar_columns_from_names(input_columns), generator)
+
+
+pub def try_generator_rel_for_columns(
+    input: Rel,
+    input_columns: list[ScalarColumnSpec],
+    generator: GeneratorApplication,
+) -> Result[Rel, SubstraitLoweringError]:
+    """Fallibly wrap a child relation in a generator relation-extension node using typed-or-name-only input columns."""
     resolved = _resolved_generator(generator, input_columns)?
     # Keep generator semantics in Substrait IR. Non-standard generator details travel in the extension payload instead
     # of being copied into backend-only side channels.
@@ -987,6 +1043,15 @@ pub def try_window_rel_of_columns(
     projections: list[WindowProjection],
 ) -> Result[Rel, SubstraitLoweringError]:
     """Fallibly wrap a child relation in a window relation using explicit input-column names."""
+    return try_window_rel_for_columns(input, scalar_columns_from_names(input_columns), projections)
+
+
+pub def try_window_rel_for_columns(
+    input: Rel,
+    input_columns: list[ScalarColumnSpec],
+    projections: list[WindowProjection],
+) -> Result[Rel, SubstraitLoweringError]:
+    """Fallibly wrap a child relation in a window relation using typed-or-name-only input columns."""
     if len(projections) == 0:
         return Err(invalid_scalar_expression("window relation requires at least one window projection"))
     resolved = _resolved_window_projections(input_columns, projections)?
@@ -1028,9 +1093,18 @@ pub def try_sort_rel_of_columns(
     sort_keys: list[ColumnExpr],
 ) -> Result[Rel, SubstraitLoweringError]:
     """Fallibly wrap a child relation in `SortRel` with real sort fields."""
+    return try_sort_rel_for_columns(input, scalar_columns_from_names(input_columns), sort_keys)
+
+
+pub def try_sort_rel_for_columns(
+    input: Rel,
+    input_columns: list[ScalarColumnSpec],
+    sort_keys: list[ColumnExpr],
+) -> Result[Rel, SubstraitLoweringError]:
+    """Fallibly wrap a child relation in `SortRel` with typed-or-name-only input columns."""
     if len(sort_keys) == 0:
         return Err(invalid_scalar_expression("order_by requires at least one sort key"))
-    sort_fields = [_sort_field(input_columns, key)? for key in sort_keys]
+    sort_fields = [_sort_field_for_columns(input_columns, key)? for key in sort_keys]
     return Ok(
         _rel_sort(
             SortRel(

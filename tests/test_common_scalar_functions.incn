@@ -32,7 +32,6 @@ from functions import (
     from_unixtime,
     greatest,
     hex,
-    int_expr,
     last_day,
     lcase,
     least,
@@ -107,7 +106,7 @@ def test_common_scalar_functions__math_helpers_share_scalar_application_node() -
     """Assert RFC 018 math helpers use the registry-backed scalar expression model."""
     # -- Arrange --
     amount = col("amount")
-    scale = int_expr(2)
+    scale = 2
 
     # -- Act / Assert --
     _assert_application(abs(amount), "abs", 1)
@@ -122,8 +121,8 @@ def test_common_scalar_functions__math_helpers_share_scalar_application_node() -
     _assert_application(log(scale, amount), "log", 2)
     _assert_application(log10(amount), "log10", 1)
     _assert_application(sign(amount), "sign", 1)
-    _assert_application(least(amount, int_expr(1), int_expr(0)), "least", 3)
-    _assert_application(greatest(amount, int_expr(1), int_expr(0)), "greatest", 3)
+    _assert_application(least(amount, 1, 0), "least", 3)
+    _assert_application(greatest(amount, 1, 0), "greatest", 3)
     _assert_application(sin(amount), "sin", 1)
     _assert_application(cos(amount), "cos", 1)
     _assert_application(tan(amount), "tan", 1)
@@ -235,8 +234,8 @@ def test_common_scalar_functions__safe_cast_alias_targets_try_cast() -> None:
     value = col("maybe_number")
 
     # -- Act --
-    expr = safe_cast(value, "int64")
+    expr = safe_cast(value, int)
 
     # -- Assert --
     _assert_application(expr, "try_cast", 1)
-    assert column_expr_option_value(expr, "target_type") == "int64", "safe_cast should preserve the target type option"
+    assert column_expr_option_value(expr, "target_type") == "int", "safe_cast should preserve the target type option"

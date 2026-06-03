@@ -8,6 +8,7 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
+from functions.inputs import ScalarValueOrColumn, scalar_value_or_column_expr
 from functions.registry import register_function, registered_application
 from projection_builders import ColumnExpr
 from substrait.function_extensions import MAP_EXTRACT_FUNCTION_ANCHOR
@@ -19,15 +20,15 @@ from substrait.function_extensions import MAP_EXTRACT_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("map_extract", MAP_EXTRACT_FUNCTION_ANCHOR),
 ))
-pub def map_extract(map_expr: ColumnExpr, key: ColumnExpr) -> ColumnExpr:
+pub def map_extract(map_expr: ColumnExpr, key: ScalarValueOrColumn) -> ColumnExpr:
     """
     Return the value-list associated with a map key.
 
     Examples:
-        status_value = map_extract(col("attributes"), str_lit("status"))
+        status_value = map_extract(col("attributes"), "status")
 
     Parameters:
         map_expr: Map expression to inspect.
         key: Key expression to look up.
     """
-    return registered_application("map_extract", [map_expr, key])
+    return registered_application("map_extract", [map_expr, scalar_value_or_column_expr(key)])

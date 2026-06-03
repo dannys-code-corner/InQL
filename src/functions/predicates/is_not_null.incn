@@ -12,8 +12,8 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.registry import register_function, registered_bool_application
+from projection_builders import BoolColumnExpr, ColumnExpr
 from substrait.function_extensions import IS_NOT_NULL_FUNCTION_ANCHOR
 
 
@@ -23,7 +23,7 @@ from substrait.function_extensions import IS_NOT_NULL_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.Predicate,
     substrait=extension_mapping("is_not_null", IS_NOT_NULL_FUNCTION_ANCHOR),
 ))
-pub def is_not_null(expr: ColumnExpr) -> ColumnExpr:
+pub def is_not_null(expr: ColumnExpr) -> BoolColumnExpr:
     """
     Build a predicate that checks whether an expression is not null.
 
@@ -33,7 +33,7 @@ pub def is_not_null(expr: ColumnExpr) -> ColumnExpr:
     Parameters:
         expr: Expression to test for a non-null value.
     """
-    return registered_application("is_not_null", [expr])
+    return registered_bool_application("is_not_null", [expr])
 
 
 module tests:

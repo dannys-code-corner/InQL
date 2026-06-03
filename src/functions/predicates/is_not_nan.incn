@@ -15,7 +15,8 @@ from function_registry import (
 from functions.registry import register_function
 from functions.operators.not_ import not_
 from functions.predicates.is_nan import is_nan
-from projection_builders import ColumnExpr
+from functions.inputs import NumberValueOrColumn
+from projection_builders import BoolColumnExpr
 
 
 @register_function(deterministic_spec(
@@ -24,7 +25,7 @@ from projection_builders import ColumnExpr
     null_behavior=FunctionNullBehavior.Predicate,
     substrait=rewrite_mapping("not_(is_nan(expr))"),
 ))
-pub def is_not_nan(expr: ColumnExpr) -> ColumnExpr:
+pub def is_not_nan(expr: NumberValueOrColumn) -> BoolColumnExpr:
     """
     Build a predicate that checks whether a floating-point expression is not NaN.
 

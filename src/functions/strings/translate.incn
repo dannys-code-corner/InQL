@@ -9,8 +9,8 @@ from function_registry import (
     v0_1,
 )
 from functions.inputs import StrValueOrColumn, str_value_or_column_expr
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.registry import register_function, registered_string_application
+from projection_builders import StringColumnExpr
 from substrait.function_extensions import TRANSLATE_FUNCTION_ANCHOR
 
 
@@ -20,7 +20,7 @@ from substrait.function_extensions import TRANSLATE_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("translate", TRANSLATE_FUNCTION_ANCHOR),
 ))
-pub def translate(expr: StrValueOrColumn, from_chars: StrValueOrColumn, to_chars: StrValueOrColumn) -> ColumnExpr:
+pub def translate(expr: StrValueOrColumn, from_chars: StrValueOrColumn, to_chars: StrValueOrColumn) -> StringColumnExpr:
     """
     Build a character translation expression.
 
@@ -32,7 +32,7 @@ pub def translate(expr: StrValueOrColumn, from_chars: StrValueOrColumn, to_chars
         from_chars: Source character-set expression.
         to_chars: Replacement character-set expression.
     """
-    return registered_application(
+    return registered_string_application(
         "translate",
         [str_value_or_column_expr(expr), str_value_or_column_expr(from_chars), str_value_or_column_expr(to_chars)],
     )
@@ -46,7 +46,7 @@ module tests:
         column_expr_function_name,
         column_expr_kind,
     )
-    def test_translate_builds_registered_application() -> None:
+    def test_translate_builds_registered_string_application() -> None:
         expr = translate(col("code"), "ABC", "abc")
         assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
         assert column_expr_function_name(expr) == "translate"

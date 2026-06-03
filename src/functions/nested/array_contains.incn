@@ -8,8 +8,9 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.inputs import ScalarValueOrColumn, scalar_value_or_column_expr
+from functions.registry import register_function, registered_bool_application
+from projection_builders import BoolColumnExpr, ColumnExpr
 from substrait.function_extensions import ARRAY_HAS_FUNCTION_ANCHOR
 
 
@@ -19,15 +20,15 @@ from substrait.function_extensions import ARRAY_HAS_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("array_has", ARRAY_HAS_FUNCTION_ANCHOR),
 ))
-pub def array_contains(array_expr: ColumnExpr, value: ColumnExpr) -> ColumnExpr:
+pub def array_contains(array_expr: ColumnExpr, value: ScalarValueOrColumn) -> BoolColumnExpr:
     """
     Return whether an array contains a value.
 
     Examples:
-        has_purchase = array_contains(col("tags"), str_lit("purchase"))
+        has_purchase = array_contains(col("tags"), "purchase")
 
     Parameters:
         array_expr: Array expression to search.
         value: Value expression to find.
     """
-    return registered_application("array_contains", [array_expr, value])
+    return registered_bool_application("array_contains", [array_expr, scalar_value_or_column_expr(value)])

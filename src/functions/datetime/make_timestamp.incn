@@ -9,8 +9,8 @@ from function_registry import (
     v0_1,
 )
 from functions.inputs import IntValueOrColumn, int_value_or_column_expr
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.registry import register_function, registered_timestamp_application
+from projection_builders import TimestampColumnExpr
 from substrait.function_extensions import MAKE_TIMESTAMP_FUNCTION_ANCHOR
 
 
@@ -27,7 +27,7 @@ pub def make_timestamp(
     hour: IntValueOrColumn,
     minute: IntValueOrColumn,
     second: IntValueOrColumn,
-) -> ColumnExpr:
+) -> TimestampColumnExpr:
     """
     Build a timestamp construction expression.
 
@@ -56,7 +56,7 @@ pub def make_timestamp(
     hour_expr = int_value_or_column_expr(hour)
     minute_expr = int_value_or_column_expr(minute)
     second_expr = int_value_or_column_expr(second)
-    return registered_application(
+    return registered_timestamp_application(
         "make_timestamp",
         [year_expr, month_expr, day_expr, hour_expr, minute_expr, second_expr],
     )

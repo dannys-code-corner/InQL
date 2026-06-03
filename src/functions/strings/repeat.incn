@@ -9,8 +9,8 @@ from function_registry import (
     v0_1,
 )
 from functions.inputs import IntValueOrColumn, StrValueOrColumn, int_value_or_column_expr, str_value_or_column_expr
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.registry import register_function, registered_string_application
+from projection_builders import StringColumnExpr
 from substrait.function_extensions import REPEAT_FUNCTION_ANCHOR
 
 
@@ -20,7 +20,7 @@ from substrait.function_extensions import REPEAT_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("repeat", REPEAT_FUNCTION_ANCHOR),
 ))
-pub def repeat(expr: StrValueOrColumn, count: IntValueOrColumn) -> ColumnExpr:
+pub def repeat(expr: StrValueOrColumn, count: IntValueOrColumn) -> StringColumnExpr:
     """
     Build a string repetition expression.
 
@@ -31,7 +31,7 @@ pub def repeat(expr: StrValueOrColumn, count: IntValueOrColumn) -> ColumnExpr:
         expr: Input scalar expression.
         count: Count expression.
     """
-    return registered_application("repeat", [str_value_or_column_expr(expr), int_value_or_column_expr(count)])
+    return registered_string_application("repeat", [str_value_or_column_expr(expr), int_value_or_column_expr(count)])
 
 
 module tests:
@@ -41,7 +41,7 @@ module tests:
         column_expr_function_name,
         column_expr_kind,
     )
-    def test_repeat_builds_registered_application() -> None:
+    def test_repeat_builds_registered_string_application() -> None:
         expr = repeat("*", 3)
         assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
         assert column_expr_function_name(expr) == "repeat"

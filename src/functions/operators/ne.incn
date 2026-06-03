@@ -13,8 +13,9 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.inputs import ScalarValueOrColumn, scalar_value_or_column_expr
+from functions.registry import register_function, registered_bool_application
+from projection_builders import BoolColumnExpr
 from substrait.function_extensions import NOT_EQUAL_FUNCTION_ANCHOR
 
 
@@ -24,18 +25,18 @@ from substrait.function_extensions import NOT_EQUAL_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.Predicate,
     substrait=extension_mapping("not_equal", NOT_EQUAL_FUNCTION_ANCHOR),
 ))
-pub def ne(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
+pub def ne(left: ScalarValueOrColumn, right: ScalarValueOrColumn) -> BoolColumnExpr:
     """
     Build an inequality predicate.
 
     Examples:
-        not_cancelled = ne(col("status"), lit("cancelled"))
+        not_cancelled = ne(col("status"), "cancelled")
 
     Parameters:
         left: Expression on the left side of the comparison.
         right: Expression that must not equal `left`.
     """
-    return registered_application("ne", [left, right])
+    return registered_bool_application("ne", [scalar_value_or_column_expr(left), scalar_value_or_column_expr(right)])
 
 
 module tests:

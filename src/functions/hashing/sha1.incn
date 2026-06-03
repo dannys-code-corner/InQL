@@ -8,8 +8,9 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.inputs import StrValueOrColumn, str_value_or_column_expr
+from functions.registry import register_function, registered_string_application
+from projection_builders import StringColumnExpr
 from substrait.function_extensions import SHA1_FUNCTION_ANCHOR
 
 
@@ -19,7 +20,7 @@ from substrait.function_extensions import SHA1_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("sha1", SHA1_FUNCTION_ANCHOR),
 ))
-pub def sha1(expr: ColumnExpr) -> ColumnExpr:
+pub def sha1(expr: StrValueOrColumn) -> StringColumnExpr:
     """
     Return the lowercase hexadecimal SHA-1 digest for one UTF-8 string expression.
 
@@ -29,7 +30,7 @@ pub def sha1(expr: ColumnExpr) -> ColumnExpr:
     Parameters:
         expr: String expression whose UTF-8 bytes should be hashed.
     """
-    return registered_application("sha1", [expr])
+    return registered_string_application("sha1", [str_value_or_column_expr(expr)])
 
 
 module tests:
