@@ -8,8 +8,9 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.inputs import StrValueOrColumn, str_value_or_column_expr
+from functions.registry import register_function, registered_string_application
+from projection_builders import StringColumnExpr
 from substrait.function_extensions import URL_ENCODE_FUNCTION_ANCHOR
 
 
@@ -19,7 +20,7 @@ from substrait.function_extensions import URL_ENCODE_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("url_encode", URL_ENCODE_FUNCTION_ANCHOR),
 ))
-pub def url_encode(expr: ColumnExpr) -> ColumnExpr:
+pub def url_encode(expr: StrValueOrColumn) -> StringColumnExpr:
     """
     Percent-encode one UTF-8 string for URL component use.
 
@@ -29,7 +30,7 @@ pub def url_encode(expr: ColumnExpr) -> ColumnExpr:
     Parameters:
         expr: String expression to percent-encode as a URL component.
     """
-    return registered_application("url_encode", [expr])
+    return registered_string_application("url_encode", [str_value_or_column_expr(expr)])
 
 
 module tests:

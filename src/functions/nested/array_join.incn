@@ -8,8 +8,9 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.inputs import StrValueOrColumn, str_value_or_column_expr
+from functions.registry import register_function, registered_string_application
+from projection_builders import ColumnExpr, StringColumnExpr
 from substrait.function_extensions import ARRAY_TO_STRING_FUNCTION_ANCHOR
 
 
@@ -19,15 +20,15 @@ from substrait.function_extensions import ARRAY_TO_STRING_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("array_to_string", ARRAY_TO_STRING_FUNCTION_ANCHOR),
 ))
-pub def array_join(array_expr: ColumnExpr, delimiter: ColumnExpr) -> ColumnExpr:
+pub def array_join(array_expr: ColumnExpr, delimiter: StrValueOrColumn) -> StringColumnExpr:
     """
     Join array elements into one string with a delimiter.
 
     Examples:
-        tag_text = array_join(col("tags"), str_lit(","))
+        tag_text = array_join(col("tags"), ",")
 
     Parameters:
         array_expr: Array expression to render.
         delimiter: String delimiter expression placed between elements.
     """
-    return registered_application("array_join", [array_expr, delimiter])
+    return registered_string_application("array_join", [array_expr, str_value_or_column_expr(delimiter)])

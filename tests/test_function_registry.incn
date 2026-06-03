@@ -228,7 +228,6 @@ from function_registry import (
     FunctionClass,
     FunctionDeterminism,
     FunctionErrorBehavior,
-    FunctionInputType,
     FunctionLifecycle,
     FunctionApproximationPolicy,
     FunctionPolicyCategory,
@@ -245,7 +244,17 @@ from function_registry import (
     rewrite_mapping,
     v0_1,
 )
-from projection_builders import ColumnExprKind, column_expr_kind
+from projection_builders import (
+    BoolColumnExpr,
+    ColumnExpr,
+    ColumnExprKind,
+    IntColumnExpr,
+    NumberColumnExpr,
+    StringColumnExpr,
+    column_expr_argument_count,
+    column_expr_function_name,
+    column_expr_kind,
+)
 from substrait.function_extensions import (
     ABS_FUNCTION_ANCHOR,
     APPROX_COUNT_DISTINCT_FUNCTION_ANCHOR,
@@ -531,39 +540,39 @@ def _exercise_current_public_helpers() -> None:
     count(status)
     count_expr(status)
     count_distinct(status)
-    count_if(eq(status, str_lit("paid")))
+    count_if(eq(status, "paid"))
     avg(amount)
     min(amount)
     max(amount)
     approx_count_distinct(status)
     approx_percentile(amount, 0.5)
-    add(amount, lit(1))
-    mul(amount, int_lit(2))
-    eq(status, str_lit("paid"))
-    gt(amount, int_lit(10))
+    add(amount, 1)
+    mul(amount, 2)
+    eq(status, "paid")
+    gt(amount, 10)
     cast(amount, "string")
     try_cast(status, "int64")
-    ne(status, str_lit("void"))
-    lt(amount, int_lit(10))
-    lte(amount, int_lit(10))
-    gte(amount, int_lit(10))
-    equal_null(status, str_lit("paid"))
-    and_(gt(amount, int_lit(10)), eq(status, str_lit("paid")))
-    or_(eq(status, str_lit("paid")), eq(status, str_lit("open")))
-    not_(eq(status, str_lit("void")))
+    ne(status, "void")
+    lt(amount, 10)
+    lte(amount, 10)
+    gte(amount, 10)
+    equal_null(status, "paid")
+    and_(gt(amount, 10), eq(status, "paid"))
+    or_(eq(status, "paid"), eq(status, "open"))
+    not_(eq(status, "void"))
     is_null(status)
     is_not_null(status)
     is_nan(amount)
     is_not_nan(amount)
-    sub(amount, int_lit(1))
-    div(amount, int_lit(2))
-    modulo(amount, int_lit(2))
+    sub(amount, 1)
+    div(amount, 2)
+    modulo(amount, 2)
     neg(amount)
     coalesce([status, str_lit("unknown")])
     nullif(status, str_lit(""))
-    case_when([gt(amount, int_lit(10))], [str_lit("large")], str_lit("small"))
+    case_when([gt(amount, 10)], [str_lit("large")], str_lit("small"))
     in_(status, [str_lit("paid"), str_lit("open")])
-    between(amount, int_lit(1), int_lit(10))
+    between(amount, 1, 10)
     asc(amount)
     desc(amount)
     asc_nulls_first(amount)
@@ -574,23 +583,23 @@ def _exercise_current_public_helpers() -> None:
     ceil(amount)
     floor(amount)
     round(amount)
-    round(amount, int_lit(2))
+    round(amount, 2)
     sqrt(amount)
-    power(amount, int_lit(2))
+    power(amount, 2)
     exp(amount)
     ln(amount)
-    log(int_lit(2), amount)
+    log(2, amount)
     log10(amount)
     sign(amount)
-    least(amount, int_lit(0), int_lit(1))
-    greatest(amount, int_lit(0), int_lit(1))
+    least(amount, 0, 1)
+    greatest(amount, 0, 1)
     sin(amount)
     cos(amount)
     tan(amount)
     asin(amount)
     acos(amount)
     atan(amount)
-    atan2(amount, int_lit(1))
+    atan2(amount, 1)
     degrees(amount)
     radians(amount)
     char_length(status)
@@ -598,57 +607,57 @@ def _exercise_current_public_helpers() -> None:
     upper(status)
     lower(status)
     trim(status)
-    trim(status, str_lit("_"))
-    ltrim(status, str_lit("_"))
-    rtrim(status, str_lit("_"))
-    substring(status, int_lit(1), int_lit(3))
-    substr(status, int_lit(1), int_lit(3))
-    position(status, str_lit("-"))
-    overlay(status, str_lit("X"), int_lit(2), int_lit(1))
-    concat(status, str_lit("-"), amount)
-    concat_ws(str_lit("-"), status, amount)
-    replace(status, str_lit("-"), str_lit(""))
-    translate(status, str_lit("ABC"), str_lit("abc"))
-    repeat(str_lit("*"), int_lit(3))
-    left(status, int_lit(3))
-    right(status, int_lit(2))
-    lpad(status, int_lit(6), str_lit("0"))
-    rpad(status, int_lit(6), str_lit(" "))
-    split_part(status, str_lit("@"), int_lit(2))
+    trim(status, "_")
+    ltrim(status, "_")
+    rtrim(status, "_")
+    substring(status, 1, 3)
+    substr(status, 1, 3)
+    position(status, "-")
+    overlay(status, "X", 2, 1)
+    concat(status, "-", amount)
+    concat_ws("-", status, amount)
+    replace(status, "-", "")
+    translate(status, "ABC", "abc")
+    repeat("*", 3)
+    left(status, 3)
+    right(status, 2)
+    lpad(status, 6, "0")
+    rpad(status, 6, " ")
+    split_part(status, "@", 2)
     ucase(status)
     lcase(status)
-    encode(status, str_lit("base64"))
-    decode(status, str_lit("base64"))
+    encode(status, "base64")
+    decode(status, "base64")
     base64(status)
     unbase64(status)
     hex(status)
     unhex(status)
-    regexp_like(status, str_lit("^paid$"))
-    regexp_replace(status, str_lit("[^a-z]"), str_lit(""))
-    regexp_extract(status, str_lit("^([a-z]+)$"), int_lit(1))
+    regexp_like(status, "^paid$")
+    regexp_replace(status, "[^a-z]", "")
+    regexp_extract(status, "^([a-z]+)$", 1)
     current_date()
     current_time()
     current_timestamp()
-    date_part(str_lit("year"), status)
-    extract(str_lit("year"), status)
-    date_trunc(str_lit("month"), status)
-    time_trunc(str_lit("hour"), status)
-    date_add(str_lit("day"), int_lit(1), status)
-    dateadd(str_lit("day"), int_lit(1), status)
-    date_sub(str_lit("day"), int_lit(1), status)
-    date_diff(str_lit("day"), status, status)
-    datediff(str_lit("day"), status, status)
-    timestamp_diff(str_lit("second"), status, status)
+    date_part("year", status)
+    extract("year", status)
+    date_trunc("month", status)
+    time_trunc("hour", status)
+    date_add("day", 1, status)
+    dateadd("day", 1, status)
+    date_sub("day", 1, status)
+    date_diff("day", status, status)
+    datediff("day", status, status)
+    timestamp_diff("second", status, status)
     to_date(status)
     to_time(status)
     to_timestamp(status)
-    from_unixtime(int_lit(0))
+    from_unixtime(0)
     unix_seconds(status)
     unix_millis(status)
     unix_micros(status)
-    make_date(int_lit(2026), int_lit(5), int_lit(30))
-    make_time(int_lit(12), int_lit(30), int_lit(5))
-    make_timestamp(int_lit(2026), int_lit(5), int_lit(30), int_lit(12), int_lit(30), int_lit(5))
+    make_date(2026, 5, 30)
+    make_time(12, 30, 5)
+    make_timestamp(2026, 5, 30, 12, 30, 5)
     last_day(status)
     safe_cast(status, "int64")
     array_contains(tags, str_lit("paid"))
@@ -658,14 +667,14 @@ def _exercise_current_public_helpers() -> None:
     array_intersect(tags, backup_tags)
     array_join(tags, str_lit("|"))
     array_position(tags, str_lit("paid"))
-    array_range(int_lit(0), cardinality(tags))
+    array_range(0, cardinality(tags))
     array_reverse(tags)
-    array_slice(tags, int_lit(1), int_lit(2))
+    array_slice(tags, 1, 2)
     array_sort(tags)
     array_union(tags, backup_tags)
     arrays_overlap(tags, backup_tags)
     cardinality(tags)
-    element_at(tags, int_lit(1))
+    element_at(tags, 1)
     map_contains_key(attr_map, str_lit("status"))
     map_entries(attr_map)
     map_extract(attr_map, str_lit("status"))
@@ -793,40 +802,6 @@ def _assert_rewrite_mapping(canonical_name: str, rewrite: str) -> None:
     entry = _entry_or_fail(function_ref_for(canonical_name))
     assert entry.substrait.kind == SubstraitMappingKind.Rewrite, f"{canonical_name} should use a rewrite mapping"
     assert entry.substrait.rewrite == rewrite, f"{canonical_name} should describe its canonical rewrite shape"
-
-
-def _assert_scalar_argument_contract(
-    canonical_name: str,
-    positional: list[FunctionInputType],
-    variadic: Option[FunctionInputType],
-) -> None:
-    """Assert one helper exposes schema-aware scalar argument metadata."""
-    entry = _entry_or_fail(function_ref_for(canonical_name))
-    match entry.scalar_arguments:
-        Some(contract) =>
-            assert len(contract.positional) == len(positional), f"{canonical_name} should expose the expected typed argument count"
-            for idx in range(len(positional)):
-                assert contract.positional[idx] == positional[idx], f"{canonical_name} should expose the expected argument type"
-            match contract.variadic:
-                Some(actual_variadic) =>
-                    match variadic:
-                        Some(expected_variadic) =>
-                            assert actual_variadic == expected_variadic, f"{canonical_name} should expose the expected variadic type"
-                        None => return fail_t(f"{canonical_name} should not expose variadic metadata")
-                None =>
-                    match variadic:
-                        Some(_) => return fail_t(f"{canonical_name} should expose variadic metadata")
-                        None => pass
-        None => return fail_t(f"{canonical_name} should expose scalar argument metadata")
-
-
-def _assert_scalar_result(canonical_name: str, expected: FunctionInputType) -> None:
-    """Assert one helper exposes schema-aware scalar result metadata."""
-    entry = _entry_or_fail(function_ref_for(canonical_name))
-    match entry.scalar_result:
-        Some(actual) =>
-            assert actual == expected, f"{canonical_name} should expose the expected scalar result type"
-        None => return fail_t(f"{canonical_name} should expose scalar result metadata")
 
 
 def _assert_not_deprecated(entry: FunctionRegistryEntry) -> None:
@@ -957,39 +932,87 @@ def test_function_registry__aggregate_helpers_expose_modifier_policy() -> None:
     assert not abs_entry.aggregate_modifiers.allows_filter, "scalar helpers should not expose aggregate modifier support"
 
 
-def test_function_registry__typed_value_or_column_helpers_expose_scalar_argument_contracts() -> None:
-    """Assert value-or-column helpers declare schema-aware argument contracts."""
+def _require_number_expr(expr: NumberColumnExpr) -> None:
+    """Require a numeric helper-surface expression at compile time."""
+    assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+
+
+def _require_int_expr(expr: IntColumnExpr) -> None:
+    """Require an integer helper-surface expression at compile time."""
+    assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+
+
+def _require_string_expr(expr: StringColumnExpr) -> None:
+    """Require a string helper-surface expression at compile time."""
+    assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+
+
+def _require_bool_expr(expr: BoolColumnExpr) -> None:
+    """Require a boolean helper-surface expression at compile time."""
+    assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
+
+
+def _assert_application_shape(expr: NumberColumnExpr, canonical_name: str, argument_count: int) -> None:
+    """Assert one numeric helper builds the expected registry-backed application."""
+    assert column_expr_function_name(expr) == canonical_name
+    assert column_expr_argument_count(expr) == argument_count
+
+
+def _assert_int_application_shape(expr: IntColumnExpr, canonical_name: str, argument_count: int) -> None:
+    """Assert one integer helper builds the expected registry-backed application."""
+    assert column_expr_function_name(expr) == canonical_name
+    assert column_expr_argument_count(expr) == argument_count
+
+
+def _assert_string_application_shape(expr: StringColumnExpr, canonical_name: str, argument_count: int) -> None:
+    """Assert one string helper builds the expected registry-backed application."""
+    assert column_expr_function_name(expr) == canonical_name
+    assert column_expr_argument_count(expr) == argument_count
+
+
+def _assert_bool_application_shape(expr: BoolColumnExpr, canonical_name: str, argument_count: int) -> None:
+    """Assert one boolean helper builds the expected registry-backed application."""
+    assert column_expr_function_name(expr) == canonical_name
+    assert column_expr_argument_count(expr) == argument_count
+
+
+def test_function_registry__typed_value_or_column_helpers_expose_source_type_contracts() -> None:
+    """Assert value-or-column helpers expose typed contracts through public signatures."""
     # -- Arrange --
     _exercise_current_public_helpers()
 
     # -- Act / Assert --
-    _assert_scalar_argument_contract("sqrt", [FunctionInputType.Number], None)
-    _assert_scalar_result("sqrt", FunctionInputType.Number)
-    _assert_scalar_argument_contract("round", [FunctionInputType.Number, FunctionInputType.Int], None)
-    _assert_scalar_result("round", FunctionInputType.Number)
+    sqrt_expr = sqrt(col("amount"))
+    _require_number_expr(sqrt_expr)
+    _assert_application_shape(sqrt_expr, "sqrt", 1)
 
-    _assert_scalar_argument_contract(
-        "make_date",
-        [FunctionInputType.Int, FunctionInputType.Int, FunctionInputType.Int],
-        None,
-    )
-    _assert_scalar_argument_contract(
-        "substring",
-        [FunctionInputType.String, FunctionInputType.Int, FunctionInputType.Int],
-        None,
-    )
-    _assert_scalar_result("substring", FunctionInputType.String)
-    _assert_scalar_argument_contract("concat", [FunctionInputType.String], Some(FunctionInputType.String))
-    _assert_scalar_result("concat", FunctionInputType.String)
-    _assert_scalar_argument_contract(
-        "regexp_extract",
-        [FunctionInputType.String, FunctionInputType.String, FunctionInputType.Int],
-        None,
-    )
-    _assert_scalar_result("regexp_extract", FunctionInputType.String)
-    _assert_scalar_result("regexp_like", FunctionInputType.Bool)
-    _assert_scalar_argument_contract("encode", [FunctionInputType.String, FunctionInputType.String], None)
-    _assert_scalar_result("encode", FunctionInputType.String)
+    round_expr = round(col("amount"), 2)
+    _require_number_expr(round_expr)
+    _assert_application_shape(round_expr, "round", 2)
+
+    date_part_expr = date_part("day", col("created_at"))
+    _require_int_expr(date_part_expr)
+    _assert_int_application_shape(date_part_expr, "date_part", 2)
+
+    substring_expr = substring(col("status"), 1, 3)
+    _require_string_expr(substring_expr)
+    _assert_string_application_shape(substring_expr, "substring", 3)
+
+    concat_expr = concat(col("status"), "-", "ok")
+    _require_string_expr(concat_expr)
+    _assert_string_application_shape(concat_expr, "concat", 3)
+
+    regexp_extract_expr = regexp_extract(col("status"), "^([a-z]+)$", 1)
+    _require_string_expr(regexp_extract_expr)
+    _assert_string_application_shape(regexp_extract_expr, "regexp_extract", 3)
+
+    regexp_like_expr = regexp_like(col("status"), "^[a-z]+$")
+    _require_bool_expr(regexp_like_expr)
+    _assert_bool_application_shape(regexp_like_expr, "regexp_like", 2)
+
+    encode_expr = encode(col("status"), "base64")
+    _require_string_expr(encode_expr)
+    _assert_string_application_shape(encode_expr, "encode", 2)
 
 
 def test_function_registry__approximate_helpers_expose_approximation_policy() -> None:
@@ -1374,7 +1397,7 @@ def test_function_registry__rewrite_mappings_identify_non_extension_helpers() ->
     assert always_true_entry.substrait.kind == SubstraitMappingKind.Rewrite, "always_true should lower as a literal rewrite"
     assert always_false_entry.substrait.kind == SubstraitMappingKind.Rewrite, "always_false should lower as a literal rewrite"
     _assert_rewrite_mapping("is_not_nan", "not_(is_nan(expr))")
-    _assert_rewrite_mapping("map_contains_key", "gt(cardinality(map_extract(map_expr, key)), int_expr(0))")
+    _assert_rewrite_mapping("map_contains_key", "gt(cardinality(map_extract(map_expr, key)), 0)")
     _assert_rewrite_mapping(
         "sha2",
         "sha2(expr, bits) -> sha224/sha256/sha384/sha512(expr) for supported literal bit lengths",
@@ -1399,31 +1422,29 @@ def test_function_registry__public_helpers_preserve_existing_behavior() -> None:
     expression_count_measure = count(status)
     compatibility_count_measure = count_expr(status)
     distinct_count_measure = count_distinct(status)
-    filtered_count_measure = count_if(eq(status, str_lit("paid")))
+    filtered_count_measure = count_if(eq(status, "paid"))
     avg_measure = avg(amount)
     min_measure = min(amount)
     max_measure = max(amount)
     approx_count_distinct_measure = approx_count_distinct(status)
     approx_percentile_measure = approx_percentile(amount, 0.5)
-    add_expr = add(amount, lit(7))
-    eq_expr = eq(status, str_lit("paid"))
-    gt_expr = gt(amount, int_lit(10))
-    core_exprs = [abs(amount), and_(eq_expr, gt_expr), asc(amount), asc_nulls_first(amount), asc_nulls_last(amount), between(
+    add_expr = add(amount, 7)
+    eq_expr = eq(status, "paid")
+    gt_expr = gt(amount, 10)
+    core_exprs: list[ColumnExpr] = [abs(amount), and_(eq_expr, gt_expr), asc(amount), asc_nulls_first(amount), asc_nulls_last(
         amount,
-        int_lit(1),
-        int_lit(10),
-    ), bool_expr(true), ceil(amount), coalesce([status, str_expr("unknown")]), desc(amount), desc_nulls_first(amount), desc_nulls_last(
+    ), between(amount, 1, 10), lit(true), ceil(amount), coalesce([status, str_expr("unknown")]), desc(amount), desc_nulls_first(
         amount,
-    ), div(amount, lit(2)), equal_null(status, str_lit("paid")), float_expr(1.5), floor(amount), gte(amount, int_lit(10)), in_(
-        status,
-        [str_lit("paid"), str_lit("open")],
-    ), lt(amount, int_lit(10)), lte(amount, int_lit(10)), modulo(amount, lit(2)), round(amount)]
+    ), desc_nulls_last(amount), div(amount, 2), equal_null(status, "paid"), float_expr(1.5), floor(amount), gte(
+        amount,
+        10,
+    ), in_(status, [str_lit("paid"), str_lit("open")]), lt(amount, 10), lte(amount, 10), modulo(amount, 2), round(amount)]
     hash_exprs = [md5(status), sha2(status, 256), sha224(status), sha256(status), sha384(status), sha512(status), sha1(
         status,
     ), crc32(status), xxhash64(status)]
-    format_exprs = [parse_url(status, "page"), url_encode(status), url_decode(status), try_url_decode(status), parse_json(
+    format_exprs: list[ColumnExpr] = [parse_url(status, "page"), url_encode(status), url_decode(status), try_url_decode(
         status,
-    ), check_json(status), schema_of_json(status), get_json_object(status, "$.type"), json_extract_path_text(
+    ), parse_json(status), check_json(status), schema_of_json(status), get_json_object(status, "$.type"), json_extract_path_text(
         status,
         "$.type",
     ), json_array_length(status), json_object_keys(status), from_json[FormatRegistrySchema](status), try_from_json[FormatRegistrySchema](

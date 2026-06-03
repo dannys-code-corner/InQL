@@ -18,7 +18,6 @@ from functions import (
     cardinality,
     col,
     element_at,
-    int_lit,
     map_contains_key,
     map_entries,
     map_extract,
@@ -82,7 +81,7 @@ def test_nested_data_functions__array_helpers_share_scalar_application_node() ->
     _assert_nested_application(cardinality(tags), "cardinality", 1)
     _assert_nested_application(array_contains(tags, str_lit("paid")), "array_contains", 2)
     _assert_nested_application(array_position(tags, str_lit("paid")), "array_position", 2)
-    _assert_nested_application(element_at(tags, int_lit(1)), "element_at", 2)
+    _assert_nested_application(element_at(tags, 1), "element_at", 2)
     _assert_nested_application(array_sort(tags), "array_sort", 1)
     _assert_nested_application(array_distinct(tags), "array_distinct", 1)
     _assert_nested_application(array_except(tags, other_tags), "array_except", 2)
@@ -91,7 +90,7 @@ def test_nested_data_functions__array_helpers_share_scalar_application_node() ->
     _assert_nested_application(array_union(tags, other_tags), "array_union", 2)
     _assert_nested_application(arrays_overlap(tags, other_tags), "arrays_overlap", 2)
     _assert_nested_application(array_join(tags, str_lit("|")), "array_join", 2)
-    _assert_nested_application(array_slice(tags, int_lit(1), int_lit(2)), "array_slice", 3)
+    _assert_nested_application(array_slice(tags, 1, 2), "array_slice", 3)
     _assert_nested_application(array_reverse(tags), "array_reverse", 1)
 
 

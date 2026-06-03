@@ -12,8 +12,9 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.inputs import BoolValueOrColumn, bool_value_or_column_expr
+from functions.registry import register_function, registered_bool_application
+from projection_builders import BoolColumnExpr
 from substrait.function_extensions import OR_FUNCTION_ANCHOR
 
 
@@ -23,20 +24,20 @@ from substrait.function_extensions import OR_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.Predicate,
     substrait=extension_mapping("or", OR_FUNCTION_ANCHOR),
 ))
-pub def or_(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
+pub def or_(left: BoolValueOrColumn, right: BoolValueOrColumn) -> BoolColumnExpr:
     """
     Build a boolean disjunction.
 
     Use `or_` instead of `or` because `or` is reserved by the host language.
 
     Examples:
-        visible = or_(eq(col("visibility"), lit("public")), eq(col("owner_id"), col("viewer_id")))
+        visible = or_(eq(col("visibility"), "public"), eq(col("owner_id"), col("viewer_id")))
 
     Parameters:
         left: Predicate expression on the left side.
         right: Predicate expression that may also make the result true.
     """
-    return registered_application("or_", [left, right])
+    return registered_bool_application("or_", [bool_value_or_column_expr(left), bool_value_or_column_expr(right)])
 
 
 module tests:

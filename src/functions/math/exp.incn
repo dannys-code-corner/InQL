@@ -2,16 +2,15 @@
 
 from function_registry import (
     FunctionClass,
-    FunctionInputType,
     FunctionLifecycle,
     FunctionNullBehavior,
-    scalar_argument_contract,
     deterministic_spec,
     extension_mapping,
     v0_1,
 )
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.inputs import NumberValueOrColumn, number_value_or_column_expr
+from functions.registry import register_function, registered_number_application
+from projection_builders import NumberColumnExpr
 from substrait.function_extensions import EXP_FUNCTION_ANCHOR
 
 
@@ -19,11 +18,9 @@ from substrait.function_extensions import EXP_FUNCTION_ANCHOR
     function_class=FunctionClass.Scalar,
     lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
     null_behavior=FunctionNullBehavior.DependsOnInputs,
-    scalar_arguments=Some(scalar_argument_contract(positional=[FunctionInputType.Number])),
-    scalar_result=Some(FunctionInputType.Number),
     substrait=extension_mapping("exp", EXP_FUNCTION_ANCHOR),
 ))
-pub def exp(expr: ColumnExpr) -> ColumnExpr:
+pub def exp(expr: NumberValueOrColumn) -> NumberColumnExpr:
     """
     Build an exponential expression.
 
@@ -33,7 +30,7 @@ pub def exp(expr: ColumnExpr) -> ColumnExpr:
     Parameters:
         expr: Input scalar expression.
     """
-    return registered_application("exp", [expr])
+    return registered_number_application("exp", [number_value_or_column_expr(expr)])
 
 
 module tests:

@@ -32,7 +32,7 @@ pub def case_when(conditions: list[ColumnExpr], results: list[ColumnExpr], other
 
     Examples:
         bucket = case_when(
-            [gt(col("amount"), lit(1000)), gt(col("amount"), lit(100))],
+            [gt(col("amount"), 1000), gt(col("amount"), 100)],
             [lit("large"), lit("medium")],
             lit("small"),
         )

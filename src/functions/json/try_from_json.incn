@@ -8,6 +8,7 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
+from functions.inputs import StrValueOrColumn, str_value_or_column_expr
 from functions.registry import register_function, registered_application
 from projection_builders import ColumnExpr, str_expr
 from substrait.function_extensions import TRY_FROM_JSON_FUNCTION_ANCHOR
@@ -20,7 +21,7 @@ from substrait.schema import schema_description_for_type
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("try_from_json", TRY_FROM_JSON_FUNCTION_ANCHOR),
 ))
-pub def try_from_json[T](expr: ColumnExpr) -> ColumnExpr:
+pub def try_from_json[T](expr: StrValueOrColumn) -> ColumnExpr:
     """
     Parse JSON with an Incan model schema and return null when the payload is invalid.
 
@@ -30,7 +31,10 @@ pub def try_from_json[T](expr: ColumnExpr) -> ColumnExpr:
     Parameters:
         expr: String expression containing a JSON payload.
     """
-    return registered_application("try_from_json", [expr, str_expr(schema_description_for_type[T]())])
+    return registered_application(
+        "try_from_json",
+        [str_value_or_column_expr(expr), str_expr(schema_description_for_type[T]())],
+    )
 
 
 module tests:

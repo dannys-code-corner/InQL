@@ -80,8 +80,8 @@ from models import Order
 session = Session.default()
 
 orders: LazyFrame[Order] = session.read_csv("orders", "orders.csv")?
-enriched = orders.with_column("amount_x2", mul(col("amount"), lit(2)))
-filtered = enriched.filter(gt(col("amount"), lit(100))).limit(10)
+enriched = orders.with_column("amount_x2", mul(col("amount"), 2))
+filtered = enriched.filter(gt(col("amount"), 100)).limit(10)
 
 session.activate()
 preview = filtered.collect()?

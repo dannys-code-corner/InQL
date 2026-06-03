@@ -8,8 +8,9 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.inputs import TemporalValueOrColumn, temporal_value_or_column_expr
+from functions.registry import register_function, registered_temporal_application
+from projection_builders import TemporalColumnExpr
 from substrait.function_extensions import LAST_DAY_FUNCTION_ANCHOR
 
 
@@ -19,7 +20,7 @@ from substrait.function_extensions import LAST_DAY_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("last_day", LAST_DAY_FUNCTION_ANCHOR),
 ))
-pub def last_day(expr: ColumnExpr) -> ColumnExpr:
+pub def last_day(expr: TemporalValueOrColumn) -> TemporalColumnExpr:
     """
     Build an expression returning the last day of the month for a date/timestamp.
 
@@ -29,7 +30,7 @@ pub def last_day(expr: ColumnExpr) -> ColumnExpr:
     Parameters:
         expr: Input scalar expression.
     """
-    return registered_application("last_day", [expr])
+    return registered_temporal_application("last_day", [temporal_value_or_column_expr(expr)])
 
 
 module tests:

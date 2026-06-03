@@ -12,8 +12,8 @@ from function_registry import (
     deterministic_spec,
     v0_1,
 )
-from functions.registry import register_function, registered_application_with_options
-from projection_builders import ColumnExpr, scalar_function_option
+from functions.registry import register_function, registered_bool_application_with_options
+from projection_builders import BoolColumnExpr, ColumnExpr, scalar_function_option
 
 
 @register_function(deterministic_spec(
@@ -22,7 +22,7 @@ from projection_builders import ColumnExpr, scalar_function_option
     null_behavior=FunctionNullBehavior.Predicate,
     substrait=core_mapping("singular_or_list"),
 ))
-pub def in_(expr: ColumnExpr, values: list[ColumnExpr]) -> ColumnExpr:
+pub def in_(expr: ColumnExpr, values: list[ColumnExpr]) -> BoolColumnExpr:
     """
     Build a membership predicate.
 
@@ -37,7 +37,7 @@ pub def in_(expr: ColumnExpr, values: list[ColumnExpr]) -> ColumnExpr:
     """
     mut arguments = [expr]
     arguments.extend(values)
-    return registered_application_with_options(
+    return registered_bool_application_with_options(
         "in_",
         arguments,
         [scalar_function_option("value_count", f"{len(values)}")],

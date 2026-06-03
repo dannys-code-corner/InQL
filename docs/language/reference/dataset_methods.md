@@ -53,14 +53,14 @@ def with_column(self, name: str, expr: ColumnExpr) -> Self
 
 ```incan
 from pub::inql import LazyFrame
-from pub::inql.functions import add, col, lit, mul
+from pub::inql.functions import add, col, mul
 from models import Order
 
 def enrich(orders: LazyFrame[Order]) -> LazyFrame[Order]:
     return (
         orders
-            .with_column("amount_x2", mul(col("amount"), lit(2)))
-            .with_column("amount_plus_one", add(col("amount"), lit(1)))
+            .with_column("amount_x2", mul(col("amount"), 2))
+            .with_column("amount_plus_one", add(col("amount"), 1))
     )
 ```
 

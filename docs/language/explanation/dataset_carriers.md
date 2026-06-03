@@ -60,7 +60,7 @@ from pub::inql.functions import col, gt, lit
 from models import Order
 
 def high_value_orders(orders: LazyFrame[Order]) -> LazyFrame[Order]:
-    return orders.filter(gt(col("amount"), lit(100)))
+    return orders.filter(gt(col("amount"), 100))
 ```
 
 ### `DataStream[T]` — streaming
@@ -69,11 +69,11 @@ Use `DataStream[T]` for streaming/unbounded data:
 
 ```incan
 from pub::inql import DataStream
-from pub::inql.functions import col, eq, lit
+from pub::inql.functions import col, eq
 from models import Event
 
 def important_events(events: DataStream[Event]) -> DataStream[Event]:
-    return events.filter(eq(col("severity"), lit("critical")))
+    return events.filter(eq(col("severity"), "critical"))
 ```
 
 `DataStream[T]` shares the same operation API as batch carriers, but signals that its source is unbounded. Static streaming constraints are specified in RFC 001 and enforced as the compiler gains analysis for `UnboundedDataSet[T]`.
@@ -155,8 +155,8 @@ from models import Order
 def enrich_orders(orders: LazyFrame[Order]) -> LazyFrame[Order]:
     return (
         orders
-            .with_column("amount_x2", mul(col("amount"), lit(2)))
-            .with_column("amount_plus_one", add(col("amount"), lit(1)))
+            .with_column("amount_x2", mul(col("amount"), 2))
+            .with_column("amount_plus_one", add(col("amount"), 1))
     )
 ```
 
@@ -184,7 +184,7 @@ from models import Order
 def summarize_orders(orders: LazyFrame[Order]) -> LazyFrame[Order]:
     grouped = (
         orders
-            .with_column("amount_plus_one", add(col("amount"), lit(1)))
+            .with_column("amount_plus_one", add(col("amount"), 1))
             .group_by([col("customer_id")])
             .agg([sum(col("amount")), count()])
     )

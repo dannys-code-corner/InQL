@@ -3,8 +3,8 @@
 
 [incan]
 format = 1
-incan-version = "0.3.0-rc28"
-deps-fingerprint = "sha256:c857db33615865c432fa4c9b3947975ccb4255249143ecc1676c26e85981aafb"
+incan-version = "0.3.0-rc45"
+deps-fingerprint = "sha256:9bc7b859d7eb9b1d1cd385b6ccd26e5c9abe32c73f814e1a34345aea30a21b96"
 cargo-features = []
 cargo-no-default-features = false
 cargo-all-features = false
@@ -395,9 +395,9 @@ dependencies = [
 
 [[package]]
 name = "bitflags"
-version = "2.11.1"
+version = "2.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c4512299f36f043ab09a583e57bceb5a5aab7a73db1805848e8fef3c9e8c78b3"
+checksum = "84d7ced0ae9557296835c32bf1b1e02b44c746701f898460fb000d7eaa84f00a"
 
 [[package]]
 name = "blake2"
@@ -1824,14 +1824,14 @@ dependencies = [
 
 [[package]]
 name = "incan_core"
-version = "0.3.0-rc28"
+version = "0.3.0-rc45"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "incan_derive"
-version = "0.3.0-rc28"
+version = "0.3.0-rc45"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1840,7 +1840,7 @@ dependencies = [
 
 [[package]]
 name = "incan_stdlib"
-version = "0.3.0-rc28"
+version = "0.3.0-rc45"
 dependencies = [
  "incan_core",
  "incan_derive",
@@ -1864,7 +1864,7 @@ dependencies = [
 
 [[package]]
 name = "inql"
-version = "0.3.0-rc28"
+version = "0.3.0-rc45"
 dependencies = [
  "blake2",
  "blake3",
@@ -1880,6 +1880,7 @@ dependencies = [
  "md-5",
  "prost",
  "prost-types",
+ "regex",
  "rustix",
  "serde",
  "sha1",
@@ -2066,9 +2067,9 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.30"
+version = "0.4.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "616ec5685824bcc94416c6d4a7a446eea774a31efd7062c8480ba6fd06d7a6e5"
+checksum = "113b30b4cd05f7c06868fdb2854f66a7b9fece9a48425351cd532e810d74024f"
 
 [[package]]
 name = "lz4_flex"
@@ -3169,9 +3170,9 @@ checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 
 [[package]]
 name = "unicode-segmentation"
-version = "1.13.2"
+version = "1.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9629274872b2bfaf8d66f5f15725007f635594914870f65218920345aa11aa8c"
+checksum = "c6f5d3c3b1bf09027a88a6bc961fc00497d651009560b5463668dc81b0fa87a8"
 
 [[package]]
 name = "unicode-width"

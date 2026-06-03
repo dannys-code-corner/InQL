@@ -5,7 +5,7 @@ Count aggregate helper.
 `count(expr)` counts non-null expression values. `count_expr(expr)` remains as a compatibility helper.
 """
 
-from aggregate_builders import COUNT_NO_ARGUMENT_SENTINEL, AggregateKind, AggregateMeasure, count as count_builder
+from aggregate_builders import AggregateKind, AggregateMeasure, count as count_builder
 from function_registry import (
     CORE_AGGREGATE_MODIFIERS,
     FunctionClass,
@@ -16,7 +16,7 @@ from function_registry import (
     v0_1,
 )
 from functions.registry import register_function, register_function_alias
-from projection_builders import ColumnExpr, col, column_expr_name
+from projection_builders import ColumnExpr, column_expr_name
 from substrait.function_extensions import COUNT_FUNCTION_ANCHOR
 
 
@@ -27,7 +27,7 @@ from substrait.function_extensions import COUNT_FUNCTION_ANCHOR
     aggregate_modifiers=CORE_AGGREGATE_MODIFIERS,
     substrait=extension_mapping("count", COUNT_FUNCTION_ANCHOR),
 ))
-pub def count(expr: ColumnExpr = col(COUNT_NO_ARGUMENT_SENTINEL)) -> AggregateMeasure:
+pub def count(expr: Option[ColumnExpr] = None) -> AggregateMeasure:
     """
     Build a count aggregate measure.
 
@@ -64,7 +64,7 @@ module tests:
         assert measure.kind == AggregateKind.Count
         assert measure.canonical_name == "count"
         assert not measure.has_expr
-        assert column_expr_name(measure.expr) == COUNT_NO_ARGUMENT_SENTINEL
+        assert len(measure.arguments) == 0
     def test_count_with_expression_builds_count_aggregate_measure() -> None:
         measure = count(col("amount"))
         assert measure.kind == AggregateKind.Count

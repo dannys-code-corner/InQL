@@ -9,9 +9,10 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
+from functions.inputs import StrValueOrColumn, str_value_or_column_expr
 from functions.json.common import json_path_expr
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.registry import register_function, registered_string_application
+from projection_builders import StringColumnExpr
 from substrait.function_extensions import JSON_EXTRACT_PATH_TEXT_FUNCTION_ANCHOR
 
 
@@ -22,7 +23,7 @@ from substrait.function_extensions import JSON_EXTRACT_PATH_TEXT_FUNCTION_ANCHOR
     error_behavior=FunctionErrorBehavior.InvalidInputDiagnostic,
     substrait=extension_mapping("json_extract_path_text", JSON_EXTRACT_PATH_TEXT_FUNCTION_ANCHOR),
 ))
-pub def json_extract_path_text(expr: ColumnExpr, path: str) -> ColumnExpr:
+pub def json_extract_path_text(expr: StrValueOrColumn, path: str) -> StringColumnExpr:
     """
     Extract one JSON value at a literal object path and return scalar strings as plain text.
 
@@ -33,7 +34,10 @@ pub def json_extract_path_text(expr: ColumnExpr, path: str) -> ColumnExpr:
         expr: String expression containing a JSON payload.
         path: Literal JSON path beginning with `$`, `$.`, or `$[`.
     """
-    return registered_application("json_extract_path_text", [expr, json_path_expr(path)])
+    return registered_string_application(
+        "json_extract_path_text",
+        [str_value_or_column_expr(expr), json_path_expr(path)],
+    )
 
 
 module tests:

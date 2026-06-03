@@ -13,7 +13,7 @@
 - **Carriers that know their row type** — `DataFrame[T]`, `LazyFrame[T]`, and `DataStream[T]` share a `DataSet[T]` surface; bounded vs unbounded is reflected in the type hierarchy so unsafe streaming operations can be rejected at compile time.
 - **SQL-familiar `query { }` blocks** — Clause-oriented relational syntax, typed against the current query schema, aligned with the same resolution rules as method chains.
 - **One naming model** — `.column`, `alias.column`, bare names in the query schema, and ordinary Incan bindings are specified so blocks, chains, and future surfaces stay equivalent where it counts.
-- **A registry-backed function catalog** — Core operators, aggregates, common scalar functions, window helpers, generators, nested-data helpers, and compatibility aliases share one checked helper model and carry portable metadata for Substrait and backend adapters.
+- **A registry-backed function catalog** — Core operators, aggregates, common scalar functions, window helpers, generators, nested-data helpers, and compatibility aliases share one checked helper model and carry portable metadata for Substrait and backend adapters. Typed helpers accept primitives where that is the natural authoring shape, such as `add(col("amount"), 1)` or `substring(col("sku"), 1, 3)`, while query-schema validation checks referenced column types during planning/lowering.
 - **Portable logical plans** — Substrait is the normative interchange; read roots stay logical while binding and execution stay in the session layer (see RFCs 002 and 004).
 
 Design is **RFC-driven**; **[docs/rfcs/](docs/rfcs/README.md)** is the source of truth.

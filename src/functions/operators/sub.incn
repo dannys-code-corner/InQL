@@ -12,8 +12,9 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.inputs import NumberValueOrColumn, number_value_or_column_expr
+from functions.registry import register_function, registered_number_application
+from projection_builders import NumberColumnExpr
 from substrait.function_extensions import SUBTRACT_FUNCTION_ANCHOR
 
 
@@ -23,7 +24,7 @@ from substrait.function_extensions import SUBTRACT_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("subtract", SUBTRACT_FUNCTION_ANCHOR),
 ))
-pub def sub(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
+pub def sub(left: NumberValueOrColumn, right: NumberValueOrColumn) -> NumberColumnExpr:
     """
     Build a subtraction expression.
 
@@ -34,20 +35,19 @@ pub def sub(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
         left: Numeric expression to subtract from.
         right: Numeric expression to subtract.
     """
-    return registered_application("sub", [left, right])
+    return registered_number_application("sub", [number_value_or_column_expr(left), number_value_or_column_expr(right)])
 
 
 module tests:
     from projection_builders import (
         ColumnExprKind,
         col,
-        int_expr,
         column_expr_argument_count,
         column_expr_function_name,
         column_expr_kind,
     )
     def test_sub_builds_registered_application() -> None:
-        expr = sub(col("amount"), int_expr(1))
+        expr = sub(col("amount"), 1)
         assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
         assert column_expr_function_name(expr) == "sub"
         assert column_expr_argument_count(expr) == 2

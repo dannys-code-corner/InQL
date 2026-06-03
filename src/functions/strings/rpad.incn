@@ -2,17 +2,15 @@
 
 from function_registry import (
     FunctionClass,
-    FunctionInputType,
     FunctionLifecycle,
     FunctionNullBehavior,
-    scalar_argument_contract,
     deterministic_spec,
     extension_mapping,
     v0_1,
 )
 from functions.inputs import IntValueOrColumn, StrValueOrColumn, int_value_or_column_expr, str_value_or_column_expr
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.registry import register_function, registered_string_application
+from projection_builders import StringColumnExpr
 from substrait.function_extensions import RPAD_FUNCTION_ANCHOR
 
 
@@ -20,13 +18,9 @@ from substrait.function_extensions import RPAD_FUNCTION_ANCHOR
     function_class=FunctionClass.Scalar,
     lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
     null_behavior=FunctionNullBehavior.DependsOnInputs,
-    scalar_arguments=Some(
-        scalar_argument_contract(positional=[FunctionInputType.String, FunctionInputType.Int, FunctionInputType.String]),
-    ),
-    scalar_result=Some(FunctionInputType.String),
     substrait=extension_mapping("rpad", RPAD_FUNCTION_ANCHOR),
 ))
-pub def rpad(expr: StrValueOrColumn, length: IntValueOrColumn, pad: StrValueOrColumn) -> ColumnExpr:
+pub def rpad(expr: StrValueOrColumn, length: IntValueOrColumn, pad: StrValueOrColumn) -> StringColumnExpr:
     """
     Build a right-padding expression.
 
@@ -38,7 +32,7 @@ pub def rpad(expr: StrValueOrColumn, length: IntValueOrColumn, pad: StrValueOrCo
         length: Length expression.
         pad: Padding expression.
     """
-    return registered_application(
+    return registered_string_application(
         "rpad",
         [str_value_or_column_expr(expr), int_value_or_column_expr(length), str_value_or_column_expr(pad)],
     )
@@ -52,7 +46,7 @@ module tests:
         column_expr_function_name,
         column_expr_kind,
     )
-    def test_rpad_builds_registered_application() -> None:
+    def test_rpad_builds_registered_string_application() -> None:
         expr = rpad(col("id"), 6, " ")
         assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
         assert column_expr_function_name(expr) == "rpad"

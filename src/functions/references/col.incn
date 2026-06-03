@@ -14,7 +14,7 @@ from function_registry import (
     v0_1,
 )
 from functions.registry import register_function
-from projection_builders import ColumnExpr, col as col_builder
+from projection_builders import ColumnRefExpr, col as col_builder
 
 
 @register_function(deterministic_spec(
@@ -23,7 +23,7 @@ from projection_builders import ColumnExpr, col as col_builder
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=rewrite_mapping("direct field reference selection"),
 ))
-pub def col(name: str) -> ColumnExpr:
+pub def col(name: str) -> ColumnRefExpr:
     """
     Build a named column reference.
 

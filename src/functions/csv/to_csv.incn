@@ -8,8 +8,9 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.inputs import ScalarValueOrColumn, scalar_value_or_column_expr
+from functions.registry import register_function, registered_string_application
+from projection_builders import StringColumnExpr
 from substrait.function_extensions import TO_CSV_FUNCTION_ANCHOR
 
 
@@ -19,7 +20,7 @@ from substrait.function_extensions import TO_CSV_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("to_csv", TO_CSV_FUNCTION_ANCHOR),
 ))
-pub def to_csv(expr: ColumnExpr) -> ColumnExpr:
+pub def to_csv(expr: ScalarValueOrColumn) -> StringColumnExpr:
     """
     Serialize one scalar or JSON array/object payload as one CSV row string.
 
@@ -29,7 +30,7 @@ pub def to_csv(expr: ColumnExpr) -> ColumnExpr:
     Parameters:
         expr: String-backed scalar or JSON array/object payload to serialize as one CSV row.
     """
-    return registered_application("to_csv", [expr])
+    return registered_string_application("to_csv", [scalar_value_or_column_expr(expr)])
 
 
 module tests:

@@ -246,11 +246,11 @@ def test_session_windows__collect_executes_scalar_and_distinct_window_arguments(
     # -- Act --
     scalar_arg = _orders(session, "aggregate_orders_scalar_arg").with_window_column(
         "running_adjusted_amount",
-        sum(add(col("amount"), lit(1))).over(running_spec),
+        sum(add(col("amount"), 1)).over(running_spec),
     )
     math_arg = _orders(session, "aggregate_orders_math_arg").with_window_column(
         "running_abs_delta",
-        sum(abs(add(col("amount"), lit(-20)))).over(running_spec),
+        sum(abs(add(col("amount"), -20))).over(running_spec),
     )
     distinct_arg = _modifier_orders(session, "aggregate_modifiers_window_distinct").with_window_column(
         "running_distinct_products",
@@ -290,7 +290,7 @@ def test_session_windows__collect_executes_window_below_filter() -> None:
 
     # -- Act --
     filtered = _orders(session, "aggregate_orders_nested_filter").with_window_column("amount_rank", rank().over(spec)).filter(
-        eq(col("amount_rank"), lit(1)),
+        eq(col("amount_rank"), 1),
     )
     df = _collect_or_fail(session, filtered)
     payload = df.preview_text()

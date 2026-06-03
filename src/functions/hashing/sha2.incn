@@ -21,7 +21,8 @@ from functions.hashing.sha256 import sha256
 from functions.hashing.sha384 import sha384
 from functions.hashing.sha512 import sha512
 from functions.registry import register_function
-from projection_builders import ColumnExpr
+from functions.inputs import StrValueOrColumn
+from projection_builders import StringColumnExpr
 
 
 @register_function(compatibility_alias_spec(
@@ -34,7 +35,7 @@ from projection_builders import ColumnExpr
     error_behavior=FunctionErrorBehavior.InvalidInputDiagnostic,
     substrait=rewrite_mapping("sha2(expr, bits) -> sha224/sha256/sha384/sha512(expr) for supported literal bit lengths"),
 ))
-pub def sha2(expr: ColumnExpr, bit_length: int) -> ColumnExpr:
+pub def sha2(expr: StrValueOrColumn, bit_length: int) -> StringColumnExpr:
     """
     Build a SHA-2 hexadecimal digest expression for a supported digest length.
 

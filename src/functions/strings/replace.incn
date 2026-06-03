@@ -2,17 +2,15 @@
 
 from function_registry import (
     FunctionClass,
-    FunctionInputType,
     FunctionLifecycle,
     FunctionNullBehavior,
-    scalar_argument_contract,
     deterministic_spec,
     extension_mapping,
     v0_1,
 )
 from functions.inputs import StrValueOrColumn, str_value_or_column_expr
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.registry import register_function, registered_string_application
+from projection_builders import StringColumnExpr
 from substrait.function_extensions import REPLACE_FUNCTION_ANCHOR
 
 
@@ -20,15 +18,9 @@ from substrait.function_extensions import REPLACE_FUNCTION_ANCHOR
     function_class=FunctionClass.Scalar,
     lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
     null_behavior=FunctionNullBehavior.DependsOnInputs,
-    scalar_arguments=Some(
-        scalar_argument_contract(
-            positional=[FunctionInputType.String, FunctionInputType.String, FunctionInputType.String],
-        ),
-    ),
-    scalar_result=Some(FunctionInputType.String),
     substrait=extension_mapping("replace", REPLACE_FUNCTION_ANCHOR),
 ))
-pub def replace(expr: StrValueOrColumn, search: StrValueOrColumn, replacement: StrValueOrColumn) -> ColumnExpr:
+pub def replace(expr: StrValueOrColumn, search: StrValueOrColumn, replacement: StrValueOrColumn) -> StringColumnExpr:
     """
     Build a string replacement expression.
 
@@ -40,7 +32,7 @@ pub def replace(expr: StrValueOrColumn, search: StrValueOrColumn, replacement: S
         search: Search expression.
         replacement: Replacement expression.
     """
-    return registered_application(
+    return registered_string_application(
         "replace",
         [str_value_or_column_expr(expr), str_value_or_column_expr(search), str_value_or_column_expr(replacement)],
     )
@@ -54,7 +46,7 @@ module tests:
         column_expr_function_name,
         column_expr_kind,
     )
-    def test_replace_builds_registered_application() -> None:
+    def test_replace_builds_registered_string_application() -> None:
         expr = replace(col("phone"), "-", "")
         assert column_expr_kind(expr) == ColumnExprKind.ScalarFunction
         assert column_expr_function_name(expr) == "replace"

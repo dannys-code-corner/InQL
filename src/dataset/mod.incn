@@ -30,14 +30,14 @@ Illustrative current-shape examples:
 
 ```incan
 from pub::inql import LazyFrame
-from pub::inql.functions import add, avg, col, count, gt, lit, max, min, sum
+from pub::inql.functions import add, avg, col, count, gt, max, min, sum
 from models import Order, OrderSummary
 
 def high_value_orders(orders: LazyFrame[Order]) -> LazyFrame[Order]:
-    return orders.filter(gt(col("amount"), lit(100)))
+    return orders.filter(gt(col("amount"), 100))
 
 def enrich_orders(orders: LazyFrame[Order]) -> LazyFrame[Order]:
-    return orders.with_column("amount_x2", add(col("amount"), lit(2)))
+    return orders.with_column("amount_x2", add(col("amount"), 2))
 
 def summarize_orders(orders: LazyFrame[Order]) -> LazyFrame[OrderSummary]:
     return orders.group_by([col("customer_id")]).agg([sum(col("amount")), count(), avg(col("amount")), min(col("amount")), max(col("amount"))])

@@ -59,7 +59,13 @@ from aggregate_builders import AggregateKind, AggregateMeasure
 from function_registry import FunctionClass, FunctionRegistryEntry, SubstraitMappingKind
 from functions.registry import function_registry_entry
 from generator_builders import GeneratorApplication
-from projection_builders import ColumnExpr, ProjectionAssignment, ScalarFunctionApplicationExpr, col
+from projection_builders import (
+    ColumnExpr,
+    ProjectionAssignment,
+    ScalarFunctionApplicationExpr,
+    col,
+    untyped_column_expr,
+)
 from window_builders import (
     WindowBound,
     WindowBoundKind,
@@ -688,7 +694,8 @@ def _sort_field_for_columns(
     key: ColumnExpr,
 ) -> Result[SortField, SubstraitLoweringError]:
     """Lower one InQL sort-key expression against typed-or-name-only input columns."""
-    match key:
+    key_expr = untyped_column_expr(key)
+    match key_expr:
         ScalarFunctionApplicationExpr(application) =>
             direction_detail = _sort_field_direction_detail(application)
             if direction_detail != "":
@@ -704,14 +711,14 @@ def _sort_field_for_columns(
                 )
             return Ok(
                 SortField(
-                    expr=Some(scalar_expr_for_columns(input_columns, key)?),
+                    expr=Some(scalar_expr_for_columns(input_columns, key_expr)?),
                     sort_kind=Some(SortKind.Direction(SortDirection.AscNullsFirst.into())),
                 ),
             )
         _ =>
             return Ok(
                 SortField(
-                    expr=Some(scalar_expr_for_columns(input_columns, key)?),
+                    expr=Some(scalar_expr_for_columns(input_columns, key_expr)?),
                     sort_kind=Some(SortKind.Direction(SortDirection.AscNullsFirst.into())),
                 ),
             )

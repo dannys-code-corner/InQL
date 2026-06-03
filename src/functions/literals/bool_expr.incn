@@ -13,7 +13,7 @@ from function_registry import (
     v0_1,
 )
 from functions.registry import register_function
-from projection_builders import ColumnExpr, bool_expr as bool_expr_builder
+from projection_builders import BoolLiteralExpr, bool_expr as bool_expr_builder
 
 
 @register_function(deterministic_spec(
@@ -22,7 +22,7 @@ from projection_builders import ColumnExpr, bool_expr as bool_expr_builder
     null_behavior=FunctionNullBehavior.NonNullLiteral,
     substrait=rewrite_mapping("typed boolean literal expression"),
 ))
-pub def bool_expr(value: bool) -> ColumnExpr:
+pub def bool_expr(value: bool) -> BoolLiteralExpr:
     """
     Build a boolean literal expression.
 

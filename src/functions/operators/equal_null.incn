@@ -12,8 +12,9 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.inputs import ScalarValueOrColumn, scalar_value_or_column_expr
+from functions.registry import register_function, registered_bool_application
+from projection_builders import BoolColumnExpr
 from substrait.function_extensions import IS_NOT_DISTINCT_FROM_FUNCTION_ANCHOR
 
 
@@ -23,7 +24,7 @@ from substrait.function_extensions import IS_NOT_DISTINCT_FROM_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.Predicate,
     substrait=extension_mapping("is_not_distinct_from", IS_NOT_DISTINCT_FROM_FUNCTION_ANCHOR),
 ))
-pub def equal_null(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
+pub def equal_null(left: ScalarValueOrColumn, right: ScalarValueOrColumn) -> BoolColumnExpr:
     """
     Build a null-safe equality predicate.
 
@@ -36,7 +37,10 @@ pub def equal_null(left: ColumnExpr, right: ColumnExpr) -> ColumnExpr:
         left: Nullable expression on the left side.
         right: Nullable expression to compare against `left`.
     """
-    return registered_application("equal_null", [left, right])
+    return registered_bool_application(
+        "equal_null",
+        [scalar_value_or_column_expr(left), scalar_value_or_column_expr(right)],
+    )
 
 
 module tests:

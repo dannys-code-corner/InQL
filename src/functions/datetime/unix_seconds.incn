@@ -8,8 +8,9 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.inputs import TemporalValueOrColumn, temporal_value_or_column_expr
+from functions.registry import register_function, registered_int_application
+from projection_builders import IntColumnExpr
 from substrait.function_extensions import UNIX_SECONDS_FUNCTION_ANCHOR
 
 
@@ -19,7 +20,7 @@ from substrait.function_extensions import UNIX_SECONDS_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("unix_seconds", UNIX_SECONDS_FUNCTION_ANCHOR),
 ))
-pub def unix_seconds(expr: ColumnExpr) -> ColumnExpr:
+pub def unix_seconds(expr: TemporalValueOrColumn) -> IntColumnExpr:
     """
     Build a Unix-seconds extraction expression.
 
@@ -29,7 +30,7 @@ pub def unix_seconds(expr: ColumnExpr) -> ColumnExpr:
     Parameters:
         expr: Input scalar expression.
     """
-    return registered_application("unix_seconds", [expr])
+    return registered_int_application("unix_seconds", [temporal_value_or_column_expr(expr)])
 
 
 module tests:

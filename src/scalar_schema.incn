@@ -1,6 +1,5 @@
 """Schema facts available to scalar expression validation."""
 
-from function_registry import FunctionInputType
 from substrait.schema import RowColumnSpec, SubstraitPrimitiveKind
 
 
@@ -21,18 +20,6 @@ pub def scalar_column(name: str) -> ScalarColumnSpec:
 pub def scalar_column_from_row_column(column: RowColumnSpec) -> ScalarColumnSpec:
     """Convert one concrete row-schema column into a scalar-validation column."""
     return ScalarColumnSpec(name=column.name, kind=Some(column.kind), nullable=column.nullable)
-
-
-pub def scalar_column_kind_from_function_input_type(kind: FunctionInputType) -> Option[SubstraitPrimitiveKind]:
-    """Convert exact scalar function type categories into concrete schema kinds."""
-    match kind:
-        FunctionInputType.Bool => return Some(SubstraitPrimitiveKind.Bool)
-        FunctionInputType.Int => return Some(SubstraitPrimitiveKind.I64)
-        FunctionInputType.Float => return Some(SubstraitPrimitiveKind.F64)
-        FunctionInputType.String => return Some(SubstraitPrimitiveKind.String)
-        FunctionInputType.Timestamp => return Some(SubstraitPrimitiveKind.Timestamp)
-        FunctionInputType.Any => return None
-        FunctionInputType.Number => return None
 
 
 pub def scalar_columns_from_names(names: list[str]) -> list[ScalarColumnSpec]:

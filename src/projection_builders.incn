@@ -75,7 +75,59 @@ pub model ScalarFunctionApplicationExpr:
     pub options: list[ScalarFunctionOption]
 
 
-pub type ColumnExpr = Union[ColumnRefExpr, IntLiteralExpr, FloatLiteralExpr, StringLiteralExpr, BoolLiteralExpr, ScalarFunctionApplicationExpr]
+pub type UntypedColumnExpr = Union[ColumnRefExpr, IntLiteralExpr, FloatLiteralExpr, StringLiteralExpr, BoolLiteralExpr, ScalarFunctionApplicationExpr]
+
+
+@derive(Clone)
+pub model BoolColumnExpr:
+    """Scalar expression known by InQL's helper surface to produce boolean values."""
+
+    pub expr: UntypedColumnExpr
+
+
+@derive(Clone)
+pub model IntColumnExpr:
+    """Scalar expression known by InQL's helper surface to produce integer values."""
+
+    pub expr: UntypedColumnExpr
+
+
+@derive(Clone)
+pub model FloatColumnExpr:
+    """Scalar expression known by InQL's helper surface to produce floating-point values."""
+
+    pub expr: UntypedColumnExpr
+
+
+@derive(Clone)
+pub model NumberColumnExpr:
+    """Scalar expression known by InQL's helper surface to produce numeric values."""
+
+    pub expr: UntypedColumnExpr
+
+
+@derive(Clone)
+pub model StringColumnExpr:
+    """Scalar expression known by InQL's helper surface to produce string values."""
+
+    pub expr: UntypedColumnExpr
+
+
+@derive(Clone)
+pub model TimestampColumnExpr:
+    """Scalar expression known by InQL's helper surface to produce timestamp values."""
+
+    pub expr: UntypedColumnExpr
+
+
+@derive(Clone)
+pub model TemporalColumnExpr:
+    """Scalar expression accepted by InQL's date/time helper surface as string or timestamp temporal input."""
+
+    pub expr: UntypedColumnExpr
+
+
+pub type ColumnExpr = Union[UntypedColumnExpr, BoolColumnExpr, IntColumnExpr, FloatColumnExpr, NumberColumnExpr, StringColumnExpr, TimestampColumnExpr, TemporalColumnExpr]
 
 
 @derive(Clone)
@@ -86,27 +138,27 @@ pub model ProjectionAssignment:
     pub expr: ColumnExpr
 
 
-pub def col(name: str) -> ColumnExpr:
+pub def col(name: str) -> ColumnRefExpr:
     """Build one named column reference expression."""
     return ColumnRefExpr(column_name=name)
 
 
-pub def int_expr(value: int) -> ColumnExpr:
+pub def int_expr(value: int) -> IntLiteralExpr:
     """Build one integer literal expression."""
     return IntLiteralExpr(value=value)
 
 
-pub def float_expr(value: float) -> ColumnExpr:
+pub def float_expr(value: float) -> FloatLiteralExpr:
     """Build one float literal expression."""
     return FloatLiteralExpr(value=value)
 
 
-pub def str_expr(value: str) -> ColumnExpr:
+pub def str_expr(value: str) -> StringLiteralExpr:
     """Build one string literal expression."""
     return StringLiteralExpr(value=value)
 
 
-pub def bool_expr(value: bool) -> ColumnExpr:
+pub def bool_expr(value: bool) -> BoolLiteralExpr:
     """Build one boolean literal expression."""
     return BoolLiteralExpr(value=value)
 
@@ -120,6 +172,59 @@ pub def lit(value: Union[int, float, str, bool]) -> ColumnExpr:
         str(text) => return str_expr(text)
 
 
+pub def bool_column_expr(expr: ColumnExpr) -> BoolColumnExpr:
+    """Mark one scalar expression as boolean-producing."""
+    return BoolColumnExpr(expr=untyped_column_expr(expr))
+
+
+pub def int_column_expr(expr: ColumnExpr) -> IntColumnExpr:
+    """Mark one scalar expression as integer-producing."""
+    return IntColumnExpr(expr=untyped_column_expr(expr))
+
+
+pub def float_column_expr(expr: ColumnExpr) -> FloatColumnExpr:
+    """Mark one scalar expression as floating-point-producing."""
+    return FloatColumnExpr(expr=untyped_column_expr(expr))
+
+
+pub def number_column_expr(expr: ColumnExpr) -> NumberColumnExpr:
+    """Mark one scalar expression as numeric-producing."""
+    return NumberColumnExpr(expr=untyped_column_expr(expr))
+
+
+pub def str_column_expr(expr: ColumnExpr) -> StringColumnExpr:
+    """Mark one scalar expression as string-producing."""
+    return StringColumnExpr(expr=untyped_column_expr(expr))
+
+
+pub def timestamp_column_expr(expr: ColumnExpr) -> TimestampColumnExpr:
+    """Mark one scalar expression as timestamp-producing."""
+    return TimestampColumnExpr(expr=untyped_column_expr(expr))
+
+
+pub def temporal_column_expr(expr: ColumnExpr) -> TemporalColumnExpr:
+    """Mark one scalar expression as date/time compatible."""
+    return TemporalColumnExpr(expr=untyped_column_expr(expr))
+
+
+pub def untyped_column_expr(expr: ColumnExpr) -> UntypedColumnExpr:
+    """Return the underlying scalar AST node, unwrapping typed helper facts when present."""
+    match expr:
+        BoolColumnExpr(typed) => return typed.expr
+        IntColumnExpr(typed) => return typed.expr
+        FloatColumnExpr(typed) => return typed.expr
+        NumberColumnExpr(typed) => return typed.expr
+        StringColumnExpr(typed) => return typed.expr
+        TimestampColumnExpr(typed) => return typed.expr
+        TemporalColumnExpr(typed) => return typed.expr
+        ColumnRefExpr(column) => return column
+        IntLiteralExpr(literal) => return literal
+        FloatLiteralExpr(literal) => return literal
+        StringLiteralExpr(literal) => return literal
+        BoolLiteralExpr(literal) => return literal
+        ScalarFunctionApplicationExpr(application) => return application
+
+
 pub def scalar_function_option(name: str, value: str) -> ScalarFunctionOption:
     """Build one scalar function application option."""
     return ScalarFunctionOption(name=name, value=value)
@@ -129,7 +234,7 @@ pub def scalar_function_application(
     canonical_name: str,
     arguments: list[ColumnExpr],
     options: list[ScalarFunctionOption],
-) -> ColumnExpr:
+) -> ScalarFunctionApplicationExpr:
     """Build one registry-backed scalar function application expression."""
     return ScalarFunctionApplicationExpr(
         function_ref=function_ref_for(canonical_name),
@@ -146,14 +251,14 @@ pub def with_column_assignment(name: str, expr: ColumnExpr) -> ProjectionAssignm
 
 pub def column_expr_name(expr: ColumnExpr) -> str:
     """Return the referenced column name when the expression is a direct column reference, otherwise empty."""
-    match expr:
+    match untyped_column_expr(expr):
         ColumnRefExpr(column) => return column.column_name
         _ => return ""
 
 
 pub def require_column_expr_name(expr: ColumnExpr, context: str) -> str:
     """Return one direct column name or fail with a clear message for invalid expression shapes."""
-    match expr:
+    match untyped_column_expr(expr):
         ColumnRefExpr(column) => return column.column_name
         _ =>
             message = f"{context} currently requires a direct col(\"name\") reference"
@@ -162,14 +267,14 @@ pub def require_column_expr_name(expr: ColumnExpr, context: str) -> str:
 
 pub def scalar_expr_output_name(expr: ColumnExpr, fallback: str) -> str:
     """Return a stable output name for one scalar expression in positions that expose grouping output columns."""
-    match expr:
+    match untyped_column_expr(expr):
         ColumnRefExpr(column) => return column.column_name
         _ => return fallback
 
 
 pub def column_expr_kind(expr: ColumnExpr) -> ColumnExprKind:
     """Return the public expression-kind label for one scalar expression."""
-    match expr:
+    match untyped_column_expr(expr):
         ColumnRefExpr(_) => return ColumnExprKind.Column
         IntLiteralExpr(_) => return ColumnExprKind.IntLiteral
         FloatLiteralExpr(_) => return ColumnExprKind.FloatLiteral
@@ -180,28 +285,28 @@ pub def column_expr_kind(expr: ColumnExpr) -> ColumnExprKind:
 
 pub def column_expr_function_ref(expr: ColumnExpr) -> str:
     """Return the registry function reference for one scalar function expression, otherwise empty."""
-    match expr:
+    match untyped_column_expr(expr):
         ScalarFunctionApplicationExpr(application) => return application.function_ref
         _ => return ""
 
 
 pub def column_expr_function_name(expr: ColumnExpr) -> str:
     """Return the canonical function name for one scalar function expression, otherwise empty."""
-    match expr:
+    match untyped_column_expr(expr):
         ScalarFunctionApplicationExpr(application) => return application.canonical_name
         _ => return ""
 
 
 pub def column_expr_argument_count(expr: ColumnExpr) -> int:
     """Return the scalar argument count for one scalar function expression, otherwise zero."""
-    match expr:
+    match untyped_column_expr(expr):
         ScalarFunctionApplicationExpr(application) => return len(application.arguments)
         _ => return 0
 
 
 pub def column_expr_option_value(expr: ColumnExpr, option_name: str) -> str:
     """Return one scalar function option value, or empty when absent."""
-    match expr:
+    match untyped_column_expr(expr):
         ScalarFunctionApplicationExpr(application) =>
             for option in application.options:
                 if option.name == option_name:
@@ -212,7 +317,7 @@ pub def column_expr_option_value(expr: ColumnExpr, option_name: str) -> str:
 
 pub def is_bool_literal_expr(expr: ColumnExpr, expected: bool) -> bool:
     """Return whether one scalar expression is the requested boolean literal."""
-    match expr:
+    match untyped_column_expr(expr):
         BoolLiteralExpr(literal) => return literal.value == expected
         _ => return false
 

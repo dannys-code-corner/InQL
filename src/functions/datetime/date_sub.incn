@@ -2,17 +2,22 @@
 
 from function_registry import (
     FunctionClass,
-    FunctionInputType,
     FunctionLifecycle,
     FunctionNullBehavior,
-    scalar_argument_contract,
     deterministic_spec,
     extension_mapping,
     v0_1,
 )
-from functions.inputs import IntValueOrColumn, StrValueOrColumn, int_value_or_column_expr, str_value_or_column_expr
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.inputs import (
+    IntValueOrColumn,
+    StrValueOrColumn,
+    TemporalValueOrColumn,
+    int_value_or_column_expr,
+    str_value_or_column_expr,
+    temporal_value_or_column_expr,
+)
+from functions.registry import register_function, registered_temporal_application
+from projection_builders import TemporalColumnExpr
 from substrait.function_extensions import DATE_SUB_FUNCTION_ANCHOR
 
 
@@ -20,12 +25,9 @@ from substrait.function_extensions import DATE_SUB_FUNCTION_ANCHOR
     function_class=FunctionClass.Scalar,
     lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
     null_behavior=FunctionNullBehavior.DependsOnInputs,
-    scalar_arguments=Some(
-        scalar_argument_contract(positional=[FunctionInputType.String, FunctionInputType.Int, FunctionInputType.Any]),
-    ),
     substrait=extension_mapping("date_sub", DATE_SUB_FUNCTION_ANCHOR),
 ))
-pub def date_sub(part: StrValueOrColumn, amount: IntValueOrColumn, expr: ColumnExpr) -> ColumnExpr:
+pub def date_sub(part: StrValueOrColumn, amount: IntValueOrColumn, expr: TemporalValueOrColumn) -> TemporalColumnExpr:
     """
     Build a date/timestamp subtraction expression.
 
@@ -37,7 +39,10 @@ pub def date_sub(part: StrValueOrColumn, amount: IntValueOrColumn, expr: ColumnE
         amount: Offset amount expression.
         expr: Input scalar expression.
     """
-    return registered_application("date_sub", [str_value_or_column_expr(part), int_value_or_column_expr(amount), expr])
+    return registered_temporal_application(
+        "date_sub",
+        [str_value_or_column_expr(part), int_value_or_column_expr(amount), temporal_value_or_column_expr(expr)],
+    )
 
 
 module tests:

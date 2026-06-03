@@ -19,8 +19,8 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  INCAN_REF: release/v0.3
-  EXPECTED_INCAN_VERSION: 0.3.0-rc44
+  INCAN_REF: bugfix/57-facade-reexport-decorated-union
+  EXPECTED_INCAN_VERSION: 0.3.0-rc45
   RUST_BACKTRACE: 1
   INCAN_NO_BANNER: 1
   INCAN_GENERATED_CARGO_TARGET_DIR: ${{ github.workspace }}/.incan-generated-cargo-target

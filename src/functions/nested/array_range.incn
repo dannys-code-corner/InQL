@@ -8,6 +8,7 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
+from functions.inputs import IntValueOrColumn, int_value_or_column_expr
 from functions.registry import register_function, registered_application
 from projection_builders import ColumnExpr
 from substrait.function_extensions import RANGE_FUNCTION_ANCHOR
@@ -20,15 +21,15 @@ from substrait.function_extensions import RANGE_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("range", RANGE_FUNCTION_ANCHOR),
 ))
-pub def array_range(start: ColumnExpr, stop: ColumnExpr) -> ColumnExpr:
+pub def array_range(start: IntValueOrColumn, stop: IntValueOrColumn) -> ColumnExpr:
     """
     Build an array of integer positions from `start` inclusive to `stop` exclusive.
 
     Examples:
-        positions = array_range(int_lit(0), cardinality(col("items")))
+        positions = array_range(0, cardinality(col("items")))
 
     Parameters:
         start: Inclusive starting position expression.
         stop: Exclusive stopping position expression.
     """
-    return registered_application("range", [start, stop])
+    return registered_application("range", [int_value_or_column_expr(start), int_value_or_column_expr(stop)])

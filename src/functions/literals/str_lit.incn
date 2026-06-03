@@ -13,7 +13,7 @@ from function_registry import (
     v0_1,
 )
 from functions.registry import register_function
-from projection_builders import ColumnExpr, str_expr
+from projection_builders import StringLiteralExpr, str_expr
 
 
 @register_function(deterministic_spec(
@@ -22,7 +22,7 @@ from projection_builders import ColumnExpr, str_expr
     null_behavior=FunctionNullBehavior.NonNullLiteral,
     substrait=rewrite_mapping("filter-helper string literal expression"),
 ))
-pub def str_lit(value: str) -> ColumnExpr:
+pub def str_lit(value: str) -> StringLiteralExpr:
     """
     Build a string literal expression using the filter-helper naming style.
 

@@ -13,7 +13,7 @@ from function_registry import (
     v0_1,
 )
 from functions.registry import register_function
-from projection_builders import ColumnExpr, bool_expr
+from projection_builders import BoolLiteralExpr, bool_expr
 
 
 @register_function(deterministic_spec(
@@ -22,7 +22,7 @@ from projection_builders import ColumnExpr, bool_expr
     null_behavior=FunctionNullBehavior.NonNullLiteral,
     substrait=rewrite_mapping("filter-helper boolean literal expression"),
 ))
-pub def bool_lit(value: bool) -> ColumnExpr:
+pub def bool_lit(value: bool) -> BoolLiteralExpr:
     """
     Build a boolean literal expression using the filter-helper naming style.
 

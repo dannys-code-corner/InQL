@@ -9,8 +9,9 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.inputs import StrValueOrColumn, str_value_or_column_expr
+from functions.registry import register_function, registered_int_application
+from projection_builders import IntColumnExpr
 from substrait.function_extensions import JSON_ARRAY_LENGTH_FUNCTION_ANCHOR
 
 
@@ -21,7 +22,7 @@ from substrait.function_extensions import JSON_ARRAY_LENGTH_FUNCTION_ANCHOR
     error_behavior=FunctionErrorBehavior.InvalidInputDiagnostic,
     substrait=extension_mapping("json_array_length", JSON_ARRAY_LENGTH_FUNCTION_ANCHOR),
 ))
-pub def json_array_length(expr: ColumnExpr) -> ColumnExpr:
+pub def json_array_length(expr: StrValueOrColumn) -> IntColumnExpr:
     """
     Return the number of elements in a JSON array, or null for non-array JSON values.
 
@@ -31,7 +32,7 @@ pub def json_array_length(expr: ColumnExpr) -> ColumnExpr:
     Parameters:
         expr: String expression containing a JSON array payload.
     """
-    return registered_application("json_array_length", [expr])
+    return registered_int_application("json_array_length", [str_value_or_column_expr(expr)])
 
 
 module tests:

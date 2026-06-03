@@ -4,26 +4,26 @@ from prism.store import node_at
 from prism.rewrite import rewritten_node_at
 from prism.types import PrismNode, PrismNodeKind, PrismOptimizedView, PrismStoreId
 from aggregate_builders import aggregate_measure_output_names
-from functions.registry import function_registry_entry
 from generator_builders import GeneratorApplication
 from projection_builders import (
+    BoolColumnExpr,
     BoolLiteralExpr,
     ColumnExpr,
     ColumnRefExpr,
+    FloatColumnExpr,
     FloatLiteralExpr,
+    IntColumnExpr,
     IntLiteralExpr,
+    NumberColumnExpr,
     ProjectionAssignment,
     ScalarFunctionApplicationExpr,
+    StringColumnExpr,
     StringLiteralExpr,
+    TemporalColumnExpr,
+    TimestampColumnExpr,
     scalar_expr_output_name,
 )
-from scalar_schema import (
-    ScalarColumnSpec,
-    scalar_column,
-    scalar_column_kind_from_function_input_type,
-    scalar_column_names,
-    scalar_columns_from_row_columns,
-)
+from scalar_schema import ScalarColumnSpec, scalar_column, scalar_column_names, scalar_columns_from_row_columns
 from schema_registry import registered_named_table_columns
 from substrait.schema import SubstraitPrimitiveKind
 from window_builders import WindowProjection
@@ -133,6 +133,18 @@ def _expression_output_schema(
 ) -> ScalarColumnSpec:
     """Infer the output schema fact for one scalar expression when InQL can do so honestly."""
     match expr:
+        BoolColumnExpr(_) =>
+            return ScalarColumnSpec(name=output_name, kind=Some(SubstraitPrimitiveKind.Bool), nullable=true)
+        IntColumnExpr(_) =>
+            return ScalarColumnSpec(name=output_name, kind=Some(SubstraitPrimitiveKind.I64), nullable=true)
+        FloatColumnExpr(_) =>
+            return ScalarColumnSpec(name=output_name, kind=Some(SubstraitPrimitiveKind.F64), nullable=true)
+        NumberColumnExpr(_) => return scalar_column(output_name)
+        StringColumnExpr(_) =>
+            return ScalarColumnSpec(name=output_name, kind=Some(SubstraitPrimitiveKind.String), nullable=true)
+        TemporalColumnExpr(_) => return scalar_column(output_name)
+        TimestampColumnExpr(_) =>
+            return ScalarColumnSpec(name=output_name, kind=Some(SubstraitPrimitiveKind.Timestamp), nullable=true)
         ColumnRefExpr(column) =>
             existing_idx = _index_of_column(input_columns, column.column_name)
             if existing_idx >= 0:
@@ -147,14 +159,7 @@ def _expression_output_schema(
             return ScalarColumnSpec(name=output_name, kind=Some(SubstraitPrimitiveKind.String), nullable=false)
         BoolLiteralExpr(_) =>
             return ScalarColumnSpec(name=output_name, kind=Some(SubstraitPrimitiveKind.Bool), nullable=false)
-        ScalarFunctionApplicationExpr(application) =>
-            match function_registry_entry(application.function_ref):
-                Some(entry) =>
-                    if let Some(result) = entry.scalar_result:
-                        if let Some(kind) = scalar_column_kind_from_function_input_type(result):
-                            return ScalarColumnSpec(name=output_name, kind=Some(kind), nullable=true)
-                    return scalar_column(output_name)
-                None => return scalar_column(output_name)
+        ScalarFunctionApplicationExpr(_) => return scalar_column(output_name)
 
 
 def _generator_output_schema(

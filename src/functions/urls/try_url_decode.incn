@@ -8,8 +8,9 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.inputs import StrValueOrColumn, str_value_or_column_expr
+from functions.registry import register_function, registered_string_application
+from projection_builders import StringColumnExpr
 from substrait.function_extensions import TRY_URL_DECODE_FUNCTION_ANCHOR
 
 
@@ -19,7 +20,7 @@ from substrait.function_extensions import TRY_URL_DECODE_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("try_url_decode", TRY_URL_DECODE_FUNCTION_ANCHOR),
 ))
-pub def try_url_decode(expr: ColumnExpr) -> ColumnExpr:
+pub def try_url_decode(expr: StrValueOrColumn) -> StringColumnExpr:
     """
     Percent-decode one URL component and return null for malformed input.
 
@@ -29,7 +30,7 @@ pub def try_url_decode(expr: ColumnExpr) -> ColumnExpr:
     Parameters:
         expr: String expression containing one percent-encoded URL component.
     """
-    return registered_application("try_url_decode", [expr])
+    return registered_string_application("try_url_decode", [str_value_or_column_expr(expr)])
 
 
 module tests:

@@ -24,7 +24,7 @@ from functions import (
     regexp_like,
 )
 from dataset import LazyFrame
-from projection_builders import ColumnExpr
+from projection_builders import ColumnExpr, number_column_expr
 from session import Session, SessionErrorKind
 from std.testing import assert_is_ok, fail_t
 from substrait.inspect import root_rel, sort_field_count, sort_field_direction_name
@@ -67,7 +67,7 @@ def test_session_filters__collect_executes_gt_predicate() -> None:
         session.read_csv("order_lines", ORDER_LINES_CSV_FIXTURE),
         "order lines fixture should load",
     )
-    filtered = lazy.filter(gt(col("qty"), lit(2)))
+    filtered = lazy.filter(gt(col("qty"), 2))
     df = assert_is_ok(session.collect(filtered), "gt filter collect should execute")
     payload = df.preview_text()
 
@@ -88,7 +88,7 @@ def test_session_filters__collect_executes_eq_predicate() -> None:
         session.read_csv("order_lines", ORDER_LINES_CSV_FIXTURE),
         "order lines fixture should load",
     )
-    filtered = lazy.filter(eq(col("status"), lit("open")))
+    filtered = lazy.filter(eq(col("status"), "open"))
     df = assert_is_ok(session.collect(filtered), "eq filter collect should execute")
     payload = df.preview_text()
 
@@ -104,28 +104,28 @@ def test_session_filters__collect_executes_eq_predicate() -> None:
 def test_session_filters__collect_executes_comparison_family_predicates() -> None:
     """collect should execute registry-backed comparison predicates through DataFusion."""
     # -- Arrange / Act / Assert --
-    assert _row_count_for_filter(ne(col("status"), lit("open"))) == 2, "status != open should keep two rows"
-    assert _row_count_for_filter(lt(col("qty"), lit(3))) == 3, "qty < 3 should keep three rows"
-    assert _row_count_for_filter(lte(col("qty"), lit(2))) == 3, "qty <= 2 should keep three rows"
-    assert _row_count_for_filter(gte(col("qty"), lit(3))) == 2, "qty >= 3 should keep two rows"
-    assert _row_count_for_filter(equal_null(col("status"), lit("open"))) == 3, "null-safe equality should match equality for non-null fixture values"
-    assert _row_count_for_filter(between(col("qty"), lit(2), lit(3))) == 3, "inclusive between should keep qty 2 and 3"
+    assert _row_count_for_filter(ne(col("status"), "open")) == 2, "status != open should keep two rows"
+    assert _row_count_for_filter(lt(col("qty"), 3)) == 3, "qty < 3 should keep three rows"
+    assert _row_count_for_filter(lte(col("qty"), 2)) == 3, "qty <= 2 should keep three rows"
+    assert _row_count_for_filter(gte(col("qty"), 3)) == 2, "qty >= 3 should keep two rows"
+    assert _row_count_for_filter(equal_null(col("status"), "open")) == 3, "null-safe equality should match equality for non-null fixture values"
+    assert _row_count_for_filter(between(col("qty"), 2, 3)) == 3, "inclusive between should keep qty 2 and 3"
     assert _row_count_for_filter(in_(col("status"), [lit("open"), lit("closed")])) == 4, "in_ should keep status values in the provided set"
 
 
 def test_session_filters__collect_executes_boolean_and_null_predicates() -> None:
     """collect should execute registry-backed boolean and null predicates through DataFusion."""
     # -- Arrange --
-    open_and_large = and_(eq(col("status"), lit("open")), gte(col("qty"), lit(3)))
-    closed_or_cancelled = or_(eq(col("status"), lit("closed")), eq(col("status"), lit("cancelled")))
+    open_and_large = and_(eq(col("status"), "open"), gte(col("qty"), 3))
+    closed_or_cancelled = or_(eq(col("status"), "closed"), eq(col("status"), "cancelled"))
 
     # -- Act / Assert --
     assert _row_count_for_filter(open_and_large) == 1, "and_ should require both predicates"
     assert _row_count_for_filter(closed_or_cancelled) == 2, "or_ should keep either matching predicate"
-    assert _row_count_for_filter(not_(eq(col("status"), lit("open")))) == 2, "not_ should invert boolean predicates"
+    assert _row_count_for_filter(not_(eq(col("status"), "open"))) == 2, "not_ should invert boolean predicates"
     assert _row_count_for_filter(is_not_null(col("status"))) == 5, "all fixture statuses should be non-null"
     assert _row_count_for_filter(is_null(col("status"))) == 0, "fixture statuses should contain no nulls"
-    assert _row_count_for_filter(is_not_nan(cast(col("qty"), "float64"))) == 5, "integer quantities cast to floats should not be NaN"
+    assert _row_count_for_filter(is_not_nan(number_column_expr(cast(col("qty"), "float64")))) == 5, "integer quantities cast to floats should not be NaN"
 
 
 def test_session_filters__typed_value_or_column_rejects_schema_mismatch_before_backend() -> None:
@@ -160,9 +160,9 @@ def test_session_filters__mixed_scalar_query_shape_executes_end_to_end() -> None
         session.read_csv("order_lines", ORDER_LINES_CSV_FIXTURE),
         "order lines fixture should load",
     )
-    query_like = lazy.filter(and_(gt(col("qty"), lit(2)), in_(col("status"), [lit("open"), lit("closed")]))).with_column(
+    query_like = lazy.filter(and_(gt(col("qty"), 2), in_(col("status"), [lit("open"), lit("closed")]))).with_column(
         "line_total",
-        mul(cast(col("unit_price"), "float64"), cast(col("qty"), "float64")),
+        mul(number_column_expr(cast(col("unit_price"), "float64")), number_column_expr(cast(col("qty"), "float64"))),
     ).order_by([desc(col("line_total"))])
     plan_root = root_rel(query_like.to_substrait_plan())
     df = assert_is_ok(session.collect(query_like), "mixed scalar query shape should collect")

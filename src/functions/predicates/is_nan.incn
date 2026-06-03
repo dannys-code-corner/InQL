@@ -12,8 +12,9 @@ from function_registry import (
     extension_mapping,
     v0_1,
 )
-from functions.registry import register_function, registered_application
-from projection_builders import ColumnExpr
+from functions.inputs import NumberValueOrColumn, number_value_or_column_expr
+from functions.registry import register_function, registered_bool_application
+from projection_builders import BoolColumnExpr
 from substrait.function_extensions import IS_NAN_FUNCTION_ANCHOR
 
 
@@ -23,7 +24,7 @@ from substrait.function_extensions import IS_NAN_FUNCTION_ANCHOR
     null_behavior=FunctionNullBehavior.Predicate,
     substrait=extension_mapping("is_nan", IS_NAN_FUNCTION_ANCHOR),
 ))
-pub def is_nan(expr: ColumnExpr) -> ColumnExpr:
+pub def is_nan(expr: NumberValueOrColumn) -> BoolColumnExpr:
     """
     Build a predicate that checks whether a floating-point expression is NaN.
 
@@ -33,7 +34,7 @@ pub def is_nan(expr: ColumnExpr) -> ColumnExpr:
     Parameters:
         expr: Floating-point expression to test.
     """
-    return registered_application("is_nan", [expr])
+    return registered_bool_application("is_nan", [number_value_or_column_expr(expr)])
 
 
 module tests:

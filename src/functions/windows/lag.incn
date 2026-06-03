@@ -9,7 +9,7 @@ from function_registry import (
     v0_1,
 )
 from functions.registry import register_function
-from projection_builders import ColumnExpr, col
+from projection_builders import ColumnExpr
 from substrait.function_extensions import LAG_FUNCTION_ANCHOR
 from window_builders import WindowFunctionCall, lag as lag_builder
 
@@ -20,11 +20,7 @@ from window_builders import WindowFunctionCall, lag as lag_builder
     null_behavior=FunctionNullBehavior.DependsOnInputs,
     substrait=extension_mapping("lag", LAG_FUNCTION_ANCHOR),
 ))
-pub def lag(
-    expr: ColumnExpr,
-    offset: int = 1,
-    default_value: ColumnExpr = col("__inql_no_window_default__"),
-) -> WindowFunctionCall:
+pub def lag(expr: ColumnExpr, offset: int = 1, default_value: Option[ColumnExpr] = None) -> WindowFunctionCall:
     """
     Build a `lag` window function call.
 

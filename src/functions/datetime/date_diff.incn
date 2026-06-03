@@ -2,17 +2,20 @@
 
 from function_registry import (
     FunctionClass,
-    FunctionInputType,
     FunctionLifecycle,
     FunctionNullBehavior,
-    scalar_argument_contract,
     deterministic_spec,
     extension_mapping,
     v0_1,
 )
-from functions.inputs import StrValueOrColumn, str_value_or_column_expr
-from functions.registry import register_function, register_function_alias, registered_application
-from projection_builders import ColumnExpr
+from functions.inputs import (
+    StrValueOrColumn,
+    TemporalValueOrColumn,
+    str_value_or_column_expr,
+    temporal_value_or_column_expr,
+)
+from functions.registry import register_function, register_function_alias, registered_int_application
+from projection_builders import IntColumnExpr
 from substrait.function_extensions import DATE_DIFF_FUNCTION_ANCHOR
 
 
@@ -20,12 +23,9 @@ from substrait.function_extensions import DATE_DIFF_FUNCTION_ANCHOR
     function_class=FunctionClass.Scalar,
     lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
     null_behavior=FunctionNullBehavior.DependsOnInputs,
-    scalar_arguments=Some(
-        scalar_argument_contract(positional=[FunctionInputType.String, FunctionInputType.Any, FunctionInputType.Any]),
-    ),
     substrait=extension_mapping("date_diff", DATE_DIFF_FUNCTION_ANCHOR),
 ))
-pub def date_diff(part: StrValueOrColumn, start: ColumnExpr, end: ColumnExpr) -> ColumnExpr:
+pub def date_diff(part: StrValueOrColumn, start: TemporalValueOrColumn, end: TemporalValueOrColumn) -> IntColumnExpr:
     """
     Build a date/timestamp difference expression.
 
@@ -37,7 +37,10 @@ pub def date_diff(part: StrValueOrColumn, start: ColumnExpr, end: ColumnExpr) ->
         start: Start scalar expression.
         end: End scalar expression.
     """
-    return registered_application("date_diff", [str_value_or_column_expr(part), start, end])
+    return registered_int_application(
+        "date_diff",
+        [str_value_or_column_expr(part), temporal_value_or_column_expr(start), temporal_value_or_column_expr(end)],
+    )
 
 
 static _datediff_alias_registration: None = register_function_alias("date_diff", "datediff")

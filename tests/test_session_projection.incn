@@ -176,7 +176,7 @@ def test_session_projection__plan_root_names_match_append_projection() -> None:
         session.read_csv("aggregate_orders", AGGREGATE_ORDERS_CSV_FIXTURE),
         "aggregate orders fixture should load",
     )
-    projected = lazy.with_column("double_amount", mul(col("amount"), lit(2)))
+    projected = lazy.with_column("double_amount", mul(col("amount"), 2))
 
     # -- Assert --
     names = root_names(projected.to_substrait_plan())
@@ -195,7 +195,7 @@ def test_session_projection__plan_root_names_match_replace_projection() -> None:
         session.read_csv("aggregate_orders", AGGREGATE_ORDERS_CSV_FIXTURE),
         "aggregate orders fixture should load",
     )
-    projected = lazy.with_column("amount", add(col("amount"), lit(1)))
+    projected = lazy.with_column("amount", add(col("amount"), 1))
 
     # -- Assert --
     names = root_names(projected.to_substrait_plan())
@@ -213,7 +213,7 @@ def test_session_projection__collect_executes_with_column_append() -> None:
         session.read_csv("aggregate_orders", AGGREGATE_ORDERS_CSV_FIXTURE),
         "aggregate orders fixture should load",
     )
-    projected = lazy.with_column("double_amount", mul(col("amount"), lit(2)))
+    projected = lazy.with_column("double_amount", mul(col("amount"), 2))
     planned = projected.planned_columns()
     plan_names = root_names(projected.to_substrait_plan())
     df = assert_is_ok(session.collect(projected), "project append collect should execute")
@@ -244,10 +244,10 @@ def test_session_projection__collect_executes_core_scalar_projection_functions()
         session.read_csv("aggregate_orders", AGGREGATE_ORDERS_CSV_FIXTURE),
         "aggregate orders fixture should load",
     )
-    projected = lazy.with_column("amount_minus_one", sub(col("amount"), lit(1))).with_column(
+    projected = lazy.with_column("amount_minus_one", sub(col("amount"), 1)).with_column(
         "amount_div_five",
-        div(col("amount"), lit(5)),
-    ).with_column("amount_mod_two", modulo(col("amount"), lit(2))).with_column("negative_amount", neg(col("amount"))).with_column(
+        div(col("amount"), 5),
+    ).with_column("amount_mod_two", modulo(col("amount"), 2)).with_column("negative_amount", neg(col("amount"))).with_column(
         "customer_or_unknown",
         coalesce([col("customer_id"), lit("unknown")]),
     ).with_column("customer_null_if_a", nullif(col("customer_id"), lit("A"))).with_column(
@@ -255,7 +255,7 @@ def test_session_projection__collect_executes_core_scalar_projection_functions()
         cast(col("amount"), "string"),
     ).with_column("customer_try_int", try_cast(col("customer_id"), "int64")).with_column(
         "amount_bucket",
-        case_when([gt(col("amount"), lit(10))], [lit("large")], lit("small")),
+        case_when([gt(col("amount"), 10)], [lit("large")], lit("small")),
     )
     df = _collect_or_fail(session, projected)
     payload = df.preview_text()
@@ -285,31 +285,28 @@ def test_session_projection__collect_executes_common_math_scalar_projection_func
         session.read_csv("aggregate_orders", AGGREGATE_ORDERS_CSV_FIXTURE),
         "aggregate orders fixture should load",
     )
-    projected = lazy.with_column("abs_delta", abs(sub(lit(5), col("amount")))).with_column(
+    projected = lazy.with_column("abs_delta", abs(sub(5, col("amount")))).with_column(
         "ceil_quarter",
-        ceil(div(col("amount"), lit(4.0))),
-    ).with_column("floor_quarter", floor(div(col("amount"), lit(4.0)))).with_column(
+        ceil(div(col("amount"), 4.0)),
+    ).with_column("floor_quarter", floor(div(col("amount"), 4.0))).with_column(
         "round_quarter",
-        round(div(col("amount"), lit(4.0))),
-    ).with_column("round_one_place", round(lit(2.25), lit(1))).with_column("sqrt_sixteen", sqrt(lit(16.0))).with_column(
+        round(div(col("amount"), 4.0)),
+    ).with_column("round_one_place", round(2.25, 1)).with_column("sqrt_sixteen", sqrt(16.0)).with_column(
         "power_two_three",
-        power(lit(2.0), lit(3.0)),
-    ).with_column("exp_zero", exp(lit(0.0))).with_column("ln_one", ln(lit(1.0))).with_column(
-        "log_ten_hundred",
-        log(lit(10.0), lit(100.0)),
-    ).with_column("log10_hundred", log10(lit(100.0))).with_column("sign_negative", sign(lit(-5))).with_column(
-        "least_value",
-        least(lit(7), lit(3), lit(5)),
-    ).with_column("greatest_value", greatest(lit(7), lit(3), lit(5))).with_column("sin_zero", sin(lit(0.0))).with_column(
-        "cos_zero",
-        cos(lit(0.0)),
-    ).with_column("tan_zero", tan(lit(0.0))).with_column("asin_zero", asin(lit(0.0))).with_column(
-        "acos_one",
-        acos(lit(1.0)),
-    ).with_column("atan_zero", atan(lit(0.0))).with_column("atan2_zero", atan2(lit(0.0), lit(1.0))).with_column(
+        power(2.0, 3.0),
+    ).with_column("exp_zero", exp(0.0)).with_column("ln_one", ln(1.0)).with_column("log_ten_hundred", log(10.0, 100.0)).with_column(
+        "log10_hundred",
+        log10(100.0),
+    ).with_column("sign_negative", sign(-5)).with_column("least_value", least(7, 3, 5)).with_column(
+        "greatest_value",
+        greatest(7, 3, 5),
+    ).with_column("sin_zero", sin(0.0)).with_column("cos_zero", cos(0.0)).with_column("tan_zero", tan(0.0)).with_column(
+        "asin_zero",
+        asin(0.0),
+    ).with_column("acos_one", acos(1.0)).with_column("atan_zero", atan(0.0)).with_column("atan2_zero", atan2(0.0, 1.0)).with_column(
         "degrees_zero",
-        degrees(lit(0.0)),
-    ).with_column("radians_zero", radians(lit(0.0)))
+        degrees(0.0),
+    ).with_column("radians_zero", radians(0.0))
     df = _collect_or_fail(session, projected)
     payload = df.preview_text()
     resolved = df.resolved_columns()
@@ -339,31 +336,25 @@ def test_session_projection__collect_executes_common_string_scalar_projection_fu
         session.read_csv("aggregate_orders_strings", AGGREGATE_ORDERS_CSV_FIXTURE),
         "aggregate orders fixture should load",
     )
-    projected = lazy.with_column("len_abc", char_length(lit("abc"))).with_column("octets_abc", octet_length(lit("abc"))).with_column(
+    projected = lazy.with_column("len_abc", char_length("abc")).with_column("octets_abc", octet_length("abc")).with_column(
         "upper_abc",
-        upper(lit("abc")),
-    ).with_column("lower_abc", lower(lit("ABC"))).with_column("trimmed", trim(lit("  hello  "))).with_column(
+        upper("abc"),
+    ).with_column("lower_abc", lower("ABC")).with_column("trimmed", trim("  hello  ")).with_column(
         "left_trimmed",
-        ltrim(lit("  hello")),
-    ).with_column("right_trimmed", rtrim(lit("hello  "))).with_column("middle", substring(lit("abcdef"), lit(2), lit(3))).with_column(
+        ltrim("  hello"),
+    ).with_column("right_trimmed", rtrim("hello  ")).with_column("middle", substring("abcdef", 2, 3)).with_column(
         "position_cd",
-        position(lit("abcdef"), lit("cd")),
-    ).with_column("overlayed", overlay(lit("abcdef"), lit("ZZ"), lit(3), lit(2))).with_column(
-        "joined",
-        concat(lit("a"), lit("b")),
-    ).with_column("joined_ws", concat_ws(lit("-"), lit("a"), lit("b"))).with_column(
-        "replaced",
-        replace(lit("banana"), lit("na"), lit("NA")),
-    ).with_column("translated", translate(lit("abc"), lit("ab"), lit("xy"))).with_column(
+        position("abcdef", "cd"),
+    ).with_column("overlayed", overlay("abcdef", "ZZ", 3, 2)).with_column("joined", concat("a", "b")).with_column(
+        "joined_ws",
+        concat_ws("-", "a", "b"),
+    ).with_column("replaced", replace("banana", "na", "NA")).with_column("translated", translate("abc", "ab", "xy")).with_column(
         "repeated",
-        repeat(lit("ha"), lit(3)),
-    ).with_column("left_two", left(lit("abcdef"), lit(2))).with_column("right_two", right(lit("abcdef"), lit(2))).with_column(
+        repeat("ha", 3),
+    ).with_column("left_two", left("abcdef", 2)).with_column("right_two", right("abcdef", 2)).with_column(
         "left_padded",
-        lpad(lit("x"), lit(3), lit("0")),
-    ).with_column("right_padded", rpad(lit("x"), lit(3), lit("0"))).with_column(
-        "split_second",
-        split_part(lit("a,b,c"), lit(","), lit(2)),
-    )
+        lpad("x", 3, "0"),
+    ).with_column("right_padded", rpad("x", 3, "0")).with_column("split_second", split_part("a,b,c", ",", 2))
     df = _collect_or_fail(session, projected)
     payload = df.preview_text()
     resolved = df.resolved_columns()
@@ -391,19 +382,16 @@ def test_session_projection__collect_executes_common_encoding_and_regex_projecti
         session.read_csv("aggregate_orders_encoding_regex", AGGREGATE_ORDERS_CSV_FIXTURE),
         "aggregate orders fixture should load",
     )
-    projected = lazy.with_column("encoded_base64", encode(lit("abc"), lit("base64"))).with_column(
+    projected = lazy.with_column("encoded_base64", encode("abc", "base64")).with_column(
         "decoded_base64",
-        decode(lit("YWJj"), lit("base64")),
-    ).with_column("base64_abc", base64(lit("abc"))).with_column("unbase64_abc", unbase64(lit("YWJj"))).with_column(
+        decode("YWJj", "base64"),
+    ).with_column("base64_abc", base64("abc")).with_column("unbase64_abc", unbase64("YWJj")).with_column(
         "hex_abc",
-        hex(lit("abc")),
-    ).with_column("unhex_abc", unhex(lit("616263"))).with_column(
-        "regex_like",
-        regexp_like(lit("order-42"), lit("^order-[0-9]+$")),
-    ).with_column("regex_replaced", regexp_replace(lit("order-42"), lit("[0-9]+"), lit("99"))).with_column(
-        "regex_extracted",
-        regexp_extract(lit("order-42"), lit("order-([0-9]+)"), lit(1)),
-    )
+        hex("abc"),
+    ).with_column("unhex_abc", unhex("616263")).with_column("regex_like", regexp_like("order-42", "^order-[0-9]+$")).with_column(
+        "regex_replaced",
+        regexp_replace("order-42", "[0-9]+", "99"),
+    ).with_column("regex_extracted", regexp_extract("order-42", "order-([0-9]+)", 1))
     df = _collect_or_fail(session, projected)
     payload = df.preview_text()
     resolved = df.resolved_columns()
@@ -428,31 +416,31 @@ def test_session_projection__collect_executes_common_datetime_projection_functio
         session.read_csv("aggregate_orders_datetime", AGGREGATE_ORDERS_CSV_FIXTURE),
         "aggregate orders fixture should load",
     )
-    projected = lazy.with_column("year_part", date_part(lit("year"), to_date(lit("2026-05-30")))).with_column(
+    projected = lazy.with_column("year_part", date_part("year", to_date("2026-05-30"))).with_column(
         "month_trunc",
-        date_trunc(lit("month"), to_timestamp(lit("2026-05-30T12:34:56"))),
-    ).with_column("hour_trunc", time_trunc(lit("hour"), lit("12:34:56"))).with_column(
+        date_trunc("month", to_timestamp("2026-05-30T12:34:56")),
+    ).with_column("hour_trunc", time_trunc("hour", "12:34:56")).with_column(
         "plus_two_days",
-        date_add(lit("day"), lit(2), lit("2026-05-30")),
-    ).with_column("minus_one_day", date_sub(lit("day"), lit(1), lit("2026-05-30"))).with_column(
+        date_add("day", 2, "2026-05-30"),
+    ).with_column("minus_one_day", date_sub("day", 1, "2026-05-30")).with_column(
         "day_diff",
-        date_diff(lit("day"), lit("2026-05-30"), lit("2026-06-02")),
-    ).with_column("second_diff", timestamp_diff(lit("second"), lit("1970-01-01T00:00:00"), lit("1970-01-01T00:00:10"))).with_column(
+        date_diff("day", "2026-05-30", "2026-06-02"),
+    ).with_column("second_diff", timestamp_diff("second", "1970-01-01T00:00:00", "1970-01-01T00:00:10")).with_column(
         "date_value",
-        to_date(lit("2026-05-30T12:34:56")),
-    ).with_column("time_value", to_time(lit("12:34:56"))).with_column(
-        "timestamp_value",
-        to_timestamp(lit("2026-05-30T12:34:56")),
-    ).with_column("from_unix", from_unixtime(lit(10))).with_column("unix_s", unix_seconds(lit("1970-01-01T00:00:10"))).with_column(
+        to_date("2026-05-30T12:34:56"),
+    ).with_column("time_value", to_time("12:34:56")).with_column("timestamp_value", to_timestamp("2026-05-30T12:34:56")).with_column(
+        "from_unix",
+        from_unixtime(10),
+    ).with_column("unix_s", unix_seconds("1970-01-01T00:00:10")).with_column(
         "unix_ms",
-        unix_millis(lit("1970-01-01T00:00:01")),
-    ).with_column("unix_us", unix_micros(lit("1970-01-01T00:00:01"))).with_column(
-        "date_made",
-        make_date(lit(2026), lit(5), lit(30)),
-    ).with_column("time_made", make_time(lit(12), lit(34), lit(56))).with_column(
-        "timestamp_made",
-        make_timestamp(lit(2026), lit(5), lit(30), lit(12), lit(34), lit(56)),
-    ).with_column("month_last_day", last_day(lit("2026-02-10")))
+        unix_millis("1970-01-01T00:00:01"),
+    ).with_column("unix_us", unix_micros("1970-01-01T00:00:01")).with_column("date_made", make_date(2026, 5, 30)).with_column(
+        "time_made",
+        make_time(12, 34, 56),
+    ).with_column("timestamp_made", make_timestamp(2026, 5, 30, 12, 34, 56)).with_column(
+        "month_last_day",
+        last_day("2026-02-10"),
+    )
     df = _collect_or_fail(session, projected)
     payload = df.preview_text()
     resolved = df.resolved_columns()
@@ -523,13 +511,13 @@ def test_session_projection__collect_executes_format_hashing_projection_function
         session.read_csv("aggregate_orders", AGGREGATE_ORDERS_CSV_FIXTURE),
         "aggregate orders fixture should load",
     )
-    projected = lazy.with_column("md5_abc", md5(lit("abc"))).with_column("sha1_abc", sha1(lit("abc"))).with_column(
+    projected = lazy.with_column("md5_abc", md5("abc")).with_column("sha1_abc", sha1("abc")).with_column(
         "crc32_abc",
-        crc32(lit("abc")),
-    ).with_column("xxhash64_abc", xxhash64(lit("abc"))).with_column("sha224_abc", sha224(lit("abc"))).with_column(
+        crc32("abc"),
+    ).with_column("xxhash64_abc", xxhash64("abc")).with_column("sha224_abc", sha224("abc")).with_column(
         "sha2_256_abc",
-        sha2(lit("abc"), 256),
-    ).with_column("sha384_abc", sha384(lit("abc"))).with_column("sha512_abc", sha512(lit("abc")))
+        sha2("abc", 256),
+    ).with_column("sha384_abc", sha384("abc")).with_column("sha512_abc", sha512("abc"))
     df = _collect_or_fail(session, projected)
     payload = df.preview_text()
     resolved = df.resolved_columns()
@@ -563,26 +551,26 @@ def test_session_projection__collect_executes_json_url_and_csv_format_functions(
         session.read_csv("aggregate_orders_format", AGGREGATE_ORDERS_CSV_FIXTURE),
         "aggregate orders fixture should load",
     )
-    json_payload = lit("{\"type\":\"click\",\"tags\":[\"paid\",\"web\"],\"user\":{\"id\":7}}")
-    csv_payload = lit("42,paid")
+    json_payload = "{\"type\":\"click\",\"tags\":[\"paid\",\"web\"],\"user\":{\"id\":7}}"
+    csv_payload = "42,paid"
     projected = lazy.with_column("json_valid", check_json(json_payload)).with_column(
         "json_type",
         json_extract_path_text(json_payload, "$.type"),
     ).with_column("json_object", get_json_object(json_payload, "$.user")).with_column(
         "json_tags",
-        json_array_length(lit("[\"paid\",\"web\"]")),
+        json_array_length("[\"paid\",\"web\"]"),
     ).with_column("json_keys", json_object_keys(json_payload)).with_column("json_schema", schema_of_json(json_payload)).with_column(
         "json_normalized",
         parse_json(json_payload),
     ).with_column("json_from", from_json[JsonProjectionSchema](json_payload)).with_column(
         "json_try_invalid",
-        try_from_json[JsonProjectionSchema](lit("{")),
-    ).with_column("json_string", to_json(lit("paid"))).with_column(
+        try_from_json[JsonProjectionSchema]("{"),
+    ).with_column("json_string", to_json("paid")).with_column(
         "url_page",
-        parse_url(lit("https://example.com/orders?page=2&id=7#top"), "page"),
-    ).with_column("url_encoded", url_encode(lit("a b"))).with_column("url_decoded", url_decode(lit("a%20b"))).with_column(
+        parse_url("https://example.com/orders?page=2&id=7#top", "page"),
+    ).with_column("url_encoded", url_encode("a b")).with_column("url_decoded", url_decode("a%20b")).with_column(
         "url_try_invalid",
-        try_url_decode(lit("%zz")),
+        try_url_decode("%zz"),
     ).with_column("csv_schema", schema_of_csv(csv_payload)).with_column(
         "csv_map",
         from_csv[CsvProjectionSchema](csv_payload),
@@ -615,7 +603,7 @@ def test_session_projection__collect_reports_strict_format_decode_errors() -> No
         session.read_csv("aggregate_orders_bad_format", AGGREGATE_ORDERS_CSV_FIXTURE),
         "aggregate orders fixture should load",
     )
-    projected = lazy.with_column("bad_url", url_decode(lit("%zz")))
+    projected = lazy.with_column("bad_url", url_decode("%zz"))
     err = assert_is_err(session.collect(projected), "expected strict URL decoding to fail")
 
     # -- Assert --
@@ -635,10 +623,10 @@ def test_session_projection__collect_executes_nested_scalar_projection_functions
     )
     tags = array([lit("paid"), col("customer_id"), lit("paid")])
     with_count = lazy.with_column("tag_count", cardinality(tags))
-    with_contains = with_count.with_column("has_paid", array_contains(tags, lit("paid")))
-    with_first = with_contains.with_column("first_tag", element_at(tags, lit(1)))
-    with_position = with_first.with_column("paid_position", array_position(tags, lit("paid")))
-    projected = with_position.with_column("joined_tags", array_join(array_distinct(tags), lit("|")))
+    with_contains = with_count.with_column("has_paid", array_contains(tags, "paid"))
+    with_first = with_contains.with_column("first_tag", element_at(tags, 1))
+    with_position = with_first.with_column("paid_position", array_position(tags, "paid"))
+    projected = with_position.with_column("joined_tags", array_join(array_distinct(tags), "|"))
     df = _collect_or_fail(session, projected)
     payload = df.preview_text()
     resolved = df.resolved_columns()
@@ -712,7 +700,7 @@ def test_session_projection__collect_unknown_projection_column_returns_planning_
         session.read_csv("aggregate_orders", AGGREGATE_ORDERS_CSV_FIXTURE),
         "aggregate orders fixture should load",
     )
-    projected = lazy.with_column("bad_amount", add(col("missing_amount"), lit(1)))
+    projected = lazy.with_column("bad_amount", add(col("missing_amount"), 1))
     err = assert_is_err(session.collect(projected), "expected unknown projection input column to fail during planning")
 
     # -- Assert --
@@ -729,7 +717,7 @@ def test_session_projection__collect_executes_with_column_replace() -> None:
         session.read_csv("aggregate_orders", AGGREGATE_ORDERS_CSV_FIXTURE),
         "aggregate orders fixture should load",
     )
-    projected = lazy.with_column("amount", add(col("amount"), lit(1)))
+    projected = lazy.with_column("amount", add(col("amount"), 1))
     planned = projected.planned_columns()
     plan_names = root_names(projected.to_substrait_plan())
     df = assert_is_ok(session.collect(projected), "project replace collect should execute")

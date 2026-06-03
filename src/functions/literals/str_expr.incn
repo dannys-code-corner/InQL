@@ -13,7 +13,7 @@ from function_registry import (
     v0_1,
 )
 from functions.registry import register_function
-from projection_builders import ColumnExpr, str_expr as str_expr_builder
+from projection_builders import StringLiteralExpr, str_expr as str_expr_builder
 
 
 @register_function(deterministic_spec(
@@ -22,7 +22,7 @@ from projection_builders import ColumnExpr, str_expr as str_expr_builder
     null_behavior=FunctionNullBehavior.NonNullLiteral,
     substrait=rewrite_mapping("typed string literal expression"),
 ))
-pub def str_expr(value: str) -> ColumnExpr:
+pub def str_expr(value: str) -> StringLiteralExpr:
     """
     Build a string literal expression.
 
