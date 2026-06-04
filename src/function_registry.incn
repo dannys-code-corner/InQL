@@ -84,7 +84,7 @@ pub enum FunctionInputType(str):
     Temporal = "temporal"
 
 
-@derive(Clone)
+@derive(Clone, Eq)
 pub enum SubstraitMappingKind(str):
     """Substrait interchange category for one portable InQL function."""
 
@@ -95,7 +95,7 @@ pub enum SubstraitMappingKind(str):
     StructuralFunction = "structural_function"
 
 
-@derive(Clone)
+@derive(Clone, Eq)
 pub model FunctionVersion:
     """One InQL package version used by function lifecycle metadata."""
 
@@ -103,7 +103,7 @@ pub model FunctionVersion:
     pub minor: int
 
 
-@derive(Clone)
+@derive(Clone, Eq)
 pub model FunctionChange:
     """One versioned user-visible function contract change."""
 
@@ -111,7 +111,7 @@ pub model FunctionChange:
     pub note: str
 
 
-@derive(Clone)
+@derive(Clone, Eq)
 pub model FunctionDeprecation:
     """Deprecation metadata for one function when it is no longer preferred."""
 
@@ -125,7 +125,7 @@ pub const v0_2: FunctionVersion = FunctionVersion(major=0, minor=2)
 pub const v0_3: FunctionVersion = FunctionVersion(major=0, minor=3)
 
 
-@derive(Clone)
+@derive(Clone, Eq)
 pub model FunctionLifecycle:
     """Version lifecycle facts attached to one function registry entry."""
 
@@ -134,7 +134,7 @@ pub model FunctionLifecycle:
     pub deprecated: Option[FunctionDeprecation]
 
 
-@derive(Clone)
+@derive(Clone, Eq)
 pub model AggregateModifierPolicy:
     """Aggregate-specific modifier support recorded with registry metadata."""
 
@@ -160,7 +160,7 @@ pub const APPROXIMATE_AGGREGATE_MODIFIERS: AggregateModifierPolicy = AggregateMo
 )
 
 
-@derive(Clone)
+@derive(Clone, Eq)
 pub model FunctionApproximationPolicy:
     """Approximation contract metadata for functions with intentionally approximate results."""
 
@@ -208,7 +208,7 @@ pub const HLL_ESTIMATE_APPROXIMATION_POLICY: FunctionApproximationPolicy = Funct
 )
 
 
-@derive(Clone)
+@derive(Clone, Eq)
 pub model FunctionSketchPolicy:
     """Typed sketch logical-value contract metadata for RFC 025 helpers."""
 
@@ -291,7 +291,7 @@ pub const HLL_SKETCH_DESERIALIZE_POLICY: FunctionSketchPolicy = FunctionSketchPo
 )
 
 
-@derive(Clone)
+@derive(Clone, Eq)
 pub model SubstraitMapping:
     """Portable interchange mapping metadata for one registered function."""
 
@@ -493,16 +493,6 @@ pub class FunctionRegistry:
         return [entry.function_ref for entry in self.entries if entry.substrait.kind == SubstraitMappingKind.ExtensionFunction]
 
 
-def _same_string_list(left: list[str], right: list[str]) -> bool:
-    """Return whether two string lists contain the same ordered values."""
-    if len(left) != len(right):
-        return false
-    for idx in range(len(left)):
-        if left[idx] != right[idx]:
-            return false
-    return true
-
-
 def _contains_string(values: list[str], target: str) -> bool:
     """Return whether one string list contains the target value."""
     for value in values:
@@ -511,91 +501,25 @@ def _contains_string(values: list[str], target: str) -> bool:
     return false
 
 
-def _same_version(left: FunctionVersion, right: FunctionVersion) -> bool:
-    """Return whether two version markers describe the same package version."""
-    return left.major == right.major and left.minor == right.minor
-
-
-def _same_deprecation(left: Option[FunctionDeprecation], right: Option[FunctionDeprecation]) -> bool:
-    """Return whether two optional deprecation markers describe the same policy."""
-    if let Some(left_value) = left:
-        if let Some(right_value) = right:
-            return _same_version(left_value.since, right_value.since) and left_value.note == right_value.note and left_value.replacement == right_value.replacement
-        return false
-    if let Some(_right_value) = right:
-        return false
-    return true
-
-
-def _same_lifecycle(left: FunctionLifecycle, right: FunctionLifecycle) -> bool:
-    """Return whether two lifecycle records expose the same versioned facts."""
-    if not _same_version(left.since, right.since):
-        return false
-    if len(left.changed) != len(right.changed):
-        return false
-    for idx in range(len(left.changed)):
-        left_change = left.changed[idx]
-        right_change = right.changed[idx]
-        if not _same_version(left_change.version, right_change.version) or left_change.note != right_change.note:
-            return false
-    return _same_deprecation(left.deprecated, right.deprecated)
-
-
-def _same_aggregate_modifiers(left: AggregateModifierPolicy, right: AggregateModifierPolicy) -> bool:
-    """Return whether two aggregate modifier policies are identical."""
-    return left.allows_distinct == right.allows_distinct and left.allows_filter == right.allows_filter and left.allows_ordered_input == right.allows_ordered_input
-
-
-def _same_approximation_policy(left: FunctionApproximationPolicy, right: FunctionApproximationPolicy) -> bool:
-    """Return whether two approximation policies are identical."""
-    return (
-        left.is_approximate == right.is_approximate
-        and left.algorithm == right.algorithm
-        and left.default_error == right.default_error
-        and left.mergeable == right.mergeable
-        and left.result_interpretation == right.result_interpretation
-    )
-
-
-def _same_sketch_policy(left: FunctionSketchPolicy, right: FunctionSketchPolicy) -> bool:
-    """Return whether two sketch policy records are identical."""
-    return (
-        left.is_sketch_aware == right.is_sketch_aware
-        and left.family == right.family
-        and left.role == right.role
-        and left.default_domain == right.default_domain
-        and left.default_precision == right.default_precision
-        and left.format == right.format
-        and left.returns_sketch == right.returns_sketch
-        and left.accepts_sketch == right.accepts_sketch
-        and left.result_interpretation == right.result_interpretation
-    )
-
-
-def _same_substrait_mapping(left: SubstraitMapping, right: SubstraitMapping) -> bool:
-    """Return whether two Substrait mapping records are identical."""
-    return (
-        left.kind == right.kind
-        and left.uri == right.uri
-        and left.function_name == right.function_name
-        and left.anchor == right.anchor
-        and left.rewrite == right.rewrite
-        and left.detail == right.detail
-    )
-
-
 def _entry_matches_spec(entry: FunctionRegistryEntry, canonical_name: str, spec: FunctionSpec) -> bool:
     """Return whether an existing registry entry is an idempotent repeat of one declaration-side spec."""
-    return (entry.function_ref == namespaced_function_ref(spec.namespace, canonical_name) and entry.namespace == spec.namespace and entry.canonical_name == canonical_name and entry.policy_category == spec.policy_category and entry.function_class == spec.function_class and _same_string_list(
-        entry.aliases,
-        spec.aliases,
-    ) and entry.alias_policy == spec.alias_policy and _same_lifecycle(entry.lifecycle, spec.lifecycle) and entry.determinism == spec.determinism and entry.null_behavior == spec.null_behavior and entry.error_behavior == spec.error_behavior and _same_aggregate_modifiers(
-        entry.aggregate_modifiers,
-        spec.aggregate_modifiers,
-    ) and _same_approximation_policy(entry.approximation, spec.approximation) and _same_sketch_policy(
-        entry.sketch,
-        spec.sketch,
-    ) and _same_substrait_mapping(entry.substrait, spec.substrait))
+    return (
+        entry.function_ref == namespaced_function_ref(spec.namespace, canonical_name)
+        and entry.namespace == spec.namespace
+        and entry.canonical_name == canonical_name
+        and entry.policy_category == spec.policy_category
+        and entry.function_class == spec.function_class
+        and entry.aliases == spec.aliases
+        and entry.alias_policy == spec.alias_policy
+        and entry.lifecycle == spec.lifecycle
+        and entry.determinism == spec.determinism
+        and entry.null_behavior == spec.null_behavior
+        and entry.error_behavior == spec.error_behavior
+        and entry.aggregate_modifiers == spec.aggregate_modifiers
+        and entry.approximation == spec.approximation
+        and entry.sketch == spec.sketch
+        and entry.substrait == spec.substrait
+    )
 
 
 pub def function_ref_for(canonical_name: str) -> str:
