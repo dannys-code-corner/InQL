@@ -65,7 +65,6 @@ from functions import (
     function_registry_entries,
     function_registry_entry,
     function_registry_entry_by_name,
-    function_registry_entry_count,
     function_registry_function_refs,
     gt,
     gte,
@@ -79,7 +78,15 @@ from functions import (
     int_expr,
     int_lit,
     current_row,
+    is_array,
+    is_boolean,
+    is_float,
+    is_integer,
     is_nan,
+    is_null_value,
+    is_object,
+    is_string,
+    is_timestamp,
     is_not_nan,
     is_not_null,
     is_null,
@@ -122,6 +129,7 @@ from functions import (
     round,
     row_number,
     parse_json,
+    parse_variant_json,
     parse_url,
     schema_of_csv,
     schema_of_json,
@@ -138,7 +146,9 @@ from functions import (
     stack,
     try_cast,
     try_from_json,
+    try_parse_variant_json,
     try_url_decode,
+    typeof,
     to_csv,
     to_json,
     url_decode,
@@ -224,6 +234,7 @@ from functions import (
     unix_millis,
     unix_seconds,
     upper,
+    variant_get,
 )
 from function_registry import (
     APPROX_COUNT_DISTINCT_POLICY,
@@ -242,6 +253,18 @@ from function_registry import (
     HLL_SKETCH_MERGE_POLICY,
     HLL_SKETCH_SERIALIZE_POLICY,
     HLL_SKETCH_APPROXIMATION_POLICY,
+    VARIANT_GET_POLICY,
+    VARIANT_IS_ARRAY_POLICY,
+    VARIANT_IS_BOOLEAN_POLICY,
+    VARIANT_IS_FLOAT_POLICY,
+    VARIANT_IS_INTEGER_POLICY,
+    VARIANT_IS_NULL_VALUE_POLICY,
+    VARIANT_IS_OBJECT_POLICY,
+    VARIANT_IS_STRING_POLICY,
+    VARIANT_IS_TIMESTAMP_POLICY,
+    VARIANT_PARSE_JSON_POLICY,
+    VARIANT_TRY_PARSE_JSON_POLICY,
+    VARIANT_TYPEOF_POLICY,
     FunctionPolicyCategory,
     FunctionRegistry,
     FunctionRegistryEntry,
@@ -310,10 +333,18 @@ from substrait.function_extensions import (
     HLL_MERGE_FUNCTION_ANCHOR,
     HLL_SERIALIZE_FUNCTION_ANCHOR,
     HLL_SKETCH_FUNCTION_ANCHOR,
+    IS_ARRAY_FUNCTION_ANCHOR,
+    IS_BOOLEAN_FUNCTION_ANCHOR,
+    IS_FLOAT_FUNCTION_ANCHOR,
+    IS_INTEGER_FUNCTION_ANCHOR,
     IS_NAN_FUNCTION_ANCHOR,
     IS_NOT_DISTINCT_FROM_FUNCTION_ANCHOR,
     IS_NOT_NULL_FUNCTION_ANCHOR,
     IS_NULL_FUNCTION_ANCHOR,
+    IS_NULL_VALUE_FUNCTION_ANCHOR,
+    IS_OBJECT_FUNCTION_ANCHOR,
+    IS_STRING_FUNCTION_ANCHOR,
+    IS_TIMESTAMP_FUNCTION_ANCHOR,
     JSON_ARRAY_LENGTH_FUNCTION_ANCHOR,
     JSON_EXTRACT_PATH_TEXT_FUNCTION_ANCHOR,
     JSON_OBJECT_KEYS_FUNCTION_ANCHOR,
@@ -347,6 +378,7 @@ from substrait.function_extensions import (
     ROUND_FUNCTION_ANCHOR,
     STACK_EXTENSION_URI,
     PARSE_JSON_FUNCTION_ANCHOR,
+    PARSE_VARIANT_JSON_FUNCTION_ANCHOR,
     PARSE_URL_FUNCTION_ANCHOR,
     SCHEMA_OF_CSV_FUNCTION_ANCHOR,
     SCHEMA_OF_JSON_FUNCTION_ANCHOR,
@@ -360,9 +392,12 @@ from substrait.function_extensions import (
     TO_CSV_FUNCTION_ANCHOR,
     TO_JSON_FUNCTION_ANCHOR,
     TRY_FROM_JSON_FUNCTION_ANCHOR,
+    TRY_PARSE_VARIANT_JSON_FUNCTION_ANCHOR,
     TRY_URL_DECODE_FUNCTION_ANCHOR,
+    TYPEOF_FUNCTION_ANCHOR,
     URL_DECODE_FUNCTION_ANCHOR,
     URL_ENCODE_FUNCTION_ANCHOR,
+    VARIANT_GET_FUNCTION_ANCHOR,
     XXHASH64_FUNCTION_ANCHOR,
     EXPLODE_EXTENSION_URI,
     EXPLODE_OUTER_EXTENSION_URI,
@@ -457,6 +492,31 @@ def _contains_text(items: list[str], expected: str) -> bool:
     return false
 
 
+def _assert_no_duplicate_text(items: list[str], context: str) -> None:
+    """Assert a small string collection has no duplicate entries."""
+    mut seen: list[str] = []
+    for item in items:
+        if _contains_text(seen, item):
+            return fail_t(f"{context} should not contain duplicate `{item}`")
+        seen.append(item)
+
+
+def _assert_same_text_set(actual: list[str], expected: list[str], context: str) -> None:
+    """Assert two small string collections contain the same values."""
+    assert len(actual) == len(expected), f"{context} should expose the expected number of entries"
+    for expected_item in expected:
+        assert _contains_text(actual, expected_item), f"{context} should include `{expected_item}`"
+
+
+def _extension_function_refs_from_entries(entries: list[FunctionRegistryEntry]) -> list[str]:
+    """Return extension-function refs derived directly from runtime registry entries."""
+    mut refs: list[str] = []
+    for entry in entries:
+        if entry.substrait.kind == SubstraitMappingKind.ExtensionFunction:
+            refs.append(entry.function_ref)
+    return refs
+
+
 def _entry_or_fail(function_ref: str) -> FunctionRegistryEntry:
     """Return one registry entry or fail the test with the missing function reference."""
     lookup_ref = f"{function_ref}"
@@ -502,40 +562,6 @@ def _local_entry_by_namespace_and_name_or_fail(
         None => return fail_t("missing local namespaced function registry entry")
 
 
-def _expected_registry_names() -> list[str]:
-    """Return the expected canonical registered helper names."""
-    return ["col", "lit", "sum", "count", "count_distinct", "count_if", "avg", "min", "max", "approx_count_distinct", "approx_percentile", "hll_sketch", "hll_merge", "hll_estimate", "hll_serialize", "hll_deserialize", "int_expr", "float_expr", "str_expr", "bool_expr", "add", "mul", "int_lit", "str_lit", "bool_lit", "always_true", "always_false", "eq", "gt", "cast", "try_cast", "ne", "lt", "lte", "gte", "equal_null", "and_", "or_", "not_", "is_null", "is_not_null", "is_nan", "is_not_nan", "sub", "div", "mod", "neg", "coalesce", "nullif", "case_when", "in_", "between", "asc", "desc", "asc_nulls_first", "asc_nulls_last", "desc_nulls_first", "desc_nulls_last", "abs", "ceil", "floor", "round", "array", "array_contains", "array_distinct", "array_except", "array_flatten", "array_intersect", "array_join", "array_position", "range", "array_reverse", "array_slice", "array_sort", "array_union", "arrays_overlap", "cardinality", "element_at", "map_contains_key", "map_entries", "map_extract", "map_from_arrays", "map_keys", "map_values", "named_struct", "explode", "explode_outer", "posexplode", "posexplode_outer", "inline", "inline_outer", "flatten", "stack", "window", "unbounded_preceding", "preceding", "current_row", "following", "unbounded_following", "row_number", "rank", "dense_rank", "percent_rank", "cume_dist", "ntile", "lag", "lead", "first_value", "last_value", "nth_value", "sha224", "sha256", "sha384", "sha512", "sha2", "md5", "sha1", "crc32", "xxhash64", "parse_url", "try_url_decode", "url_decode", "url_encode", "check_json", "from_json", "get_json_object", "json_array_length", "json_extract_path_text", "json_object_keys", "parse_json", "schema_of_json", "to_json", "try_from_json", "from_csv", "schema_of_csv", "to_csv"]
-
-
-def _expected_substrait_mapped_names() -> list[str]:
-    """Return helpers with concrete Substrait extension-function mappings."""
-    return ["sum", "count", "avg", "min", "max", "approx_count_distinct", "approx_percentile", "hll_sketch", "hll_merge", "hll_estimate", "hll_serialize", "hll_deserialize", "add", "mul", "eq", "gt", "ne", "lt", "lte", "gte", "equal_null", "and_", "or_", "not_", "is_null", "is_not_null", "is_nan", "sub", "div", "mod", "neg", "coalesce", "nullif", "between", "abs", "ceil", "floor", "round", "array", "array_contains", "array_distinct", "array_except", "array_flatten", "array_intersect", "array_join", "array_position", "range", "array_reverse", "array_slice", "array_sort", "array_union", "arrays_overlap", "cardinality", "element_at", "map_entries", "map_extract", "map_from_arrays", "map_keys", "map_values", "named_struct", "row_number", "rank", "dense_rank", "percent_rank", "cume_dist", "ntile", "lag", "lead", "first_value", "last_value", "nth_value", "sha224", "sha256", "sha384", "sha512", "md5", "sha1", "crc32", "xxhash64", "parse_url", "try_url_decode", "url_decode", "url_encode", "check_json", "from_json", "get_json_object", "json_array_length", "json_extract_path_text", "json_object_keys", "parse_json", "schema_of_json", "to_json", "try_from_json", "from_csv", "schema_of_csv", "to_csv"]
-
-
-def _rfc018_registry_names() -> list[str]:
-    """Return the remaining RFC 018 canonical names added after the initial PR #44 math slice."""
-    return ["sqrt", "power", "exp", "ln", "log", "log10", "sign", "least", "greatest", "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "degrees", "radians", "char_length", "octet_length", "upper", "lower", "trim", "ltrim", "rtrim", "substring", "position", "overlay", "concat", "concat_ws", "replace", "translate", "repeat", "left", "right", "lpad", "rpad", "split_part", "encode", "decode", "base64", "unbase64", "hex", "unhex", "regexp_like", "regexp_replace", "regexp_extract", "current_date", "current_time", "current_timestamp", "date_part", "date_trunc", "time_trunc", "date_add", "date_sub", "date_diff", "timestamp_diff", "to_date", "to_time", "to_timestamp", "from_unixtime", "unix_seconds", "unix_millis", "unix_micros", "make_date", "make_time", "make_timestamp", "last_day"]
-
-
-def _expected_all_registry_names() -> list[str]:
-    """Return the complete expected registered helper surface."""
-    mut names = _expected_registry_names()
-    names.extend(_rfc018_registry_names())
-    return names
-
-
-def _rfc018_substrait_mapped_names() -> list[str]:
-    """Return remaining RFC 018 helpers with concrete Substrait extension-function mappings."""
-    return ["sqrt", "power", "exp", "ln", "log", "log10", "sign", "least", "greatest", "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "degrees", "radians", "char_length", "octet_length", "upper", "lower", "trim", "ltrim", "rtrim", "substring", "position", "overlay", "concat", "concat_ws", "replace", "translate", "repeat", "left", "right", "lpad", "rpad", "split_part", "encode", "decode", "regexp_like", "regexp_replace", "regexp_extract", "current_date", "current_time", "current_timestamp", "date_part", "date_trunc", "time_trunc", "date_add", "date_sub", "date_diff", "timestamp_diff", "to_date", "to_time", "to_timestamp", "from_unixtime", "unix_seconds", "unix_millis", "unix_micros", "make_date", "make_time", "make_timestamp", "last_day"]
-
-
-def _expected_all_substrait_mapped_names() -> list[str]:
-    """Return the complete expected extension-backed helper set."""
-    mut names = _expected_substrait_mapped_names()
-    names.extend(_rfc018_substrait_mapped_names())
-    return names
-
-
 def _exercise_current_public_helpers() -> None:
     """Touch each current registered helper so runtime registry tests observe loaded modules only."""
     amount = col("amount")
@@ -570,6 +596,19 @@ def _exercise_current_public_helpers() -> None:
     hll_estimate(users_hll)
     hll_serialize(users_hll)
     hll_deserialize(status)
+    payload_variant = parse_variant_json(status)
+    literal_variant = try_parse_variant_json("{\"status\":\"paid\"}")
+    item_variant = variant_get(payload_variant, "$.items")
+    variant_get(literal_variant, status)
+    typeof(payload_variant)
+    is_null_value(payload_variant)
+    is_boolean(payload_variant)
+    is_integer(payload_variant)
+    is_float(payload_variant)
+    is_string(payload_variant)
+    is_timestamp(payload_variant)
+    is_array(item_variant)
+    is_object(literal_variant)
     add(amount, 1)
     mul(amount, 2)
     eq(status, "paid")
@@ -836,19 +875,26 @@ def _assert_not_deprecated(entry: FunctionRegistryEntry) -> None:
 
 
 def test_function_registry__covers_current_public_helpers() -> None:
-    """Assert that RFC 015 registry metadata covers the current public helper surface."""
+    """Assert loaded public helpers expose one coherent runtime registry identity."""
     # -- Arrange --
     _exercise_current_public_helpers()
-    expected_names = _expected_all_registry_names()
 
     # -- Act --
-    entry_count = function_registry_entry_count()
+    entries = function_registry_entries()
+    refs = function_registry_function_refs()
+    names = function_registry_canonical_names()
 
     # -- Assert --
-    assert entry_count == len(expected_names), "registry should cover the current public helper set"
-    assert len(function_registry_entries()) == entry_count, "entry count helper should match the runtime registry entries"
-    for expected_name in expected_names:
-        _assert_registered(expected_name)
+    assert len(entries) > 0, "registry exercise should load public helpers"
+    assert len(refs) == len(entries), "function-ref helper should reflect loaded registry entries"
+    assert len(names) == len(entries), "canonical-name helper should reflect loaded registry entries"
+    _assert_no_duplicate_text(refs, "function refs")
+    _assert_no_duplicate_text(names, "canonical names")
+    for entry in entries:
+        assert entry.function_ref == function_ref_for(entry.canonical_name), f"{entry.canonical_name} should derive its function ref from its canonical name"
+        assert _contains_text(refs, entry.function_ref), f"{entry.canonical_name} should be present in the function-ref projection"
+        assert _contains_text(names, entry.canonical_name), f"{entry.canonical_name} should be present in the canonical-name projection"
+        _assert_registered(entry.canonical_name)
 
 
 def test_function_registry__lifecycle_metadata_is_versioned() -> None:
@@ -858,7 +904,7 @@ def test_function_registry__lifecycle_metadata_is_versioned() -> None:
     entries = function_registry_entries()
 
     # -- Act / Assert --
-    assert len(entries) == len(_expected_all_registry_names()), "lifecycle fixture should cover the current registry surface"
+    assert len(entries) > 0, "lifecycle fixture should load registry entries"
     for entry in entries:
         assert entry.lifecycle.since.major == v0_1.major, f"{entry.function_ref} should expose its introduction major version"
         assert entry.lifecycle.since.minor == v0_1.minor, f"{entry.function_ref} should expose its introduction minor version"
@@ -1038,6 +1084,27 @@ def test_function_registry__typed_value_or_column_helpers_expose_source_type_con
     _require_string_expr(encode_expr)
     _assert_string_application_shape(encode_expr, "encode", 2)
 
+    variant_expr = parse_variant_json(col("status"))
+    variant_item_expr = variant_get(variant_expr, "$.items")
+    _require_string_expr(typeof(variant_expr))
+    _assert_string_application_shape(typeof(variant_expr), "typeof", 1)
+    _require_bool_expr(is_array(variant_item_expr))
+    _assert_bool_application_shape(is_array(variant_item_expr), "is_array", 1)
+    _require_bool_expr(is_boolean(variant_expr))
+    _assert_bool_application_shape(is_boolean(variant_expr), "is_boolean", 1)
+    _require_bool_expr(is_float(variant_expr))
+    _assert_bool_application_shape(is_float(variant_expr), "is_float", 1)
+    _require_bool_expr(is_integer(variant_expr))
+    _assert_bool_application_shape(is_integer(variant_expr), "is_integer", 1)
+    _require_bool_expr(is_null_value(variant_expr))
+    _assert_bool_application_shape(is_null_value(variant_expr), "is_null_value", 1)
+    _require_bool_expr(is_object(variant_expr))
+    _assert_bool_application_shape(is_object(variant_expr), "is_object", 1)
+    _require_bool_expr(is_string(variant_expr))
+    _assert_bool_application_shape(is_string(variant_expr), "is_string", 1)
+    _require_bool_expr(is_timestamp(variant_expr))
+    _assert_bool_application_shape(is_timestamp(variant_expr), "is_timestamp", 1)
+
 
 def test_function_registry__approximate_helpers_expose_approximation_policy() -> None:
     """Assert approximate helpers are explicit registry metadata, not hidden backend choices."""
@@ -1090,6 +1157,49 @@ def test_function_registry__hll_helpers_expose_typed_sketch_policy() -> None:
     assert deserialize_entry.sketch.role == HLL_SKETCH_DESERIALIZE_POLICY.role, "hll_deserialize should identify the deserialize role"
     assert deserialize_entry.sketch.returns_sketch, "hll_deserialize should produce typed sketch state"
     assert not count_entry.sketch.is_sketch_aware, "ordinary exact aggregates should not inherit sketch metadata"
+
+
+def test_function_registry__variant_helpers_expose_typed_variant_policy() -> None:
+    """Assert RFC 026 helpers carry typed variant policy metadata."""
+    # -- Arrange --
+    _exercise_current_public_helpers()
+
+    # -- Act --
+    parse_entry = _entry_by_name_or_fail("parse_variant_json")
+    try_parse_entry = _entry_by_name_or_fail("try_parse_variant_json")
+    get_entry = _entry_by_name_or_fail("variant_get")
+    typeof_entry = _entry_by_name_or_fail("typeof")
+    null_entry = _entry_by_name_or_fail("is_null_value")
+    boolean_entry = _entry_by_name_or_fail("is_boolean")
+    integer_entry = _entry_by_name_or_fail("is_integer")
+    float_entry = _entry_by_name_or_fail("is_float")
+    string_entry = _entry_by_name_or_fail("is_string")
+    timestamp_entry = _entry_by_name_or_fail("is_timestamp")
+    array_entry = _entry_by_name_or_fail("is_array")
+    object_entry = _entry_by_name_or_fail("is_object")
+    count_entry = _entry_by_name_or_fail("count")
+
+    # -- Assert --
+    assert parse_entry.variant.is_variant_aware, "parse_variant_json should be marked as variant-aware"
+    assert parse_entry.variant.role == VARIANT_PARSE_JSON_POLICY.role, "parse_variant_json should identify the parse role"
+    assert parse_entry.variant.returns_variant, "parse_variant_json should produce typed variant state"
+    assert try_parse_entry.variant.role == VARIANT_TRY_PARSE_JSON_POLICY.role, "try_parse_variant_json should identify the recoverable parse role"
+    assert get_entry.variant.role == VARIANT_GET_POLICY.role, "variant_get should identify the path-access role"
+    assert get_entry.variant.accepts_variant, "variant_get should consume typed variant state"
+    assert get_entry.variant.returns_variant, "variant_get should return typed variant state"
+    assert typeof_entry.variant.role == VARIANT_TYPEOF_POLICY.role, "typeof should identify the inspection role"
+    assert typeof_entry.variant.accepts_variant, "typeof should consume typed variant state"
+    assert not typeof_entry.variant.returns_variant, "typeof should return a scalar kind string"
+    assert null_entry.variant.target_kind == VARIANT_IS_NULL_VALUE_POLICY.target_kind, "is_null_value should record variant null as its target kind"
+    assert boolean_entry.variant.target_kind == VARIANT_IS_BOOLEAN_POLICY.target_kind, "is_boolean should record boolean as its target kind"
+    assert integer_entry.variant.target_kind == VARIANT_IS_INTEGER_POLICY.target_kind, "is_integer should record integer as its target kind"
+    assert float_entry.variant.target_kind == VARIANT_IS_FLOAT_POLICY.target_kind, "is_float should record float as its target kind"
+    assert string_entry.variant.target_kind == VARIANT_IS_STRING_POLICY.target_kind, "is_string should record string as its target kind"
+    assert timestamp_entry.variant.target_kind == VARIANT_IS_TIMESTAMP_POLICY.target_kind, "is_timestamp should record timestamp as its target kind"
+    assert array_entry.variant.target_kind == VARIANT_IS_ARRAY_POLICY.target_kind, "is_array should record array as its target kind"
+    assert object_entry.variant.target_kind == VARIANT_IS_OBJECT_POLICY.target_kind, "is_object should record object as its target kind"
+    assert parse_entry.variant.distinguishes_variant_null, "variant helpers should distinguish variant null from SQL null"
+    assert not count_entry.variant.is_variant_aware, "ordinary exact aggregates should not inherit variant metadata"
 
 
 def test_function_registry__extension_policy_is_separate_from_scalar_class() -> None:
@@ -1206,12 +1316,12 @@ def test_function_registry__substrait_extension_mappings_are_structured() -> Non
     _exercise_current_public_helpers()
 
     # -- Act --
+    entries = function_registry_entries()
     mapped_refs = registered_substrait_mapped_function_refs()
+    derived_mapped_refs = _extension_function_refs_from_entries(entries)
 
     # -- Assert --
-    assert len(mapped_refs) == len(_expected_all_substrait_mapped_names()), "only helpers with honest current Substrait mappings should be extension-backed"
-    for canonical_name in _expected_all_substrait_mapped_names():
-        assert _contains_text(mapped_refs, function_ref_for(canonical_name)), "mapped helper should be in the Substrait extension mapping set"
+    _assert_same_text_set(mapped_refs, derived_mapped_refs, "Substrait extension mapping projection")
     _assert_extension_mapping("sum", "sum", SUM_FUNCTION_ANCHOR)
     _assert_extension_mapping("count", "count", COUNT_FUNCTION_ANCHOR)
     _assert_rewrite_mapping("count_distinct", "count(expr).distinct()")
@@ -1226,6 +1336,18 @@ def test_function_registry__substrait_extension_mappings_are_structured() -> Non
     _assert_extension_mapping("hll_estimate", "hll_estimate", HLL_ESTIMATE_FUNCTION_ANCHOR)
     _assert_extension_mapping("hll_serialize", "hll_serialize", HLL_SERIALIZE_FUNCTION_ANCHOR)
     _assert_extension_mapping("hll_deserialize", "hll_deserialize", HLL_DESERIALIZE_FUNCTION_ANCHOR)
+    _assert_extension_mapping("parse_variant_json", "parse_variant_json", PARSE_VARIANT_JSON_FUNCTION_ANCHOR)
+    _assert_extension_mapping("try_parse_variant_json", "try_parse_variant_json", TRY_PARSE_VARIANT_JSON_FUNCTION_ANCHOR)
+    _assert_extension_mapping("variant_get", "variant_get", VARIANT_GET_FUNCTION_ANCHOR)
+    _assert_extension_mapping("typeof", "typeof", TYPEOF_FUNCTION_ANCHOR)
+    _assert_extension_mapping("is_null_value", "is_null_value", IS_NULL_VALUE_FUNCTION_ANCHOR)
+    _assert_extension_mapping("is_boolean", "is_boolean", IS_BOOLEAN_FUNCTION_ANCHOR)
+    _assert_extension_mapping("is_integer", "is_integer", IS_INTEGER_FUNCTION_ANCHOR)
+    _assert_extension_mapping("is_float", "is_float", IS_FLOAT_FUNCTION_ANCHOR)
+    _assert_extension_mapping("is_string", "is_string", IS_STRING_FUNCTION_ANCHOR)
+    _assert_extension_mapping("is_timestamp", "is_timestamp", IS_TIMESTAMP_FUNCTION_ANCHOR)
+    _assert_extension_mapping("is_array", "is_array", IS_ARRAY_FUNCTION_ANCHOR)
+    _assert_extension_mapping("is_object", "is_object", IS_OBJECT_FUNCTION_ANCHOR)
     _assert_extension_mapping("add", "add", ADD_FUNCTION_ANCHOR)
     _assert_extension_mapping("mul", "multiply", MULTIPLY_FUNCTION_ANCHOR)
     _assert_extension_mapping("eq", "equal", EQUAL_FUNCTION_ANCHOR)

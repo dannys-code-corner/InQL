@@ -60,7 +60,8 @@ Hash helpers operate on UTF-8 string bytes and return lowercase hexadecimal stri
 
 JSON helpers validate, normalize, and project payload text. CSV parsing returns logical map values instead of JSON text.
 Explicit-schema JSON and CSV helpers derive their schema from Incan model type parameters. These helpers do not read
-external files or introduce a dynamic variant value type.
+external files or return typed variant values. Use [Variant functions](variants.md) when a plan needs semi-structured
+kind inspection.
 
 The DataFusion adapter executes the full RFC 022 catalog with native DataFusion functions where available and
 Incan-authored adapter callbacks for helpers that DataFusion does not expose natively.

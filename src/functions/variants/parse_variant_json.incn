@@ -1,0 +1,55 @@
+"""Strict JSON-to-variant parse helper."""
+
+from function_registry import (
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    VARIANT_PARSE_JSON_POLICY,
+    extension_mapping,
+    v0_1,
+    variant_scalar_spec,
+)
+from functions.inputs import StrValueOrColumn, str_value_or_column_expr
+from functions.registry import register_function, registered_application_with_options
+from substrait.function_extensions import PARSE_VARIANT_JSON_FUNCTION_ANCHOR
+from variant_types import VariantExpr, VariantKind, VariantParseMode, variant_parse_options, variant_type, variant_value
+
+
+@register_function(variant_scalar_spec(
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    variant=VARIANT_PARSE_JSON_POLICY,
+    substrait=extension_mapping("parse_variant_json", PARSE_VARIANT_JSON_FUNCTION_ANCHOR),
+))
+pub def parse_variant_json(expr: StrValueOrColumn) -> VariantExpr:
+    """
+    Parse JSON text into a typed semi-structured variant value.
+
+    Examples:
+        payload_value = parse_variant_json(col("payload"))
+        literal_payload = parse_variant_json("{"status":"paid"}")
+
+    Parameters:
+        expr: String value or expression containing a JSON payload.
+    """
+    logical_type = variant_type(VariantKind.Any)
+    return variant_value(
+        registered_application_with_options(
+            "parse_variant_json",
+            [str_value_or_column_expr(expr)],
+            variant_parse_options(logical_type, VariantParseMode.Strict),
+        ),
+        logical_type,
+    )
+
+
+module tests:
+    from projection_builders import col, column_expr_argument_count, column_expr_function_name, column_expr_option_value
+    from variant_types import VARIANT_PARSE_MODE_OPTION
+    def test_parse_variant_json_returns_typed_variant_expr() -> None:
+        payload = parse_variant_json(col("payload"))
+        assert column_expr_function_name(payload.expr) == "parse_variant_json"
+        assert column_expr_argument_count(payload.expr) == 1
+        assert column_expr_option_value(payload.expr, VARIANT_PARSE_MODE_OPTION) == "strict"
+    def test_parse_variant_json_accepts_literal_payloads() -> None:
+        payload = parse_variant_json("{\"status\":\"paid\"}")
+        assert column_expr_function_name(payload.expr) == "parse_variant_json"

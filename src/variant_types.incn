@@ -1,0 +1,171 @@
+"""Semi-structured variant logical value metadata and expression wrappers."""
+
+from functions.inputs import (
+    ScalarValueOrColumn,
+    StrValueOrColumn,
+    scalar_value_or_column_expr,
+    str_value_or_column_expr,
+)
+from projection_builders import ColumnExpr, ScalarFunctionOption, col, scalar_function_option, str_expr
+from rust::incan_stdlib::errors import raise_value_error
+
+pub const VARIANT_KIND_OPTION: str = "variant_kind"
+pub const VARIANT_ENCODING_OPTION: str = "variant_encoding"
+pub const VARIANT_PARSE_MODE_OPTION: str = "variant_parse_mode"
+
+
+@derive(Clone)
+pub enum VariantKind(str):
+    """Portable semi-structured variant kind identity."""
+
+    Any = "any"
+    NullValue = "null"
+    Boolean = "boolean"
+    Integer = "integer"
+    Float = "float"
+    String = "string"
+    Timestamp = "timestamp"
+    Array = "array"
+    Object = "object"
+
+
+@derive(Clone)
+pub enum VariantEncoding(str):
+    """External payload encoding used to produce or serialize variant values."""
+
+    Json = "json"
+
+
+@derive(Clone)
+pub enum VariantParseMode(str):
+    """Strictness mode for variant parse helpers."""
+
+    Strict = "strict"
+    Recoverable = "recoverable"
+
+
+@derive(Clone)
+pub model VariantLogicalType:
+    """Logical type carried by a semi-structured variant expression."""
+
+    pub kind: VariantKind
+    pub encoding: VariantEncoding
+
+
+@derive(Clone)
+pub model VariantExpr:
+    """Scalar expression paired with variant logical type metadata."""
+
+    pub expr: ColumnExpr
+    pub variant_type: VariantLogicalType
+
+
+pub def variant_type(
+    kind: VariantKind = VariantKind.Any,
+    encoding: VariantEncoding = VariantEncoding.Json,
+) -> VariantLogicalType:
+    """
+    Build variant logical type metadata.
+
+    Examples:
+        payload_type = variant_type()
+        object_type = variant_type(VariantKind.Object)
+
+    Parameters:
+        kind: Expected or known variant kind; `Any` means kind is discovered at runtime.
+        encoding: Payload encoding used for explicit parse and path semantics.
+    """
+    return VariantLogicalType(kind=kind, encoding=encoding)
+
+
+pub def variant_value(expr: ScalarValueOrColumn, variant_type: VariantLogicalType) -> VariantExpr:
+    """
+    Attach variant logical type metadata to a scalar expression.
+
+    Examples:
+        payload = variant_value(col("payload_value"), variant_type())
+        literal_payload = variant_value("{"status":"paid"}", variant_type())
+
+    Parameters:
+        expr: Primitive value or scalar expression carrying semi-structured variant state.
+        variant_type: Explicit logical variant type for the expression.
+    """
+    return VariantExpr(expr=scalar_value_or_column_expr(expr), variant_type=variant_type)
+
+
+pub def variant_col(name: str, variant_type: VariantLogicalType = variant_type()) -> VariantExpr:
+    """
+    Reference one variant-typed column.
+
+    Examples:
+        payload = variant_col("payload_value")
+
+    Parameters:
+        name: Column name containing semi-structured variant state.
+        variant_type: Explicit logical variant type for the column.
+    """
+    return variant_value(col(name), variant_type)
+
+
+pub def variant_types_compatible(left: VariantLogicalType, right: VariantLogicalType) -> bool:
+    """Return whether two variant logical types can participate in the same typed helper contract."""
+    if left.encoding != right.encoding:
+        return false
+    return left.kind == VariantKind.Any or right.kind == VariantKind.Any or left.kind == right.kind
+
+
+pub def variant_scalar_options(variant_type: VariantLogicalType) -> list[ScalarFunctionOption]:
+    """Return Substrait function options that preserve variant logical type metadata."""
+    return [scalar_function_option(VARIANT_KIND_OPTION, variant_type.kind.value()), scalar_function_option(
+        VARIANT_ENCODING_OPTION,
+        variant_type.encoding.value(),
+    )]
+
+
+pub def variant_parse_options(variant_type: VariantLogicalType, mode: VariantParseMode) -> list[ScalarFunctionOption]:
+    """Return Substrait function options for a variant parse helper."""
+    mut options = variant_scalar_options(variant_type)
+    options.append(scalar_function_option(VARIANT_PARSE_MODE_OPTION, mode.value()))
+    return options
+
+
+pub def variant_path_expr(path: str) -> ColumnExpr:
+    """Return one validated variant path literal expression."""
+    if len(path) == 0:
+        return raise_value_error("variant path must not be empty")
+    if not path.starts_with("$"):
+        return raise_value_error("variant path must start with `$`")
+    return str_expr(path)
+
+
+pub def variant_path_value_or_column_expr(path: StrValueOrColumn) -> ColumnExpr:
+    """Return a variant path value as an expression, validating only literal path strings."""
+    match path:
+        str(text) => return variant_path_expr(text)
+        value => return str_value_or_column_expr(value)
+
+
+module tests:
+    from std.testing import assert_raises
+    from projection_builders import column_expr_name
+    def _invalid_variant_path() -> None:
+        """Build invalid variant path metadata for ValueError assertions."""
+        variant_path_expr("items")
+        return
+    def test_variant_type_builds_logical_metadata() -> None:
+        payload_type = variant_type(VariantKind.Object)
+        assert payload_type.kind == VariantKind.Object
+        assert payload_type.encoding == VariantEncoding.Json
+    def test_variant_types_treat_any_as_runtime_discovered_kind() -> None:
+        assert variant_types_compatible(variant_type(), variant_type(VariantKind.Object))
+        assert variant_types_compatible(variant_type(VariantKind.Array), variant_type())
+        assert not variant_types_compatible(variant_type(VariantKind.Array), variant_type(VariantKind.Object))
+    def test_variant_col_preserves_expression_and_type() -> None:
+        payload = variant_col("payload_value", variant_type(VariantKind.Object))
+        assert column_expr_name(payload.expr) == "payload_value"
+        assert payload.variant_type.kind == VariantKind.Object
+    def test_variant_value_accepts_literal_values() -> None:
+        payload = variant_value("{\"status\":\"paid\"}", variant_type(VariantKind.Object))
+        assert payload.variant_type.kind == VariantKind.Object
+    def test_variant_path_expr_requires_explicit_root() -> None:
+        assert_raises[ValueError](_invalid_variant_path)

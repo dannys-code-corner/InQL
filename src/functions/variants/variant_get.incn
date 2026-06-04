@@ -1,0 +1,64 @@
+"""Variant path access helper."""
+
+from function_registry import (
+    FunctionLifecycle,
+    FunctionNullBehavior,
+    VARIANT_GET_POLICY,
+    extension_mapping,
+    v0_1,
+    variant_scalar_spec,
+)
+from functions.inputs import StrValueOrColumn
+from functions.registry import register_function, registered_application_with_options
+from substrait.function_extensions import VARIANT_GET_FUNCTION_ANCHOR
+from variant_types import (
+    VariantExpr,
+    VariantKind,
+    variant_path_value_or_column_expr,
+    variant_scalar_options,
+    variant_type,
+    variant_value,
+)
+
+
+@register_function(variant_scalar_spec(
+    lifecycle=FunctionLifecycle(since=v0_1, changed=[], deprecated=None),
+    null_behavior=FunctionNullBehavior.DependsOnInputs,
+    variant=VARIANT_GET_POLICY,
+    substrait=extension_mapping("variant_get", VARIANT_GET_FUNCTION_ANCHOR),
+))
+pub def variant_get(variant: VariantExpr, path: StrValueOrColumn) -> VariantExpr:
+    """
+    Access one path from a typed semi-structured variant value.
+
+    Examples:
+        items = variant_get(payload_value, "$.items")
+        dynamic_item = variant_get(payload_value, col("json_path"))
+
+    Parameters:
+        variant: Typed variant expression to inspect.
+        path: Literal path beginning with `$`, or a string expression containing a path.
+    """
+    logical_type = variant_type(VariantKind.Any, variant.variant_type.encoding)
+    return variant_value(
+        registered_application_with_options(
+            "variant_get",
+            [variant.expr, variant_path_value_or_column_expr(path)],
+            variant_scalar_options(logical_type),
+        ),
+        logical_type,
+    )
+
+
+module tests:
+    from projection_builders import col, column_expr_argument_count, column_expr_function_name
+    from functions.variants.parse_variant_json import parse_variant_json
+    def test_variant_get_returns_typed_variant_expr() -> None:
+        payload = parse_variant_json(col("payload"))
+        item = variant_get(payload, "$.items")
+        assert column_expr_function_name(item.expr) == "variant_get"
+        assert column_expr_argument_count(item.expr) == 2
+    def test_variant_get_accepts_path_columns() -> None:
+        payload = parse_variant_json(col("payload"))
+        item = variant_get(payload, col("json_path"))
+        assert column_expr_function_name(item.expr) == "variant_get"
