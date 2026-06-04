@@ -19,6 +19,7 @@ from functions import (
 from function_registry import function_ref_for
 from projection_builders import (
     BoolColumnExpr,
+    StringColumnExpr,
     column_expr_argument_count,
     column_expr_function_name,
     column_expr_function_ref,
@@ -49,6 +50,12 @@ def _assert_variant_predicate(expr_name: str, predicate_expr: BoolColumnExpr) ->
     assert column_expr_argument_count(predicate_expr) == 1, "variant predicate should carry one variant input expression"
     assert column_expr_option_value(predicate_expr, VARIANT_KIND_OPTION) == "any", "variant predicate should preserve variant kind metadata"
     assert column_expr_option_value(predicate_expr, VARIANT_ENCODING_OPTION) == "json", "variant predicate should preserve variant encoding metadata"
+
+
+def _assert_variant_typeof(kind_expr: StringColumnExpr) -> None:
+    assert column_expr_function_name(kind_expr) == "typeof", "typeof should preserve the canonical function name"
+    assert column_expr_function_ref(kind_expr) == function_ref_for("typeof"), "typeof should preserve the function ref"
+    assert column_expr_argument_count(kind_expr) == 1, "typeof should carry one variant input expression"
 
 
 def test_variant_type_and_columns_preserve_logical_metadata() -> None:
@@ -125,7 +132,4 @@ def test_variant_inspection_helpers_accept_only_typed_variant_inputs() -> None:
     _assert_variant_predicate("is_object", is_object(payload))
     _assert_variant_predicate("is_string", is_string(payload))
     _assert_variant_predicate("is_timestamp", is_timestamp(payload))
-    kind_expr = typeof(payload)
-    assert column_expr_function_name(kind_expr) == "typeof", "typeof should preserve the canonical function name"
-    assert column_expr_function_ref(kind_expr) == function_ref_for("typeof"), "typeof should preserve the function ref"
-    assert column_expr_argument_count(kind_expr) == 1, "typeof should carry one variant input expression"
+    _assert_variant_typeof(typeof(payload))

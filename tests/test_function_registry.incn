@@ -1089,6 +1089,8 @@ def test_function_registry__typed_value_or_column_helpers_expose_source_type_con
 
     variant_expr = parse_variant_json(col("status"))
     variant_item_expr = variant_get(variant_expr, "$.items")
+    _require_string_expr(typeof(variant_expr))
+    _assert_string_application_shape(typeof(variant_expr), "typeof", 1)
     _require_bool_expr(is_array(variant_item_expr))
     _assert_bool_application_shape(is_array(variant_item_expr), "is_array", 1)
     _require_bool_expr(is_boolean(variant_expr))
