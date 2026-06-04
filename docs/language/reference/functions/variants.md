@@ -37,9 +37,9 @@ projected = (
 )
 ```
 
-Variant predicates accept `VariantExpr` values. They do not parse strings directly. Parse helpers accept
-`StrValueOrColumn` inputs; that keeps parsing, variant inspection, and RFC 022 JSON text helpers separate without
-forcing authors to wrap literal payloads in `lit(...)`.
+Variant predicates accept `VariantExpr` values and return `BoolColumnExpr` values. They do not parse strings directly.
+Parse helpers accept `StrValueOrColumn` inputs; that keeps parsing, variant inspection, and RFC 022 JSON text helpers
+separate without forcing authors to wrap literal payloads in `lit(...)`.
 
 RFC 026 helpers lower through InQL-owned Substrait extension mappings and carry variant metadata in function options.
 The DataFusion adapter currently reports a backend planning diagnostic for typed variant execution because it has no

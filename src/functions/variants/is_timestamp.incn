@@ -8,8 +8,8 @@ from function_registry import (
     v0_1,
     variant_scalar_spec,
 )
-from functions.registry import register_function, registered_application_with_options
-from projection_builders import ColumnExpr
+from functions.registry import register_function, registered_bool_application_with_options
+from projection_builders import BoolColumnExpr
 from substrait.function_extensions import IS_TIMESTAMP_FUNCTION_ANCHOR
 from variant_types import VariantExpr, variant_scalar_options
 
@@ -20,7 +20,7 @@ from variant_types import VariantExpr, variant_scalar_options
     variant=VARIANT_IS_TIMESTAMP_POLICY,
     substrait=extension_mapping("is_timestamp", IS_TIMESTAMP_FUNCTION_ANCHOR),
 ))
-pub def is_timestamp(variant: VariantExpr) -> ColumnExpr:
+pub def is_timestamp(variant: VariantExpr) -> BoolColumnExpr:
     """
     Return whether one typed variant value is a present timestamp.
 
@@ -30,7 +30,7 @@ pub def is_timestamp(variant: VariantExpr) -> ColumnExpr:
     Parameters:
         variant: Typed variant expression to inspect.
     """
-    return registered_application_with_options(
+    return registered_bool_application_with_options(
         "is_timestamp",
         [variant.expr],
         variant_scalar_options(variant.variant_type),

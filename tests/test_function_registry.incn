@@ -1087,6 +1087,25 @@ def test_function_registry__typed_value_or_column_helpers_expose_source_type_con
     _require_string_expr(encode_expr)
     _assert_string_application_shape(encode_expr, "encode", 2)
 
+    variant_expr = parse_variant_json(col("status"))
+    variant_item_expr = variant_get(variant_expr, "$.items")
+    _require_bool_expr(is_array(variant_item_expr))
+    _assert_bool_application_shape(is_array(variant_item_expr), "is_array", 1)
+    _require_bool_expr(is_boolean(variant_expr))
+    _assert_bool_application_shape(is_boolean(variant_expr), "is_boolean", 1)
+    _require_bool_expr(is_float(variant_expr))
+    _assert_bool_application_shape(is_float(variant_expr), "is_float", 1)
+    _require_bool_expr(is_integer(variant_expr))
+    _assert_bool_application_shape(is_integer(variant_expr), "is_integer", 1)
+    _require_bool_expr(is_null_value(variant_expr))
+    _assert_bool_application_shape(is_null_value(variant_expr), "is_null_value", 1)
+    _require_bool_expr(is_object(variant_expr))
+    _assert_bool_application_shape(is_object(variant_expr), "is_object", 1)
+    _require_bool_expr(is_string(variant_expr))
+    _assert_bool_application_shape(is_string(variant_expr), "is_string", 1)
+    _require_bool_expr(is_timestamp(variant_expr))
+    _assert_bool_application_shape(is_timestamp(variant_expr), "is_timestamp", 1)
+
 
 def test_function_registry__approximate_helpers_expose_approximation_policy() -> None:
     """Assert approximate helpers are explicit registry metadata, not hidden backend choices."""

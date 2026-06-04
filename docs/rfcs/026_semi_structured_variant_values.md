@@ -138,8 +138,8 @@ The implemented public model is:
 - `VariantKind`, `VariantEncoding`, `VariantParseMode`, `VariantLogicalType`, and `VariantExpr`.
 - Metadata helpers: `variant_type(...)`, `variant_col(...)`, `variant_value(...)`, and `variant_types_compatible(...)`.
 - Parse/access helpers: `parse_variant_json(...)`, `try_parse_variant_json(...)`, and `variant_get(...)`.
-- Inspection helpers: `typeof(...)`, `is_null_value(...)`, `is_boolean(...)`, `is_integer(...)`, `is_float(...)`,
-  `is_string(...)`, `is_timestamp(...)`, `is_array(...)`, and `is_object(...)`.
+- Inspection helpers: `typeof(...)`, plus boolean predicates `is_null_value(...)`, `is_boolean(...)`,
+  `is_integer(...)`, `is_float(...)`, `is_string(...)`, `is_timestamp(...)`, `is_array(...)`, and `is_object(...)`.
 
 Each public helper is registry-backed with explicit variant policy metadata. Variant helpers lower through InQL-owned
 Substrait extension mappings and carry variant kind, encoding, and parse mode as scalar function options where needed.

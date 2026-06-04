@@ -18,7 +18,7 @@ from functions import (
 )
 from function_registry import function_ref_for
 from projection_builders import (
-    ColumnExpr,
+    BoolColumnExpr,
     column_expr_argument_count,
     column_expr_function_name,
     column_expr_function_ref,
@@ -43,7 +43,7 @@ def _invalid_variant_path_without_root() -> None:
     return
 
 
-def _assert_variant_predicate(expr_name: str, predicate_expr: ColumnExpr) -> None:
+def _assert_variant_predicate(expr_name: str, predicate_expr: BoolColumnExpr) -> None:
     assert column_expr_function_name(predicate_expr) == expr_name, "variant predicate should preserve the canonical function name"
     assert column_expr_function_ref(predicate_expr) == function_ref_for(expr_name), "variant predicate should preserve the function ref"
     assert column_expr_argument_count(predicate_expr) == 1, "variant predicate should carry one variant input expression"
