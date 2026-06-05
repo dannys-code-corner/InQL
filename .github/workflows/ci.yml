@@ -19,7 +19,7 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  INCAN_REF: release/v0.3
+  INCAN_REF: bugfix/188-install-incan-targets
   EXPECTED_INCAN_VERSION: 0.3.0-rc50
   RUST_BACKTRACE: 1
   INCAN_NO_BANNER: 1
@@ -51,9 +51,6 @@ jobs:
         with:
           profile: debug
           cache-shared-key: inql-incan-${{ runner.os }}-${{ env.EXPECTED_INCAN_VERSION }}
-
-      - name: Install Incan vocab target
-        run: rustup target add wasm32-wasip1
 
       - name: Cache generated InQL Cargo artifacts
         uses: actions/cache@v4
