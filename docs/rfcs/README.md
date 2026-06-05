@@ -45,6 +45,7 @@ InQL uses its **own** RFC series (starting at 000), independent of the [Incan la
 | [036][rfc-036] | Draft       | Governed plan bundle                                                                              |     |
 | [037][rfc-037] | Draft       | Plan diff and blast-radius inputs                                                                 |     |
 | [038][rfc-038] | Draft       | Evidence export bridges                                                                           |     |
+| [039][rfc-039] | Draft       | Pandas-familiar exploration API                                                                   |     |
 | [040][rfc-040] | Draft       | Interoperability semantic profiles                                                                |     |
 | [041][rfc-041] | Draft       | Prism plan ingress and external client frontends                                                   |     |
 
@@ -97,6 +98,7 @@ New RFCs should follow [TEMPLATE.md] (aligned with Incan’s RFC structure, adap
 [rfc-036]: 036_governed_plan_bundle.md
 [rfc-037]: 037_plan_diff_blast_radius_inputs.md
 [rfc-038]: 038_evidence_export_bridges.md
+[rfc-039]: 039_pandas_familiar_exploration_api.md
 [rfc-040]: 040_interoperability_semantic_profiles.md
 [rfc-041]: 041_prism_plan_ingress_frontends.md
 [incan-rfcs]: https://github.com/dannys-code-corner/incan/tree/main/workspaces/docs-site/docs/RFCs
