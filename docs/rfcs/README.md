@@ -33,6 +33,7 @@ InQL uses its **own** RFC series (starting at 000), independent of the [Incan la
 | [024][rfc-024] | Implemented | Function extension policy                                                                         |     |
 | [025][rfc-025] | Draft       | Typed sketch logical values                                                                       |     |
 | [026][rfc-026] | Draft       | Semi-structured variant logical values                                                            |     |
+| [039][rfc-039] | Draft       | Pandas-familiar exploration API                                                                   |     |
 
 <!-- TODO: #7: auto populate this table (like how we do in incan) -->
 
@@ -71,4 +72,5 @@ New RFCs should follow [TEMPLATE.md] (aligned with Incan’s RFC structure, adap
 [rfc-024]: 024_function_extension_policy.md
 [rfc-025]: 025_typed_sketch_logical_values.md
 [rfc-026]: 026_semi_structured_variant_values.md
+[rfc-039]: 039_pandas_familiar_exploration_api.md
 [incan-rfcs]: https://github.com/dannys-code-corner/incan/tree/main/workspaces/docs-site/docs/RFCs

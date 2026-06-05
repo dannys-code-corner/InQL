@@ -6,16 +6,26 @@ This façade keeps one stable internal import surface while the implementation i
 
 - `prism.types`: shared node/view/explain types
 - `prism.store`: append-only authored storage and cross-store adoption
+- `prism.ingress`: experimental unresolved plan ingress for foreign frontends
 - `prism.rewrite`: canonical rewrite derivation and explain artifacts
 - `prism.lower`: lowering from rewritten views into Substrait
 """
 
 from rust::substrait::proto import Plan, Rel
+from rust::incan_stdlib::errors import raise_value_error
 from aggregate_builders import AggregateMeasure
 from filter_builders import always_true
 from generator_builders import GeneratorApplication
-from projection_builders import ColumnExpr, ProjectionAssignment, with_column_assignment
+from projection_builders import ColumnExpr, ProjectionAssignment, col, int_expr, with_column_assignment
 from window_builders import WindowFunctionApplication, window_projection
+from functions.operators.gt import gt
+from prism.ingress import (
+    PrismIngressNode,
+    PrismIngressNodeKind,
+    PrismIngressPlan,
+    prism_ingress_node_at,
+    prism_ingress_node_count,
+)
 from prism.lower import (
     lower_prism_tip as lower_prism_tip_impl,
     prism_rel_to_plan,
@@ -310,6 +320,41 @@ pub def prism_cursor_named_table[T with Clone](table_name: str) -> PrismCursor[T
         projection_assignments=[],
     )
     return PrismCursor(store_id=store_id, tip_id=tip_id, _type_marker=[])
+
+
+pub def prism_analyze_ingress_plan[T with Clone](plan: PrismIngressPlan) -> PrismCursor[T]:
+    """Analyze one unresolved ingress plan into Prism's canonical authored cursor substrate."""
+    if prism_ingress_node_count(plan) == 0:
+        return _raise_prism_ingress_error[T]("Prism ingress plan requires at least one node")
+    return _prism_analyze_ingress_node[T](plan, plan.root_node_id)
+
+
+def _prism_analyze_ingress_node[T with Clone](plan: PrismIngressPlan, node_id: int) -> PrismCursor[T]:
+    """Analyze one ingress node and its inputs into a Prism cursor."""
+    node = prism_ingress_node_at(plan, node_id)
+    match node.kind:
+        PrismIngressNodeKind.ReadNamedTable => return prism_cursor_named_table[T](node.table_name)
+        PrismIngressNodeKind.FilterGtInt =>
+            input = _single_ingress_input[T](plan, node)
+            return input.filter(gt(col(node.column_name), int_expr(node.int_value)))
+        PrismIngressNodeKind.WithColumnAlias =>
+            input = _single_ingress_input[T](plan, node)
+            return input.with_column(node.output_name, col(node.column_name))
+        PrismIngressNodeKind.Limit =>
+            input = _single_ingress_input[T](plan, node)
+            return input.limit(node.limit_count)
+
+
+def _single_ingress_input[T with Clone](plan: PrismIngressPlan, node: PrismIngressNode) -> PrismCursor[T]:
+    """Analyze the single input required by one unary ingress node."""
+    if len(node.input_ids) != 1:
+        return _raise_prism_ingress_error[T](f"{node.kind.value()} ingress nodes require exactly one input")
+    return _prism_analyze_ingress_node[T](plan, node.input_ids[0])
+
+
+def _raise_prism_ingress_error[T with Clone](message: str) -> PrismCursor[T]:
+    """Raise one Prism ingress diagnostic from a generic cursor-returning call site."""
+    return raise_value_error(message)
 
 
 pub def prism_cursor_apply_filter[T with Clone](cursor: PrismCursor[T], predicate: ColumnExpr) -> PrismCursor[T]:

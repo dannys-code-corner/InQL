@@ -1,0 +1,179 @@
+"""Experimental unresolved plan ingress types for foreign frontends such as Spark Connect."""
+
+from rust::incan_stdlib::errors import raise_value_error
+
+
+@derive(Clone)
+pub enum PrismInputDialect(str):
+    """External or native surface that produced one unresolved Prism ingress plan."""
+
+    NativeInql = "native_inql"
+    SparkConnect = "spark_connect"
+
+
+@derive(Clone)
+pub enum PrismIngressNodeKind(str):
+    """Small executable spike subset of unresolved plan nodes accepted by Prism ingress."""
+
+    ReadNamedTable = "ReadNamedTable"
+    FilterGtInt = "FilterGtInt"
+    WithColumnAlias = "WithColumnAlias"
+    Limit = "Limit"
+
+
+@derive(Clone)
+pub model PrismIngressNode:
+    """
+    One unresolved ingress node before Prism analysis.
+
+    The payload is intentionally wide for the spike: each node kind uses only the fields it needs. A production version
+    should split relation, expression, command, and origin metadata into richer typed models.
+    """
+
+    pub node_id: int
+    pub kind: PrismIngressNodeKind
+    pub input_ids: list[int]
+    pub table_name: str
+    pub column_name: str
+    pub output_name: str
+    pub int_value: int
+    pub limit_count: int
+
+
+@derive(Clone)
+pub model PrismIngressPlan:
+    """One unresolved ingress plan rooted at a node id and tagged with its source dialect."""
+
+    pub dialect: PrismInputDialect
+    pub nodes: list[PrismIngressNode]
+    pub root_node_id: int
+
+
+pub def prism_spark_connect_read_named_table(table_name: str) -> PrismIngressPlan:
+    """Build a Spark Connect-shaped unresolved named-table read plan."""
+    return PrismIngressPlan(
+        dialect=PrismInputDialect.SparkConnect,
+        nodes=[PrismIngressNode(
+            node_id=0,
+            kind=PrismIngressNodeKind.ReadNamedTable,
+            input_ids=[],
+            table_name=table_name,
+            column_name="",
+            output_name="",
+            int_value=0,
+            limit_count=0,
+        )],
+        root_node_id=0,
+    )
+
+
+pub def prism_ingress_filter_gt_int(plan: PrismIngressPlan, column_name: str, value: int) -> PrismIngressPlan:
+    """Append an unresolved `column > int` filter node to one ingress plan."""
+    return _append_unary_node(
+        plan,
+        PrismIngressNodeKind.FilterGtInt,
+        table_name="",
+        column_name=column_name,
+        output_name="",
+        int_value=value,
+        limit_count=0,
+    )
+
+
+pub def prism_ingress_with_column_alias(
+    plan: PrismIngressPlan,
+    output_name: str,
+    source_column_name: str,
+) -> PrismIngressPlan:
+    """Append an unresolved Spark-style `withColumn(output, col(source))` projection node."""
+    return _append_unary_node(
+        plan,
+        PrismIngressNodeKind.WithColumnAlias,
+        table_name="",
+        column_name=source_column_name,
+        output_name=output_name,
+        int_value=0,
+        limit_count=0,
+    )
+
+
+pub def prism_ingress_limit(plan: PrismIngressPlan, count: int) -> PrismIngressPlan:
+    """Append an unresolved row-limit node to one ingress plan."""
+    if count < 0:
+        return raise_value_error("Prism ingress limit requires a non-negative count")
+    return _append_unary_node(
+        plan,
+        PrismIngressNodeKind.Limit,
+        table_name="",
+        column_name="",
+        output_name="",
+        int_value=0,
+        limit_count=count,
+    )
+
+
+pub def prism_ingress_dialect_name(plan: PrismIngressPlan) -> str:
+    """Return the stable dialect label for one ingress plan."""
+    return plan.dialect.value()
+
+
+pub def prism_ingress_node_count(plan: PrismIngressPlan) -> int:
+    """Return the number of unresolved nodes in one ingress plan."""
+    return len(plan.nodes)
+
+
+pub def prism_ingress_root_kind_name(plan: PrismIngressPlan) -> str:
+    """Return the root unresolved node kind name for one ingress plan."""
+    return _ingress_node_at(plan, plan.root_node_id).kind.value()
+
+
+pub def prism_ingress_node_at(plan: PrismIngressPlan, node_id: int) -> PrismIngressNode:
+    """Return one ingress node by id with validation."""
+    return _ingress_node_at(plan, node_id)
+
+
+def _append_unary_node(
+    plan: PrismIngressPlan,
+    kind: PrismIngressNodeKind,
+    table_name: str,
+    column_name: str,
+    output_name: str,
+    int_value: int,
+    limit_count: int,
+) -> PrismIngressPlan:
+    """Append one unary ingress node while preserving source dialect and prior unresolved nodes."""
+    _validate_plan_root(plan)
+    mut nodes = [node for node in plan.nodes]
+    next_id = len(nodes)
+    nodes.append(
+        PrismIngressNode(
+            node_id=next_id,
+            kind=kind,
+            input_ids=[plan.root_node_id],
+            table_name=table_name,
+            column_name=column_name,
+            output_name=output_name,
+            int_value=int_value,
+            limit_count=limit_count,
+        ),
+    )
+    return PrismIngressPlan(dialect=plan.dialect, nodes=nodes, root_node_id=next_id)
+
+
+def _validate_plan_root(plan: PrismIngressPlan) -> None:
+    """Reject ingress plans whose root does not point at an existing unresolved node."""
+    if len(plan.nodes) == 0:
+        return raise_value_error("Prism ingress plan requires at least one node")
+    if plan.root_node_id < 0 or plan.root_node_id >= len(plan.nodes):
+        return raise_value_error("Prism ingress root node id is out of range")
+    return
+
+
+def _ingress_node_at(plan: PrismIngressPlan, node_id: int) -> PrismIngressNode:
+    """Return one ingress node by id after bounds validation."""
+    if node_id < 0 or node_id >= len(plan.nodes):
+        return raise_value_error("Prism ingress node id is out of range")
+    node = plan.nodes[node_id]
+    if node.node_id != node_id:
+        return raise_value_error("Prism ingress node id does not match its ordinal position")
+    return node

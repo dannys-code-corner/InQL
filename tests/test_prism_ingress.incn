@@ -1,0 +1,97 @@
+"""Executable Prism ingress spike tests for Spark Connect-shaped unresolved plans."""
+
+from std.testing import assert_raises
+from prism import (
+    PrismCursor,
+    prism_analyze_ingress_plan,
+    prism_cursor_authored_node_count,
+    prism_cursor_output_columns,
+    prism_cursor_tip_kind_name,
+)
+from prism.ingress import (
+    PrismIngressPlan,
+    PrismInputDialect,
+    prism_ingress_dialect_name,
+    prism_ingress_filter_gt_int,
+    prism_ingress_limit,
+    prism_ingress_node_count,
+    prism_ingress_root_kind_name,
+    prism_ingress_with_column_alias,
+    prism_spark_connect_read_named_table,
+)
+from substrait.inspect import plan_contains_relation_kind, relation_kind_name, root_rel
+from substrait.schema import RowColumnSpec, SubstraitPrimitiveKind
+from substrait.schema_registry import register_named_table_schema
+
+
+@derive(Clone)
+model IngressOrder:
+    id: int
+    amount: int
+
+
+def _register_ingress_order_schema(table_name: str) -> None:
+    """Register one two-column schema used by executable Prism ingress spike tests."""
+    register_named_table_schema(
+        table_name,
+        [RowColumnSpec(name="id", kind=SubstraitPrimitiveKind.I64, nullable=false), RowColumnSpec(
+            name="amount",
+            kind=SubstraitPrimitiveKind.I64,
+            nullable=false,
+        )],
+    )
+
+
+def _analyze_empty_ingress_plan() -> None:
+    """Call Prism ingress analysis with an invalid empty plan for ValueError assertions."""
+    plan = PrismIngressPlan(dialect=PrismInputDialect.SparkConnect, nodes=[], root_node_id=0)
+    prism_analyze_ingress_plan[IngressOrder](plan)
+    return
+
+
+def test_prism_ingress__spark_connect_filter_limit_builds_real_prism_plan() -> None:
+    # -- Arrange --
+    table_name = "orders_prism_ingress_filter_limit"
+    _register_ingress_order_schema(table_name)
+    ingress = prism_ingress_limit(
+        prism_ingress_filter_gt_int(prism_spark_connect_read_named_table(table_name), "amount", 100),
+        5,
+    )
+
+    # -- Act --
+    cursor: PrismCursor[IngressOrder] = prism_analyze_ingress_plan(ingress)
+    plan = cursor.to_substrait_plan()
+
+    # -- Assert --
+    assert prism_ingress_dialect_name(ingress) == "spark_connect", "ingress plan should preserve its source dialect"
+    assert prism_ingress_node_count(ingress) == 3, "read + filter + limit should be represented as unresolved ingress nodes"
+    assert prism_ingress_root_kind_name(ingress) == "Limit", "limit should become the unresolved ingress root"
+    assert prism_cursor_tip_kind_name(cursor) == "Limit", "analysis should produce a real Prism limit node"
+    assert prism_cursor_authored_node_count(cursor) == 3, "analysis should build read + filter + limit authored history"
+    assert relation_kind_name(root_rel(plan)) == "FetchRel", "analyzed limit should lower through Substrait FetchRel"
+    assert plan_contains_relation_kind(plan, "FilterRel"), "analyzed filter should lower through Substrait FilterRel"
+    assert plan_contains_relation_kind(plan, "ReadRel"), "analyzed read should lower through Substrait ReadRel"
+
+
+def test_prism_ingress__spark_connect_with_column_alias_builds_project_node() -> None:
+    # -- Arrange --
+    table_name = "orders_prism_ingress_with_column"
+    _register_ingress_order_schema(table_name)
+    ingress = prism_ingress_with_column_alias(prism_spark_connect_read_named_table(table_name), "amount_copy", "amount")
+
+    # -- Act --
+    cursor: PrismCursor[IngressOrder] = prism_analyze_ingress_plan(ingress)
+    output_columns = prism_cursor_output_columns(cursor)
+    plan = cursor.to_substrait_plan()
+
+    # -- Assert --
+    assert prism_ingress_root_kind_name(ingress) == "WithColumnAlias", "with-column alias should remain visible before analysis"
+    assert prism_cursor_tip_kind_name(cursor) == "Project", "analysis should produce a canonical Prism project node"
+    assert output_columns == ["id", "amount", "amount_copy"], "project analysis should preserve source columns and append alias output"
+    assert relation_kind_name(root_rel(plan)) == "ProjectRel", "analyzed with-column alias should lower through Substrait ProjectRel"
+    assert plan_contains_relation_kind(plan, "ReadRel"), "project lowering should still reach the named-table read"
+
+
+def test_prism_ingress__invalid_plan_is_rejected_before_analysis() -> None:
+    # -- Arrange / Act / Assert --
+    assert_raises[ValueError](_analyze_empty_ingress_plan)
