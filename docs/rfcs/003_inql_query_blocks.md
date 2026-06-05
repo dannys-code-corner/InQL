@@ -90,6 +90,19 @@ Inside relational expression positions (`WHERE`, `JOIN ON`, `GROUP BY`, `ORDER B
 2. `relation.column` → named join relation.
 3. Bare identifier → current query schema first, then lexical Incan binding where permitted.
 
+### Expression operators
+
+Relational expression bodies use ordinary Incan expression operators and lower them into InQL's public helper surface.
+Implementations must treat `left == right`, `left != right`, `left < right`, `left <= right`, `left > right`, and
+`left >= right` as equivalent to `eq(left, right)`, `ne(left, right)`, `lt(left, right)`, `lte(left, right)`,
+`gt(left, right)`, and `gte(left, right)` respectively. Arithmetic operators lower through `add`, `sub`, `mul`,
+`div`, and `modulo`; boolean and unary operators lower through their helper equivalents such as `and_`, `or_`,
+`not_`, and `neg`.
+
+Inclusive comparison helpers are named `lte` and `gte`; `le` and `ge` are not part of the public helper surface.
+Single `=` is not a predicate equality operator in query expressions. Equality uses `==`; `=` remains reserved for
+assignment/binding positions such as named window declarations.
+
 ### `SELECT` and alias publication
 
 - `SELECT` defines a projection boundary; output columns become the schema for later clauses in the block.

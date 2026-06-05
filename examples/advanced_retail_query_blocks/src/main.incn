@@ -186,7 +186,7 @@ def paid_rollup(orders: LazyFrame[RetailOrder]) -> LazyFrame[RetailRollup]:
     # Keep reusable derivations outside the aggregate query so the grouping block stays focused on relational shape.
     return query {
         FROM enriched
-        WHERE eq(.status_norm, "paid")
+        WHERE .status_norm == "paid"
         GROUP BY
             .region_norm,
             .channel
@@ -208,7 +208,7 @@ def generated_ranked_tags(orders: LazyFrame[RetailOrder]) -> LazyFrame[RetailGen
     # This block demonstrates generator and window composition inside the query vocabulary.
     return query {
         FROM orders
-        WHERE eq(check_json(.event_json), true)
+        WHERE check_json(.event_json) == true
         EXPLODE
             # Build derived tags from scalar helpers, then expand them into one row per tag.
             array_distinct(
