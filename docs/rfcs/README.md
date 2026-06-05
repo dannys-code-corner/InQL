@@ -33,6 +33,20 @@ InQL uses its **own** RFC series (starting at 000), independent of the [Incan la
 | [024][rfc-024] | Implemented | Function extension policy                                                                         |     |
 | [025][rfc-025] | Implemented | Typed sketch logical values                                                                       |     |
 | [026][rfc-026] | Implemented | Semi-structured variant logical values                                                            |     |
+| [027][rfc-027] | Draft       | Relational evidence program                                                                       |     |
+| [028][rfc-028] | Draft       | Semantic identity and target model                                                                |     |
+| [029][rfc-029] | Draft       | Typed metadata attachments                                                                        |     |
+| [030][rfc-030] | Draft       | Prism lineage graph                                                                               |     |
+| [031][rfc-031] | Draft       | Local inspection APIs and artifacts                                                               |     |
+| [032][rfc-032] | Draft       | Execution observations                                                                            |     |
+| [033][rfc-033] | Draft       | Adapter requirements and coverage                                                                 |     |
+| [034][rfc-034] | Draft       | Quality assertions and observations                                                               |     |
+| [035][rfc-035] | Draft       | Governed attributes and policy checkpoints                                                        |     |
+| [036][rfc-036] | Draft       | Governed plan bundle                                                                              |     |
+| [037][rfc-037] | Draft       | Plan diff and blast-radius inputs                                                                 |     |
+| [038][rfc-038] | Draft       | Evidence export bridges                                                                           |     |
+| [040][rfc-040] | Draft       | Interoperability semantic profiles                                                                |     |
+| [041][rfc-041] | Draft       | Prism plan ingress and external client frontends                                                   |     |
 
 <!-- TODO: #7: auto populate this table (like how we do in incan) -->
 
@@ -71,4 +85,18 @@ New RFCs should follow [TEMPLATE.md] (aligned with Incan’s RFC structure, adap
 [rfc-024]: 024_function_extension_policy.md
 [rfc-025]: 025_typed_sketch_logical_values.md
 [rfc-026]: 026_semi_structured_variant_values.md
+[rfc-027]: 027_relational_evidence_program.md
+[rfc-028]: 028_semantic_identity_targets.md
+[rfc-029]: 029_metadata_attachments.md
+[rfc-030]: 030_prism_lineage_graph.md
+[rfc-031]: 031_inspection_artifacts.md
+[rfc-032]: 032_execution_observations.md
+[rfc-033]: 033_adapter_requirements_coverage.md
+[rfc-034]: 034_quality_assertions_observations.md
+[rfc-035]: 035_governed_attributes_policy_checkpoints.md
+[rfc-036]: 036_governed_plan_bundle.md
+[rfc-037]: 037_plan_diff_blast_radius_inputs.md
+[rfc-038]: 038_evidence_export_bridges.md
+[rfc-040]: 040_interoperability_semantic_profiles.md
+[rfc-041]: 041_prism_plan_ingress_frontends.md
 [incan-rfcs]: https://github.com/dannys-code-corner/incan/tree/main/workspaces/docs-site/docs/RFCs
