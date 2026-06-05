@@ -4,9 +4,7 @@ Examples demonstrating InQL model-shaped dataset types, scalar-expression builde
 
 ## Overview
 
-The examples are split between compile-safe API shape examples and executable Session flows. Together they show how model
-types, typed carriers, scalar expressions, grouped aggregates, reads, writes, collection, and display fit together in
-ordinary Incan code.
+The examples are split between compile-safe API shape examples and executable Session flows. Together they show how model types, typed carriers, scalar expressions, grouped aggregates, reads, writes, collection, and display fit together in ordinary Incan code.
 
 ## Example structure
 
@@ -40,16 +38,14 @@ incan run examples/advanced_retail_analytics.incn
 
 ## Advanced spike
 
-`advanced_retail_analytics.incn` reads `tests/fixtures/advanced_retail_orders.csv`, a 100-row CSV fixture with
-quoted JSON event payloads. It materializes three outputs:
+`advanced_retail_analytics.incn` reads `tests/fixtures/advanced_retail_orders.csv`, a 100-row CSV fixture with quoted JSON event payloads. It materializes three outputs:
 
 - an enriched high-value order view with string cleanup, math, date extraction, JSON validation/extraction, URL query
   extraction, hashing, regex, and nested array helpers
 - a grouped paid-order rollup using `sum`, `avg`, `min`, `max`, `count`, and `count_distinct`
 - a generated tag view that composes window ranking with `explode(...)`
 
-`advanced_retail_query_blocks/` is the same fixture exercised from a standalone dependency consumer. It imports
-`pub::inql` and runs query blocks for the high-value projection, grouped rollup, and generated-tag window view:
+`advanced_retail_query_blocks/` is the same fixture exercised from a standalone dependency consumer. It imports `pub::inql` and runs query blocks for the high-value projection, grouped rollup, and generated-tag window view:
 
 ```incan
 high_value = query {

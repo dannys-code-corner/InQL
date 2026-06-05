@@ -16,9 +16,7 @@
 
 ## Summary
 
-This RFC defines typed sketch logical values for InQL. Sketch helpers must not be modeled as ordinary strings or binary
-blobs; they must produce and consume logical sketch values that record sketch family, input value domain,
-parameterization, merge compatibility, and serialization format identity.
+This RFC defines typed sketch logical values for InQL. Sketch helpers must not be modeled as ordinary strings or binary blobs; they must produce and consume logical sketch values that record sketch family, input value domain, parameterization, merge compatibility, and serialization format identity.
 
 ## Core model
 
@@ -32,14 +30,9 @@ parameterization, merge compatibility, and serialization format identity.
 
 ## Motivation
 
-Approximate aggregates such as `approx_count_distinct(...)` and `approx_percentile(...)` are useful when authors only
-need a scalar result. Sketch state is different: authors may want to materialize a sketch, merge sketches across
-partitions or files, estimate from a stored sketch later, or serialize sketch state for transport. Those operations
-require compatibility rules that cannot be represented by `bytes` or `str` alone.
+Approximate aggregates such as `approx_count_distinct(...)` and `approx_percentile(...)` are useful when authors only need a scalar result. Sketch state is different: authors may want to materialize a sketch, merge sketches across partitions or files, estimate from a stored sketch later, or serialize sketch state for transport. Those operations require compatibility rules that cannot be represented by `bytes` or `str` alone.
 
-If InQL accepts untyped sketch blobs, it cannot reject invalid operations such as merging a HyperLogLog sketch with a KLL
-sketch, merging sketches over different value domains, or deserializing a payload with an incompatible format version.
-That would push semantic validation into backend-specific runtime failures and weaken the Substrait boundary.
+If InQL accepts untyped sketch blobs, it cannot reject invalid operations such as merging a HyperLogLog sketch with a KLL sketch, merging sketches over different value domains, or deserializing a payload with an incompatible format version. That would push semantic validation into backend-specific runtime failures and weaken the Substrait boundary.
 
 ## Goals
 
@@ -61,9 +54,7 @@ That would push semantic validation into backend-specific runtime failures and w
 
 ## Guide-level explanation (how authors think about it)
 
-Authors should think of a sketch as a typed summary value. It can be produced by an aggregate, stored as a column when the
-carrier supports it, merged with compatible sketches, and estimated later. RFC 025 ships the first concrete family:
-HyperLogLog.
+Authors should think of a sketch as a typed summary value. It can be produced by an aggregate, stored as a column when the carrier supports it, merged with compatible sketches, and estimated later. RFC 025 ships the first concrete family: HyperLogLog.
 
 ```incan
 from pub::inql.functions import col, hll_sketch
@@ -83,8 +74,7 @@ reported = monthly.with_column(
 )
 ```
 
-The important part is that `users_hll` is not a `str` or `bytes` column. It is a sketch logical value with a family,
-value domain, precision, and serialized format contract.
+The important part is that `users_hll` is not a `str` or `bytes` column. It is a sketch logical value with a family, value domain, precision, and serialized format contract.
 
 ## Reference-level explanation (precise rules)
 
@@ -97,54 +87,35 @@ A sketch logical value must carry at least:
 - format identity and version when the value can be serialized;
 - nullability and ordinary column-position metadata needed by existing InQL expression and relation surfaces.
 
-Sketch construction helpers that summarize rows must be aggregate measures. They must declare approximate-result metadata
-and sketch-output metadata in the function registry. They must not appear where row-level scalar expressions are required
-unless the helper is explicitly a scalar transformation over an existing sketch value.
+Sketch construction helpers that summarize rows must be aggregate measures. They must declare approximate-result metadata and sketch-output metadata in the function registry. They must not appear where row-level scalar expressions are required unless the helper is explicitly a scalar transformation over an existing sketch value.
 
-Sketch merge helpers must validate sketch family compatibility before lowering. InQL must reject merges between different
-families, incompatible value domains, incompatible parameter sets, or incompatible format versions unless the specific
-family declares a safe coercion or union rule.
+Sketch merge helpers must validate sketch family compatibility before lowering. InQL must reject merges between different families, incompatible value domains, incompatible parameter sets, or incompatible format versions unless the specific family declares a safe coercion or union rule.
 
-Sketch estimate helpers must declare the scalar result they produce. HyperLogLog-style estimates should return
-approximate cardinality results. KLL-style quantile helpers must require explicit percentile or rank arguments.
-Count-min-style lookup helpers must require an item expression whose domain is compatible with the sketch domain.
+Sketch estimate helpers must declare the scalar result they produce. HyperLogLog-style estimates should return approximate cardinality results. KLL-style quantile helpers must require explicit percentile or rank arguments. Count-min-style lookup helpers must require an item expression whose domain is compatible with the sketch domain.
 
-Sketch serialization helpers must be explicit. InQL must not implicitly coerce a sketch value to `str` or `bytes`.
-Deserialization must require enough type metadata to identify family, domain, parameters, and format version before the
-value can participate in merge or estimate operations.
+Sketch serialization helpers must be explicit. InQL must not implicitly coerce a sketch value to `str` or `bytes`. Deserialization must require enough type metadata to identify family, domain, parameters, and format version before the value can participate in merge or estimate operations.
 
-Substrait lowering must preserve sketch logical type identity through extension type metadata or must reject the
-operation before execution. A backend adapter may map the sketch operation to a native implementation only when it can
-preserve the InQL sketch contract.
+Substrait lowering must preserve sketch logical type identity through extension type metadata or must reject the operation before execution. A backend adapter may map the sketch operation to a native implementation only when it can preserve the InQL sketch contract.
 
 ## Design details
 
 ### Syntax
 
-This RFC does not require new language syntax. Sketch helpers may use ordinary function-call syntax and aggregate-builder
-syntax. Type annotations for deserialization may require a future surface if ordinary helper arguments cannot carry
-enough type information ergonomically.
+This RFC does not require new language syntax. Sketch helpers may use ordinary function-call syntax and aggregate-builder syntax. Type annotations for deserialization may require a future surface if ordinary helper arguments cannot carry enough type information ergonomically.
 
 ### Semantics
 
-Sketch values are opaque to ordinary scalar operators. Equality, ordering, string operations, binary operations, and
-arithmetic must not accept sketch values unless a later RFC defines a specific semantic rule. Sketch values may be
-grouped, projected, stored, merged, estimated, or serialized only through helpers that declare sketch-aware metadata.
+Sketch values are opaque to ordinary scalar operators. Equality, ordering, string operations, binary operations, and arithmetic must not accept sketch values unless a later RFC defines a specific semantic rule. Sketch values may be grouped, projected, stored, merged, estimated, or serialized only through helpers that declare sketch-aware metadata.
 
-Sketch families must define whether merge is associative, commutative, idempotent, or order-sensitive. Families must
-define which parameters are part of merge compatibility and which parameters are execution hints.
+Sketch families must define whether merge is associative, commutative, idempotent, or order-sensitive. Families must define which parameters are part of merge compatibility and which parameters are execution hints.
 
 ### Interaction with other InQL surfaces
 
-Dataframe method chains and future query-block syntax must resolve to the same sketch logical value model. A sketch
-helper that is rejected in one authoring surface must not become valid in another.
+Dataframe method chains and future query-block syntax must resolve to the same sketch logical value model. A sketch helper that is rejected in one authoring surface must not become valid in another.
 
-Prism may preserve sketch type metadata and may use it for validation, projection pruning, and rewrite safety. Prism must
-not rewrite sketch operations in ways that drop family, domain, parameter, or serialization metadata.
+Prism may preserve sketch type metadata and may use it for validation, projection pruning, and rewrite safety. Prism must not rewrite sketch operations in ways that drop family, domain, parameter, or serialization metadata.
 
-The Substrait boundary must remain between InQL semantics and backend execution. DataFusion or any other backend may be
-the first implementation target, but backend-native sketch names and payload formats do not define the portable InQL
-type.
+The Substrait boundary must remain between InQL semantics and backend execution. DataFusion or any other backend may be the first implementation target, but backend-native sketch names and payload formats do not define the portable InQL type.
 
 ### Implementation
 
@@ -168,9 +139,7 @@ The implemented first family is HyperLogLog:
 
 ### Compatibility / migration
 
-This RFC is additive. RFC 023 approximate scalar-result aggregates remain valid. Existing string or binary columns are
-not retroactively treated as sketch values. If a backend or existing dataset stores sketch bytes, authors must use
-explicit deserialization with the required sketch type metadata.
+This RFC is additive. RFC 023 approximate scalar-result aggregates remain valid. Existing string or binary columns are not retroactively treated as sketch values. If a backend or existing dataset stores sketch bytes, authors must use explicit deserialization with the required sketch type metadata.
 
 ## Alternatives considered
 

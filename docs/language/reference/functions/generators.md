@@ -1,7 +1,6 @@
 # Generator and Table-Valued Functions (Reference)
 
-Generators are relation-shaping operations. They are registry-backed like scalar and aggregate helpers, but they return
-`GeneratorApplication` values and must be applied through a relation method such as `generate(...)`.
+Generators are relation-shaping operations. They are registry-backed like scalar and aggregate helpers, but they return `GeneratorApplication` values and must be applied through a relation method such as `generate(...)`.
 
 ```incan
 from pub::inql import LazyFrame
@@ -32,8 +31,6 @@ The explicit generator surface currently includes:
 | `flatten(expr, as_)` | one value column | Portable table-valued flatten for one array expression. |
 | `stack(row_count, values, output_columns)` | declared output columns | Emits `row_count` generated rows from row-major scalar values. |
 
-Generator applications preserve input columns and append generated columns in declaration order. Generated aliases are
-required, must be non-empty, and must not collide with existing input columns.
+Generator applications preserve input columns and append generated columns in declaration order. Generated aliases are required, must be non-empty, and must not collide with existing input columns.
 
-Nested scalar helpers such as `array_flatten(...)` remain scalar expressions. They do not expand rows and are documented
-on the [nested data functions](nested.md) page. The relation-shaping `flatten(...)` helper is intentionally separate.
+Nested scalar helpers such as `array_flatten(...)` remain scalar expressions. They do not expand rows and are documented on the [nested data functions](nested.md) page. The relation-shaping `flatten(...)` helper is intentionally separate.

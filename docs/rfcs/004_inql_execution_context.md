@@ -348,8 +348,7 @@ Non-normative: the reference implementation **should** use DataFusion's `Session
 
 ## Implementation plan and checklist (non-normative)
 
-This section tracks the implementation path for this RFC. It is intentionally operational and does not change the
-normative semantics above.
+This section tracks the implementation path for this RFC. It is intentionally operational and does not change the normative semantics above.
 
 ### Plan
 
@@ -377,5 +376,4 @@ normative semantics above.
 
 ### Exit criteria for RFC status change
 
-RFC 004 can move from `In Progress` to `Implemented` when all checklist items above are complete and the InQL CI gate
-is green on the target release branch.
+RFC 004 can move from `In Progress` to `Implemented` when all checklist items above are complete and the InQL CI gate is green on the target release branch.

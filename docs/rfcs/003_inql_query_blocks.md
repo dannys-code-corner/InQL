@@ -56,10 +56,7 @@ def summarize_orders(orders: DataFrame[Order]) -> DataFrame[OrderSummary]:
     }
 ```
 
-The compiler checks `.status`, `.amount`, and `GROUP BY` / `SELECT` consistency. The `DataFrame[OrderSummary]` return
-type records the intended output row model; full field/type compatibility validation against annotated output models is
-tracked as schema-validation follow-up work. The checked tree lowers to Substrait (InQL RFC 002); execution uses the
-execution context.
+The compiler checks `.status`, `.amount`, and `GROUP BY` / `SELECT` consistency. The `DataFrame[OrderSummary]` return type records the intended output row model; full field/type compatibility validation against annotated output models is tracked as schema-validation follow-up work. The checked tree lowers to Substrait (InQL RFC 002); execution uses the execution context.
 
 ## Reference-level explanation
 
@@ -92,16 +89,9 @@ Inside relational expression positions (`WHERE`, `JOIN ON`, `GROUP BY`, `ORDER B
 
 ### Expression operators
 
-Relational expression bodies use ordinary Incan expression operators and lower them into InQL's public helper surface.
-Implementations must treat `left == right`, `left != right`, `left < right`, `left <= right`, `left > right`, and
-`left >= right` as equivalent to `eq(left, right)`, `ne(left, right)`, `lt(left, right)`, `lte(left, right)`,
-`gt(left, right)`, and `gte(left, right)` respectively. Arithmetic operators lower through `add`, `sub`, `mul`,
-`div`, and `modulo`; boolean and unary operators lower through their helper equivalents such as `and_`, `or_`,
-`not_`, and `neg`.
+Relational expression bodies use ordinary Incan expression operators and lower them into InQL's public helper surface. Implementations must treat `left == right`, `left != right`, `left < right`, `left <= right`, `left > right`, and `left >= right` as equivalent to `eq(left, right)`, `ne(left, right)`, `lt(left, right)`, `lte(left, right)`, `gt(left, right)`, and `gte(left, right)` respectively. Arithmetic operators lower through `add`, `sub`, `mul`, `div`, and `modulo`; boolean and unary operators lower through their helper equivalents such as `and_`, `or_`, `not_`, and `neg`.
 
-Inclusive comparison helpers are named `lte` and `gte`; `le` and `ge` are not part of the public helper surface.
-Single `=` is not a predicate equality operator in query expressions. Equality uses `==`; `=` remains reserved for
-assignment/binding positions such as named window declarations.
+Inclusive comparison helpers are named `lte` and `gte`; `le` and `ge` are not part of the public helper surface. Single `=` is not a predicate equality operator in query expressions. Equality uses `==`; `=` remains reserved for assignment/binding positions such as named window declarations.
 
 ### `SELECT` and alias publication
 

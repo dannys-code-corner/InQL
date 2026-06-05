@@ -1,7 +1,6 @@
 # Format Functions (Reference)
 
-Format functions transform scalar values that are already present in a relation. Source discovery, file reads, and
-relation reshaping belong to the session and relational APIs rather than this function family.
+Format functions transform scalar values that are already present in a relation. Source discovery, file reads, and relation reshaping belong to the session and relational APIs rather than this function family.
 
 The format catalog includes deterministic hashes, URL helpers, JSON helpers, and CSV helpers:
 
@@ -55,13 +54,8 @@ projected = (
 )
 ```
 
-Hash helpers operate on UTF-8 string bytes and return lowercase hexadecimal strings. `sha2(...)` accepts `224`, `256`,
-`384`, and `512`; other digest lengths are rejected during expression construction.
+Hash helpers operate on UTF-8 string bytes and return lowercase hexadecimal strings. `sha2(...)` accepts `224`, `256`, `384`, and `512`; other digest lengths are rejected during expression construction.
 
-JSON helpers validate, normalize, and project payload text. CSV parsing returns logical map values instead of JSON text.
-Explicit-schema JSON and CSV helpers derive their schema from Incan model type parameters. These helpers do not read
-external files or return typed variant values. Use [Variant functions](variants.md) when a plan needs semi-structured
-kind inspection.
+JSON helpers validate, normalize, and project payload text. CSV parsing returns logical map values instead of JSON text. Explicit-schema JSON and CSV helpers derive their schema from Incan model type parameters. These helpers do not read external files or return typed variant values. Use [Variant functions](variants.md) when a plan needs semi-structured kind inspection.
 
-The DataFusion adapter executes the full RFC 022 catalog with native DataFusion functions where available and
-Incan-authored adapter callbacks for helpers that DataFusion does not expose natively.
+The DataFusion adapter executes the full RFC 022 catalog with native DataFusion functions where available and Incan-authored adapter callbacks for helpers that DataFusion does not expose natively.

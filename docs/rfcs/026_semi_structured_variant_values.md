@@ -70,40 +70,21 @@ Authors who only need text validation or normalized JSON strings should keep usi
 
 ## Reference-level explanation (precise rules)
 
-InQL defines `VariantLogicalType` and `VariantExpr`. A variant logical type records a `VariantKind` and `VariantEncoding`.
-The implemented portable kind set is `any`, `null`, `boolean`, `integer`, `float`, `string`, `timestamp`, `array`, and
-`object`. The first implemented encoding is JSON.
+InQL defines `VariantLogicalType` and `VariantExpr`. A variant logical type records a `VariantKind` and `VariantEncoding`. The implemented portable kind set is `any`, `null`, `boolean`, `integer`, `float`, `string`, `timestamp`, `array`, and `object`. The first implemented encoding is JSON.
 
 Variant predicates must accept variant expressions. They must not accept ordinary `str` expressions as an implicit parse-and-inspect shortcut. Authors must use an explicit variant parse or cast helper when starting from JSON text.
 
 `typeof(expr)` must return a stable lowercase kind name for a non-null variant value. It must distinguish at least `null`, `boolean`, `integer`, `float`, `string`, `timestamp`, `array`, and `object`. It must not report `timestamp` for a plain JSON string unless an explicit schema or parse option produced a typed timestamp variant.
 
-`is_null_value(expr)`, `is_boolean(expr)`, `is_integer(expr)`, `is_float(expr)`, `is_string(expr)`,
-`is_timestamp(expr)`, `is_array(expr)`, and `is_object(expr)` must inspect the variant kind. `is_integer(...)` must be
-true only for integer variant values, not floating point values whose runtime value happens to have no fractional
-component. `is_null_value(...)` must be true only for semi-structured null values.
+`is_null_value(expr)`, `is_boolean(expr)`, `is_integer(expr)`, `is_float(expr)`, `is_string(expr)`, `is_timestamp(expr)`, `is_array(expr)`, and `is_object(expr)` must inspect the variant kind. `is_integer(...)` must be true only for integer variant values, not floating point values whose runtime value happens to have no fractional component. `is_null_value(...)` must be true only for semi-structured null values.
 
 SQL null must remain distinct from variant null. If a predicate input is SQL null rather than a present variant value, the predicate result must follow InQL's scalar null behavior for missing inputs rather than returning true for `is_null_value(...)`.
 
-`parse_variant_json(payload)` is the strict JSON-to-variant helper. `try_parse_variant_json(payload)` is the
-recoverable form. Their payload parameter accepts `StrValueOrColumn`, so authors may pass a string literal, a string
-column reference, or a string-producing expression without wrapping primitive values in `lit(...)`. Strict parse helpers
-must fail malformed payloads according to registry error metadata. Recoverable parse helpers must return SQL null or
-another explicitly documented recoverable result for malformed payloads. A JSON `null` payload must produce a present
-variant null, not SQL null.
+`parse_variant_json(payload)` is the strict JSON-to-variant helper. `try_parse_variant_json(payload)` is the recoverable form. Their payload parameter accepts `StrValueOrColumn`, so authors may pass a string literal, a string column reference, or a string-producing expression without wrapping primitive values in `lit(...)`. Strict parse helpers must fail malformed payloads according to registry error metadata. Recoverable parse helpers must return SQL null or another explicitly documented recoverable result for malformed payloads. A JSON `null` payload must produce a present variant null, not SQL null.
 
-`variant_get(expr, path)` accesses a variant path. Literal path strings are validated as beginning with `$`. String
-columns or string-producing expressions are accepted as dynamic paths and are validated at execution time by the
-implementation that evaluates the expression. The current path spelling matches the RFC 022 JSON path helper spelling so
-authors do not learn two root-marker conventions, but it remains a variant operation rather than a JSON-text extraction
-shortcut. Variant field/path access must preserve whether a missing path produced SQL null, variant null, or a present
-value. If a backend cannot preserve that distinction, the adapter must reject the operation or require an explicit
-compatibility mode.
+`variant_get(expr, path)` accesses a variant path. Literal path strings are validated as beginning with `$`. String columns or string-producing expressions are accepted as dynamic paths and are validated at execution time by the implementation that evaluates the expression. The current path spelling matches the RFC 022 JSON path helper spelling so authors do not learn two root-marker conventions, but it remains a variant operation rather than a JSON-text extraction shortcut. Variant field/path access must preserve whether a missing path produced SQL null, variant null, or a present value. If a backend cannot preserve that distinction, the adapter must reject the operation or require an explicit compatibility mode.
 
-Substrait lowering preserves variant logical type identity in registry metadata and scalar function options. A backend
-adapter may map variant values and predicates to native functions only when it preserves the InQL variant contract. The
-DataFusion adapter currently reports a backend planning diagnostic for typed variant execution because it has no variant
-runtime implementation.
+Substrait lowering preserves variant logical type identity in registry metadata and scalar function options. A backend adapter may map variant values and predicates to native functions only when it preserves the InQL variant contract. The DataFusion adapter currently reports a backend planning diagnostic for typed variant execution because it has no variant runtime implementation.
 
 ## Design details
 
@@ -142,8 +123,7 @@ The implemented public model is:
   `is_boolean(...)`, `is_integer(...)`, `is_float(...)`, `is_string(...)`, `is_timestamp(...)`, `is_array(...)`, and
   `is_object(...)` return `BoolColumnExpr`.
 
-Each public helper is registry-backed with explicit variant policy metadata. Variant helpers lower through InQL-owned
-Substrait extension mappings and carry variant kind, encoding, and parse mode as scalar function options where needed.
+Each public helper is registry-backed with explicit variant policy metadata. Variant helpers lower through InQL-owned Substrait extension mappings and carry variant kind, encoding, and parse mode as scalar function options where needed.
 
 ## Alternatives considered
 

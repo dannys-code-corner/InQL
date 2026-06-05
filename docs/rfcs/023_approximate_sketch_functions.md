@@ -17,20 +17,13 @@
 
 ## Summary
 
-This RFC defines the portable approximate aggregate boundary for InQL and records the sketch-state policy decision. InQL
-exposes explicit approximate aggregates for distinct counts and percentiles. It delegates sketch-state construction,
-merge, estimate, serialization, and deserialization helpers to InQL RFC 025 because those helpers require typed sketch
-logical values rather than ordinary string or binary payloads.
+This RFC defines the portable approximate aggregate boundary for InQL and records the sketch-state policy decision. InQL exposes explicit approximate aggregates for distinct counts and percentiles. It delegates sketch-state construction, merge, estimate, serialization, and deserialization helpers to InQL RFC 025 because those helpers require typed sketch logical values rather than ordinary string or binary payloads.
 
 ## Motivation
 
-Spark exposes many approximate and sketch functions because large-scale analytics often trades exactness for bounded
-memory or faster execution. InQL should support the portable part of that direction, but sketch functions require more
-than names: they need accuracy parameters, merge semantics, serialization formats, determinism rules, and typed opaque
-state values.
+Spark exposes many approximate and sketch functions because large-scale analytics often trades exactness for bounded memory or faster execution. InQL should support the portable part of that direction, but sketch functions require more than names: they need accuracy parameters, merge semantics, serialization formats, determinism rules, and typed opaque state values.
 
-If sketches are added as ordinary functions returning untyped bytes, InQL will not be able to reason about compatibility,
-aggregation state, or cross-backend behavior.
+If sketches are added as ordinary functions returning untyped bytes, InQL will not be able to reason about compatibility, aggregation state, or cross-backend behavior.
 
 ## Goals
 
@@ -68,26 +61,15 @@ The function names and arguments should make it clear that results are approxima
 
 ## Reference-level explanation (precise rules)
 
-Approximate aggregate functions must be registered as approximate. Their registry entries must declare accuracy
-parameters, deterministic behavior for fixed inputs and parameters, mergeability, and result interpretation.
+Approximate aggregate functions must be registered as approximate. Their registry entries must declare accuracy parameters, deterministic behavior for fixed inputs and parameters, mergeability, and result interpretation.
 
-`approx_count_distinct(expr)` returns an approximate cardinality estimate over non-null expression values. It is a
-HyperLogLog-family aggregate. The portable helper intentionally has no relative-error parameter because the registered
-InQL Substrait extension mapping is unary; backend-specific precision controls must not be smuggled into the portable
-helper contract.
+`approx_count_distinct(expr)` returns an approximate cardinality estimate over non-null expression values. It is a HyperLogLog-family aggregate. The portable helper intentionally has no relative-error parameter because the registered InQL Substrait extension mapping is unary; backend-specific precision controls must not be smuggled into the portable helper contract.
 
-`approx_percentile(expr, percentile, accuracy=10000)` returns an approximate percentile estimate over numeric non-null
-expression values. `percentile` is a literal fraction in the inclusive range `[0.0, 1.0]`. `accuracy` is a positive
-integer approximation hint carried as a normal aggregate argument. The portable contract is an approximate percentile
-estimate, not a bit-for-bit promise of one backend's interpolation or sketch representation.
+`approx_percentile(expr, percentile, accuracy=10000)` returns an approximate percentile estimate over numeric non-null expression values. `percentile` is a literal fraction in the inclusive range `[0.0, 1.0]`. `accuracy` is a positive integer approximation hint carried as a normal aggregate argument. The portable contract is an approximate percentile estimate, not a bit-for-bit promise of one backend's interpolation or sketch representation.
 
-Sketch-construction functions are reserved for InQL RFC 025 and are not lowerable in this RFC. When they are introduced,
-they must return typed sketch values, not untyped binary blobs. Sketch values may have opaque runtime representation, but
-their logical type must identify the sketch family and value domain.
+Sketch-construction functions are reserved for InQL RFC 025 and are not lowerable in this RFC. When they are introduced, they must return typed sketch values, not untyped binary blobs. Sketch values may have opaque runtime representation, but their logical type must identify the sketch family and value domain.
 
-Sketch union, intersection, estimation, serialization, and deserialization functions are likewise reserved until InQL
-can accept only compatible sketch types and reject incompatible sketch-family or value-domain combinations before
-execution.
+Sketch union, intersection, estimation, serialization, and deserialization functions are likewise reserved until InQL can accept only compatible sketch types and reject incompatible sketch-family or value-domain combinations before execution.
 
 If serialized sketch formats are exposed, format versioning and cross-version compatibility must be specified.
 
@@ -95,20 +77,17 @@ If serialized sketch formats are exposed, format versioning and cross-version co
 
 ### Syntax
 
-This RFC permits ordinary function-call syntax for approximate aggregate functions. Reserved sketch helpers will use the
-same call style if InQL RFC 025 admits them. RFC 023 does not require special query syntax.
+This RFC permits ordinary function-call syntax for approximate aggregate functions. Reserved sketch helpers will use the same call style if InQL RFC 025 admits them. RFC 023 does not require special query syntax.
 
 ### Semantics
 
-Approximate functions must be opt-in by name or explicit option. InQL must not silently replace an exact aggregate with
-an approximate aggregate because a backend prefers it.
+Approximate functions must be opt-in by name or explicit option. InQL must not silently replace an exact aggregate with an approximate aggregate because a backend prefers it.
 
 Sketch merge functions must define whether they are associative, commutative, idempotent, or order-sensitive.
 
 ### Interaction with other InQL surfaces
 
-Approximate aggregates may appear anywhere aggregate measures are valid if their registry entry supports the position.
-Sketch scalar helpers are not exposed until sketch expressions have typed logical values.
+Approximate aggregates may appear anywhere aggregate measures are valid if their registry entry supports the position. Sketch scalar helpers are not exposed until sketch expressions have typed logical values.
 
 ### Compatibility / migration
 

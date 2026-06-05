@@ -24,9 +24,7 @@ The Substrait helper surface behind these methods is split by semantic role:
 | `order_by`    | `def order_by(self, columns: list[ColumnExpr]) -> Self`      | Sort rows by scalar expressions or ordering helpers such as `asc(...)` and `desc(...)`.        |
 | `limit`       | `def limit(self, n: int) -> Self`                            | Cap row count.                                                                                 |
 
-`SameCarrier[U]` means `DataFrame[U]` for `DataFrame[T]`, `LazyFrame[U]` for `LazyFrame[T]`, and `DataStream[U]`
-for `DataStream[T]`. The root `DataSet[T]` trait remains the common plan/schema contract; schema-changing
-projection is expressed on concrete carriers until Incan grows native trait type-family support.
+`SameCarrier[U]` means `DataFrame[U]` for `DataFrame[T]`, `LazyFrame[U]` for `LazyFrame[T]`, and `DataStream[U]` for `DataStream[T]`. The root `DataSet[T]` trait remains the common plan/schema contract; schema-changing projection is expressed on concrete carriers until Incan grows native trait type-family support.
 
 ## `with_column`
 

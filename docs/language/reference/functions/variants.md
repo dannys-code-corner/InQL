@@ -1,8 +1,6 @@
 # Variant Functions (Reference)
 
-Variant helpers model semi-structured payloads as typed logical values, not as ordinary JSON strings. Use RFC 022 JSON
-helpers when you want text validation or normalized payload strings. Use variant helpers when you need kind-aware
-inspection while preserving the distinction between SQL null and a present semi-structured null value.
+Variant helpers model semi-structured payloads as typed logical values, not as ordinary JSON strings. Use RFC 022 JSON helpers when you want text validation or normalized payload strings. Use variant helpers when you need kind-aware inspection while preserving the distinction between SQL null and a present semi-structured null value.
 
 | Function | Meaning |
 | --- | --- |
@@ -37,12 +35,6 @@ projected = (
 )
 ```
 
-`typeof(...)` accepts a `VariantExpr` value and returns a `StringColumnExpr`. Variant predicates accept
-`VariantExpr` values and return `BoolColumnExpr` values. They do not parse strings directly. Parse helpers accept
-`StrValueOrColumn` inputs; that keeps parsing, variant inspection, and RFC 022 JSON text helpers separate without
-forcing authors to wrap literal payloads in `lit(...)`.
+`typeof(...)` accepts a `VariantExpr` value and returns a `StringColumnExpr`. Variant predicates accept `VariantExpr` values and return `BoolColumnExpr` values. They do not parse strings directly. Parse helpers accept `StrValueOrColumn` inputs; that keeps parsing, variant inspection, and RFC 022 JSON text helpers separate without forcing authors to wrap literal payloads in `lit(...)`.
 
-RFC 026 helpers lower through InQL-owned Substrait extension mappings and carry variant metadata in function options.
-The DataFusion adapter currently reports a backend planning diagnostic for typed variant execution because it has no
-variant runtime implementation. That rejection is an adapter capability boundary; the InQL plan remains typed and
-backend-neutral.
+RFC 026 helpers lower through InQL-owned Substrait extension mappings and carry variant metadata in function options. The DataFusion adapter currently reports a backend planning diagnostic for typed variant execution because it has no variant runtime implementation. That rejection is an adapter capability boundary; the InQL plan remains typed and backend-neutral.

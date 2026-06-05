@@ -42,8 +42,7 @@ InQL already has an unnest/explode design direction through its Substrait work. 
 
 ## Guide-level explanation (how authors think about it)
 
-Authors should use generators when one input row may become multiple output rows. In the current builder surface,
-generators are constructed as explicit applications and then applied to a relation:
+Authors should use generators when one input row may become multiple output rows. In the current builder surface, generators are constructed as explicit applications and then applied to a relation:
 
 ```incan
 from pub::inql.functions import col, explode

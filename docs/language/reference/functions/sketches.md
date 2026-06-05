@@ -1,7 +1,6 @@
 # Sketch Functions (Reference)
 
-Sketch helpers model approximate state as typed logical values, not as ordinary strings or binary payloads. The first
-portable family is HyperLogLog.
+Sketch helpers model approximate state as typed logical values, not as ordinary strings or binary payloads. The first portable family is HyperLogLog.
 
 | Function | Meaning |
 | --- | --- |
@@ -36,15 +35,8 @@ reported = monthly.with_column(
 )
 ```
 
-Sketch compatibility is structural. HyperLogLog sketches can merge only when family, value domain, precision, and
-serialization format match. `hll_deserialize(...)` requires those facts because they cannot be inferred from a payload
-alone.
+Sketch compatibility is structural. HyperLogLog sketches can merge only when family, value domain, precision, and serialization format match. `hll_deserialize(...)` requires those facts because they cannot be inferred from a payload alone.
 
-The public helper surface follows the typed value-or-column conventions used by the rest of the function catalog:
-`hll_sketch(...)` accepts primitive values or scalar expressions, while `hll_deserialize(...)` accepts string payload
-values or scalar expressions.
+The public helper surface follows the typed value-or-column conventions used by the rest of the function catalog: `hll_sketch(...)` accepts primitive values or scalar expressions, while `hll_deserialize(...)` accepts string payload values or scalar expressions.
 
-RFC 025 helpers lower through InQL-owned Substrait extension mappings and carry sketch metadata in function options. The
-DataFusion adapter reports a backend planning diagnostic for typed sketch execution because it has no sketch runtime
-implementation. That rejection is an adapter capability boundary; the InQL plan remains typed and
-backend-neutral.
+RFC 025 helpers lower through InQL-owned Substrait extension mappings and carry sketch metadata in function options. The DataFusion adapter reports a backend planning diagnostic for typed sketch execution because it has no sketch runtime implementation. That rejection is an adapter capability boundary; the InQL plan remains typed and backend-neutral.

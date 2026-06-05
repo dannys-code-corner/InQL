@@ -1,8 +1,6 @@
 # Window Functions (Reference)
 
-Window helpers are relation-aware. A window function application produces one output value per input row while reading a
-partition of related rows. It is not an ordinary scalar expression and must be placed through a projection-like dataset
-method.
+Window helpers are relation-aware. A window function application produces one output value per input row while reading a partition of related rows. It is not an ordinary scalar expression and must be placed through a projection-like dataset method.
 
 ```incan
 from pub::inql import LazyFrame
@@ -39,11 +37,6 @@ The window helper surface includes:
 | `first_value(expr)`, `last_value(expr)`, `nth_value(expr, n)` | Read a value from the current frame. | Use `.over(window().order_by(...))`, then `with_window_column(...)`; value calls may use `.ignore_nulls()` or `.respect_nulls()` before `.over(...)`. |
 | `sum(...)`, `count(...)`, `avg(...)`, `min(...)`, `max(...)` | Reuse aggregate helpers over a window frame. | Call `.over(window_spec)` on the aggregate measure, then `with_window_column(...)`. |
 
-`WindowSpec.partition_by(...)` replaces the partition expressions. `WindowSpec.order_by(...)` replaces the ordering
-expressions. `WindowSpec.rows_between(...)` and `WindowSpec.range_between(...)` replace the frame. Ranking,
-distribution, offset, and value helpers require explicit ordering; missing ordering is rejected during logical lowering.
+`WindowSpec.partition_by(...)` replaces the partition expressions. `WindowSpec.order_by(...)` replaces the ordering expressions. `WindowSpec.rows_between(...)` and `WindowSpec.range_between(...)` replace the frame. Ranking, distribution, offset, and value helpers require explicit ordering; missing ordering is rejected during logical lowering.
 
-`with_window_column(name, application)` preserves input columns and adds or replaces `name` using add-or-replace
-projection semantics. Compatible adjacent window projections lower through Substrait `ConsistentPartitionWindowRel` with
-registry-backed function anchors, frame bounds, invocation metadata, null-treatment options, and output aliases. The
-DataFusion session backend executes the portable window helpers through the Substrait adapter boundary.
+`with_window_column(name, application)` preserves input columns and adds or replaces `name` using add-or-replace projection semantics. Compatible adjacent window projections lower through Substrait `ConsistentPartitionWindowRel` with registry-backed function anchors, frame bounds, invocation metadata, null-treatment options, and output aliases. The DataFusion session backend executes the portable window helpers through the Substrait adapter boundary.
