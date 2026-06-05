@@ -39,6 +39,8 @@ If InQL does not name the semantic profile used for an inspection or execution, 
 
 Profiles provide the missing layer between InQL-authored semantics, plan ingress, and adapter coverage. Prism remains the source of authored and rewritten relational meaning. Profiles describe source and target environments well enough for InQL to produce ingress diagnostics, requirements, coverage records, and observations against them.
 
+Profiles are intentionally ecosystem-neutral, but concrete profiles may describe systems and formats such as Oracle, PostgreSQL, SQL Server, MySQL, Athena, Presto, Trino, Spark, Snowflake, BigQuery, Redshift, Databricks, Glue Data Catalog, Hive Metastore, dbt, Airflow, MWAA, Dagster, Prefect, OpenLineage, DataHub, OpenMetadata, or Great Expectations. Listing a system as a possible profile target does not make that system normative for InQL semantics.
+
 ## Goals
 
 - Define semantic profiles as versioned evidence records.
@@ -114,6 +116,8 @@ Target class must distinguish at least:
 - transformation_project
 - interchange_consumer
 - conformance_baseline
+
+Concrete profile families may be narrower than target class names. For example, a `sql_dialect` target class may include Oracle, PostgreSQL, SQL Server, or MySQL profiles; an `execution_engine` target class may include Athena, Presto, Trino, Spark, Snowflake, BigQuery, Redshift, or Databricks profiles; a `catalog_schema_system` target class may include Glue Data Catalog or Hive Metastore profiles; and a `transformation_project` target class may include dbt-shaped project profiles.
 
 Semantic dimensions must be represented as structured records rather than free-form prose. Initial dimensions should include, where applicable:
 

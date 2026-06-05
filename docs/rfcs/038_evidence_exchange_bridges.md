@@ -19,11 +19,11 @@
 
 ## Summary
 
-This RFC defines evidence exchange bridges between InQL's internal evidence model and external or adjacent formats. Exchange bridges map InQL plan, lineage, schema-flow, execution, quality, coverage, semantic profile, and bundle records into downstream views such as OpenLineage events, telemetry signals, semantic inspection fragments, transformation-project artifacts, and catalog/governance integration artifacts. They may also ingest external evidence artifacts such as transformation manifests, source catalogs, schema catalogs, run results, and orchestration metadata. Inbound artifacts and outbound projections are evidence exchange records, not the internal source of truth.
+This RFC defines evidence exchange bridges between InQL's internal evidence model and external or adjacent formats. Exchange bridges map InQL plan, lineage, schema-flow, execution, quality, coverage, semantic profile, and bundle records into downstream views such as OpenLineage events, telemetry signals, semantic inspection fragments, transformation-project artifacts, and catalog/governance integration artifacts. They may also ingest external evidence artifacts such as transformation manifests, source catalogs, schema catalogs, run results, and orchestration metadata. Representative artifact families include dbt manifests and run results, Glue Data Catalog or Hive Metastore snapshots, Airflow or MWAA DAG metadata, Dagster assets, Prefect deployment metadata, OpenLineage events, DataHub or OpenMetadata catalog records, and Great Expectations-style quality results. Inbound artifacts and outbound projections are evidence exchange records, not the internal source of truth.
 
 ## Motivation
 
-InQL evidence should be useful outside InQL, and external project artifacts should be usable as evidence inputs when they are explicit about their source and scope. CI systems, lineage tools, telemetry pipelines, catalogs, notebooks, transformation frameworks, orchestrators, and agents may all consume or produce different formats. If each integration reconstructs evidence independently, semantics will drift. InQL should provide exchange bridges that preserve its local evidence model while acknowledging that external formats may be less expressive or may represent facts at a different semantic layer.
+InQL evidence should be useful outside InQL, and external project artifacts should be usable as evidence inputs when they are explicit about their source and scope. CI systems, lineage tools, telemetry pipelines, catalogs, notebooks, transformation frameworks, orchestrators, and agents may all consume or produce different formats. Systems such as dbt, Airflow, MWAA, Dagster, Prefect, Glue Data Catalog, Hive Metastore, DataHub, OpenMetadata, OpenLineage, and Great Expectations are useful ecosystem examples, but none of them should become InQL's internal evidence model. If each integration reconstructs evidence independently, semantics will drift. InQL should provide exchange bridges that preserve its local evidence model while acknowledging that external formats may be less expressive or may represent facts at a different semantic layer.
 
 ## Goals
 
@@ -31,7 +31,7 @@ InQL evidence should be useful outside InQL, and external project artifacts shou
 - Preserve semantic target references and evidence versions where possible.
 - Allow lossy external mappings only when loss is explicit.
 - Allow external artifacts to seed metadata, lineage hints, quality observations, run observations, and target mappings without becoming authoritative InQL semantics.
-- Support transformation-framework artifacts such as manifests, catalogs, run results, source definitions, model metadata, tests, tags, and documentation scaffolds.
+- Support transformation-framework artifacts such as manifests, catalogs, run results, source definitions, model metadata, tests, tags, and documentation scaffolds, including dbt-shaped artifacts where a bridge supports that profile.
 - Keep provider configuration and hosted ingestion outside InQL core.
 - Support local exchange without requiring a specific external service.
 
@@ -66,7 +66,7 @@ sources = bundle.export_transformation_sources()
 tests = bundle.export_transformation_quality_suggestions()
 ```
 
-The bridge may read common artifacts such as manifests, catalogs, run results, source definitions, tests, tags, metadata, and documentation fragments. It may emit suggested source declarations, model metadata, test definitions, tags, exposures, or documentation scaffolds. Those suggestions remain projections from InQL evidence and imported artifact evidence; they do not make the transformation framework the semantic owner of the plan.
+The bridge may read common artifacts such as manifests, catalogs, run results, source definitions, tests, tags, metadata, and documentation fragments. In a dbt-shaped bridge, for example, those inputs may include `manifest.json`, `catalog.json`, `run_results.json`, source YAML, model YAML, tags, exposures, tests, and documentation blocks. It may emit suggested source declarations, model metadata, test definitions, tags, exposures, or documentation scaffolds. Those suggestions remain projections from InQL evidence and imported artifact evidence; they do not make the transformation framework the semantic owner of the plan.
 
 ## Reference-level explanation (precise rules)
 
@@ -96,7 +96,7 @@ Outbound exports are projections. Inbound artifacts are evidence inputs. Neither
 
 Exchange bridges depend on inspection artifacts, execution observations, quality observations, adapter coverage, interoperability profiles, and governed plan bundles. They should map from or into those records rather than from backend-specific plans.
 
-Transformation-framework bridges are a first-class example. A bridge may ingest manifest, catalog, run-result, source, model, test, tag, exposure, metadata, and documentation artifacts. It may export suggested source definitions, model metadata, quality tests, documentation scaffolds, exposures, tags, or run validation summaries. The bridge must keep imported project semantics distinct from Prism-authored semantics and must identify any profile assumptions used to compare source and target environments.
+Transformation-framework bridges are a first-class example. A bridge may ingest manifest, catalog, run-result, source, model, test, tag, exposure, metadata, and documentation artifacts from systems such as dbt, Airflow, MWAA, Dagster, or Prefect when the bridge profile supports them. It may export suggested source definitions, model metadata, quality tests, documentation scaffolds, exposures, tags, or run validation summaries. The bridge must keep imported project semantics distinct from Prism-authored semantics and must identify any profile assumptions used to compare source and target environments.
 
 ### Compatibility / migration
 

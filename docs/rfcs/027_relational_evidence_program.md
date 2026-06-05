@@ -87,7 +87,7 @@ total = lineage.field("total_amount")
 
 The exact API is defined in the child RFCs. The important user model is stable: InQL can explain typed relational computation locally, before a backend runs it and without requiring an external governance service.
 
-The same evidence model should also support migration and modernization workbenches. A tool can ingest source-system metadata, target-environment profiles, transformation project artifacts, catalog metadata, and orchestration metadata; attach them to InQL semantic targets; assess compatibility gaps; and export reviewable suggestions back into the transformation stack:
+The same evidence model should also support migration and modernization workbenches. A tool can ingest source-system metadata, target-environment profiles, transformation project artifacts, catalog metadata, and orchestration metadata; attach them to InQL semantic targets; assess compatibility gaps; and export reviewable suggestions back into the transformation stack. Representative ecosystems include legacy and operational SQL systems such as Oracle, PostgreSQL, SQL Server, and MySQL; cloud and lakehouse targets such as Athena, Presto, Trino, Spark, Snowflake, BigQuery, Redshift, and Databricks; catalogs such as Glue Data Catalog and Hive Metastore; transformation projects such as dbt; and orchestrators such as Airflow, MWAA, Dagster, and Prefect:
 
 ```incan
 brief = migration_evidence_brief(
